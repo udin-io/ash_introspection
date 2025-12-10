@@ -120,8 +120,21 @@ defmodule AshIntrospection.FieldFormatter do
     end
   end
 
-  # Private helper for formatting field names
-  defp format_field_name(field_name, formatter) do
+  @doc """
+  Formats a field name using the configured formatter.
+
+  ## Examples
+
+      iex> AshIntrospection.FieldFormatter.format_field_name(:user_name, :camel_case)
+      "userName"
+
+      iex> AshIntrospection.FieldFormatter.format_field_name(:user_name, :snake_case)
+      "user_name"
+
+      iex> AshIntrospection.FieldFormatter.format_field_name("user_name", :pascal_case)
+      "UserName"
+  """
+  def format_field_name(field_name, formatter) do
     string_field = to_string(field_name)
 
     case formatter do
