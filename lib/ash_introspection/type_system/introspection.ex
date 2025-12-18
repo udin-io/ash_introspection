@@ -187,7 +187,7 @@ defmodule AshIntrospection.TypeSystem.Introspection do
   ## Parameters
   - `type` - The type to unwrap (e.g., MyApp.CustomType)
   - `constraints` - The constraints for the type
-  - `field_names_callback` - The callback name to check for field name mappings (default: :typescript_field_names)
+  - `field_names_callback` - The callback name to check for field name mappings (default: :interop_field_names)
 
   ## Returns
   A tuple `{unwrapped_type, unwrapped_constraints}` where:
@@ -197,14 +197,14 @@ defmodule AshIntrospection.TypeSystem.Introspection do
   ## Examples
 
       iex> # Simple NewType with field_names callback
-      iex> unwrap_new_type(MyApp.TaskStats, [], :typescript_field_names)
+      iex> unwrap_new_type(MyApp.TaskStats, [], :interop_field_names)
       {Ash.Type.Struct, [fields: [...], instance_of: MyApp.TaskStats]}
 
       iex> # Non-NewType (returns unchanged)
-      iex> unwrap_new_type(Ash.Type.String, [max_length: 50], :typescript_field_names)
+      iex> unwrap_new_type(Ash.Type.String, [max_length: 50], :interop_field_names)
       {Ash.Type.String, [max_length: 50]}
   """
-  def unwrap_new_type(type, constraints, field_names_callback \\ :typescript_field_names)
+  def unwrap_new_type(type, constraints, field_names_callback \\ :interop_field_names)
 
   def unwrap_new_type(type, constraints, field_names_callback) when is_atom(type) do
     if Ash.Type.NewType.new_type?(type) do
@@ -221,11 +221,12 @@ defmodule AshIntrospection.TypeSystem.Introspection do
 
       # Preserve reference to outermost NewType with field_names callback
       # Only add instance_of if:
-      # 1. This NewType has the field_names callback
+      # 1. This NewType has the field_names callback (check based on callback type)
       # 2. Constraints don't already have instance_of (preserves outermost)
+      has_callback = check_field_names_callback(type, field_names_callback)
+
       augmented_constraints =
-        if function_exported?(type, field_names_callback, 0) and
-             not Keyword.has_key?(constraints, :instance_of) do
+        if has_callback and not Keyword.has_key?(constraints, :instance_of) do
           Keyword.put(constraints, :instance_of, type)
         else
           constraints
@@ -238,4 +239,203 @@ defmodule AshIntrospection.TypeSystem.Introspection do
   end
 
   def unwrap_new_type(type, constraints, _field_names_callback), do: {type, constraints}
+
+  # Check if a type has the field names callback
+  # Supports both atom callback names and function references
+  defp check_field_names_callback(type, callback) when is_atom(callback) do
+    function_exported?(type, callback, 0)
+  end
+
+  defp check_field_names_callback(type, callback) when is_function(callback, 1) do
+    callback.(type)
+  end
+
+  defp check_field_names_callback(_type, _callback), do: false
+
+  # ---------------------------------------------------------------------------
+  # Interop Field Names Helpers (Generalized)
+  # ---------------------------------------------------------------------------
+
+  @doc """
+  Checks if a module has an interop_field_names/0 callback.
+
+  This is the generalized callback that works with all language generators
+  (TypeScript, Kotlin, etc.).
+
+  ## Examples
+
+      iex> AshIntrospection.TypeSystem.Introspection.has_interop_field_names?(MyApp.TaskStats)
+      true
+
+      iex> AshIntrospection.TypeSystem.Introspection.has_interop_field_names?(Ash.Type.String)
+      false
+  """
+  def has_interop_field_names?(nil), do: false
+
+  def has_interop_field_names?(module) when is_atom(module) do
+    Code.ensure_loaded?(module) && function_exported?(module, :interop_field_names, 0)
+  end
+
+  def has_interop_field_names?(_), do: false
+
+  @doc """
+  Gets the interop_field_names as a map, or empty map if not available.
+
+  This is the generalized version that works with all language generators.
+
+  ## Examples
+
+      iex> AshIntrospection.TypeSystem.Introspection.get_interop_field_names_map(MyApp.TaskStats)
+      %{is_active?: "isActive", meta_1: "meta1"}
+
+      iex> AshIntrospection.TypeSystem.Introspection.get_interop_field_names_map(Ash.Type.String)
+      %{}
+  """
+  def get_interop_field_names_map(nil), do: %{}
+
+  def get_interop_field_names_map(module) when is_atom(module) do
+    if has_interop_field_names?(module) do
+      module.interop_field_names() |> Map.new()
+    else
+      %{}
+    end
+  end
+
+  def get_interop_field_names_map(_), do: %{}
+
+  @doc """
+  Builds a reverse mapping from client names to internal names.
+
+  Can take either a map of field names or a module with interop_field_names/0.
+
+  ## Examples
+
+      iex> AshIntrospection.TypeSystem.Introspection.build_reverse_field_names_map(%{is_active?: "isActive"})
+      %{"isActive" => :is_active?}
+
+      iex> AshIntrospection.TypeSystem.Introspection.build_reverse_field_names_map(MyApp.TaskStats)
+      %{"isActive" => :is_active?, "meta1" => :meta_1}
+  """
+  def build_reverse_field_names_map(field_names) when is_map(field_names) do
+    field_names
+    |> Enum.map(fn {internal, client} -> {client, internal} end)
+    |> Map.new()
+  end
+
+  def build_reverse_field_names_map(module) when is_atom(module) do
+    module
+    |> get_interop_field_names_map()
+    |> build_reverse_field_names_map()
+  end
+
+  def build_reverse_field_names_map(_), do: %{}
+
+  # ---------------------------------------------------------------------------
+  # Custom Interop Type Helpers
+  # ---------------------------------------------------------------------------
+
+  @doc """
+  Checks if a type is a custom Ash type with an interop_type_name callback.
+
+  Custom types are Ash types that define an `interop_type_name/0` callback
+  to specify their representation in generated code.
+
+  ## Examples
+
+      iex> AshIntrospection.TypeSystem.Introspection.is_custom_interop_type?(MyApp.MyCustomType)
+      true
+
+      iex> AshIntrospection.TypeSystem.Introspection.is_custom_interop_type?(Ash.Type.String)
+      false
+  """
+  def is_custom_interop_type?(type) when is_atom(type) and not is_nil(type) do
+    Code.ensure_loaded?(type) and
+      function_exported?(type, :interop_type_name, 0) and
+      Spark.implements_behaviour?(type, Ash.Type)
+  end
+
+  def is_custom_interop_type?(_), do: false
+
+  @doc """
+  Gets the interop type name for a custom type, or nil if not available.
+
+  ## Examples
+
+      iex> AshIntrospection.TypeSystem.Introspection.get_interop_type_name(MyApp.MyCustomType)
+      "MyCustomType"
+
+      iex> AshIntrospection.TypeSystem.Introspection.get_interop_type_name(Ash.Type.String)
+      nil
+  """
+  def get_interop_type_name(type) when is_atom(type) and not is_nil(type) do
+    if is_custom_interop_type?(type) do
+      type.interop_type_name()
+    else
+      nil
+    end
+  end
+
+  def get_interop_type_name(_), do: nil
+
+  # ---------------------------------------------------------------------------
+  # Type Constraint Helpers
+  # ---------------------------------------------------------------------------
+
+  @doc """
+  Checks if constraints specify an instance_of that is an Ash resource.
+
+  ## Examples
+
+      iex> AshIntrospection.TypeSystem.Introspection.is_resource_instance_of?([instance_of: MyApp.Todo])
+      true
+
+      iex> AshIntrospection.TypeSystem.Introspection.is_resource_instance_of?([])
+      false
+  """
+  def is_resource_instance_of?(constraints) when is_list(constraints) do
+    case Keyword.get(constraints, :instance_of) do
+      nil -> false
+      module -> is_atom(module) && Ash.Resource.Info.resource?(module)
+    end
+  end
+
+  def is_resource_instance_of?(_), do: false
+
+  @doc """
+  Checks if constraints include non-empty field definitions.
+
+  ## Examples
+
+      iex> AshIntrospection.TypeSystem.Introspection.has_field_constraints?([fields: [name: [type: :string]]])
+      true
+
+      iex> AshIntrospection.TypeSystem.Introspection.has_field_constraints?([fields: []])
+      false
+  """
+  def has_field_constraints?(constraints) when is_list(constraints) do
+    Keyword.has_key?(constraints, :fields) && Keyword.get(constraints, :fields) != []
+  end
+
+  def has_field_constraints?(_), do: false
+
+  @doc """
+  Gets the type and constraints for a field from field specs.
+
+  ## Examples
+
+      iex> specs = [name: [type: :string], age: [type: :integer]]
+      iex> AshIntrospection.TypeSystem.Introspection.get_field_spec_type(specs, :name)
+      {:string, []}
+
+      iex> AshIntrospection.TypeSystem.Introspection.get_field_spec_type(specs, :unknown)
+      {nil, []}
+  """
+  def get_field_spec_type(field_specs, field_name) when is_list(field_specs) do
+    case Enum.find(field_specs, fn {name, _spec} -> name == field_name end) do
+      nil -> {nil, []}
+      {_name, spec} -> {Keyword.get(spec, :type), Keyword.get(spec, :constraints, [])}
+    end
+  end
+
+  def get_field_spec_type(_, _), do: {nil, []}
 end

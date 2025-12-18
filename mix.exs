@@ -5,7 +5,7 @@
 defmodule AshIntrospection.MixProject do
   use Mix.Project
 
-  @version "0.1.0"
+  @version "0.2.0"
 
   @description """
   Shared core library for Ash interoperability with multiple languages.
@@ -55,8 +55,8 @@ defmodule AshIntrospection.MixProject do
 
   defp deps do
     [
-      {:ash, "~> 3.7"},
-      {:spark, "~> 2.0"},
+      {:ash, ">= 3.7.0"},
+      {:spark, ">= 2.3.14"},
       {:ex_doc, "~> 0.37", only: [:dev, :test], runtime: false}
     ]
   end
