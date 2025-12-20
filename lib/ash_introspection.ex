@@ -18,9 +18,13 @@ defmodule AshIntrospection do
 
   - `AshIntrospection.Rpc.Request` - Request data structure for RPC pipeline
   - `AshIntrospection.Rpc.Pipeline` - Language-agnostic 4-stage RPC pipeline
+  - `AshIntrospection.Rpc.ValueFormatter` - Bidirectional type-driven value formatting
+  - `AshIntrospection.Rpc.ResultProcessor` - Field extraction from results
+  - `AshIntrospection.Rpc.FieldExtractor` - Unified field extraction for data structures
   - `AshIntrospection.Rpc.ErrorBuilder` - Comprehensive error handling
   - `AshIntrospection.Rpc.Errors` - Central error processing
   - `AshIntrospection.Rpc.Error` - Error protocol for custom error types
+  - `AshIntrospection.Rpc.DefaultErrorHandler` - Pass-through error handler
 
   ## Field Processing
 
