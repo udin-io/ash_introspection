@@ -7,10 +7,33 @@ defmodule AshIntrospection do
   Shared core library for Ash interoperability with multiple languages.
 
   This library provides the foundational modules used by language-specific
-  generators like `AshTypescript` and `AshKotlinMultiplatform`:
+  generators like `AshTypescript` and `AshKotlinMultiplatform`.
+
+  ## Type System
 
   - `AshIntrospection.TypeSystem.Introspection` - Centralized type classification
+  - `AshIntrospection.TypeSystem.ResourceFields` - Resource field lookup
+
+  ## RPC Runtime
+
+  - `AshIntrospection.Rpc.Request` - Request data structure for RPC pipeline
+  - `AshIntrospection.Rpc.Pipeline` - Language-agnostic 4-stage RPC pipeline
+  - `AshIntrospection.Rpc.ErrorBuilder` - Comprehensive error handling
+  - `AshIntrospection.Rpc.Errors` - Central error processing
+  - `AshIntrospection.Rpc.Error` - Error protocol for custom error types
+
+  ## Field Processing
+
+  - `AshIntrospection.Rpc.FieldProcessing.Atomizer` - Field name atomization
+  - `AshIntrospection.Rpc.FieldProcessing.FieldSelector` - Type-driven field selection
+  - `AshIntrospection.Rpc.FieldProcessing.Validation` - Field validation helpers
+
+  ## Code Generation
+
   - `AshIntrospection.Codegen.TypeDiscovery` - Resource and type scanning
+
+  ## Formatting
+
   - `AshIntrospection.FieldFormatter` - Field name transformation utilities
   - `AshIntrospection.Helpers` - Case conversion utilities
   """

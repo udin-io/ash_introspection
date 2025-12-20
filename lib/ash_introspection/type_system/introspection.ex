@@ -438,4 +438,137 @@ defmodule AshIntrospection.TypeSystem.Introspection do
   end
 
   def get_field_spec_type(_, _), do: {nil, []}
+
+  # ---------------------------------------------------------------------------
+  # TypeScript-Specific Helpers (For Backward Compatibility)
+  # ---------------------------------------------------------------------------
+
+  @doc """
+  Checks if a module has a typescript_field_names/0 callback.
+
+  This is TypeScript-specific but included here for compatibility with
+  modules that use the TypeScript-specific callback instead of the
+  generalized interop_field_names callback.
+
+  ## Examples
+
+      iex> AshIntrospection.TypeSystem.Introspection.has_typescript_field_names?(MyApp.TaskStats)
+      true
+
+      iex> AshIntrospection.TypeSystem.Introspection.has_typescript_field_names?(Ash.Type.String)
+      false
+  """
+  def has_typescript_field_names?(nil), do: false
+
+  def has_typescript_field_names?(module) when is_atom(module) do
+    Code.ensure_loaded?(module) && function_exported?(module, :typescript_field_names, 0)
+  end
+
+  def has_typescript_field_names?(_), do: false
+
+  @doc """
+  Gets the typescript_field_names as a map, or empty map if not available.
+
+  Falls back to interop_field_names if typescript_field_names is not available.
+
+  ## Examples
+
+      iex> AshIntrospection.TypeSystem.Introspection.get_typescript_field_names_map(MyApp.TaskStats)
+      %{is_active?: "isActive", meta_1: "meta1"}
+  """
+  def get_typescript_field_names_map(nil), do: %{}
+
+  def get_typescript_field_names_map(module) when is_atom(module) do
+    cond do
+      has_typescript_field_names?(module) ->
+        module.typescript_field_names() |> Map.new()
+
+      has_interop_field_names?(module) ->
+        get_interop_field_names_map(module)
+
+      true ->
+        %{}
+    end
+  end
+
+  def get_typescript_field_names_map(_), do: %{}
+
+  @doc """
+  Checks if a type is a custom Ash type with a typescript_type_name callback.
+
+  This is TypeScript-specific but included for compatibility.
+
+  ## Examples
+
+      iex> AshIntrospection.TypeSystem.Introspection.is_custom_typescript_type?(MyApp.MyCustomType)
+      true
+  """
+  def is_custom_typescript_type?(type) when is_atom(type) and not is_nil(type) do
+    Code.ensure_loaded?(type) and
+      function_exported?(type, :typescript_type_name, 0) and
+      Spark.implements_behaviour?(type, Ash.Type)
+  end
+
+  def is_custom_typescript_type?(_), do: false
+
+  # ---------------------------------------------------------------------------
+  # Field Names Callback Detection (Generic)
+  # ---------------------------------------------------------------------------
+
+  @doc """
+  Checks if a module has a field names callback of the specified type.
+
+  ## Parameters
+  - `module` - The module to check
+  - `callback` - Either an atom callback name (e.g., :interop_field_names) or
+                 a function `(module -> boolean)` for custom detection
+
+  ## Examples
+
+      iex> has_field_names_callback?(MyApp.TaskStats, :interop_field_names)
+      true
+
+      iex> has_field_names_callback?(MyApp.TaskStats, :typescript_field_names)
+      true
+  """
+  def has_field_names_callback?(nil, _callback), do: false
+
+  def has_field_names_callback?(module, callback) when is_atom(module) and is_atom(callback) do
+    Code.ensure_loaded?(module) && function_exported?(module, callback, 0)
+  end
+
+  def has_field_names_callback?(module, callback) when is_atom(module) and is_function(callback, 1) do
+    callback.(module)
+  end
+
+  def has_field_names_callback?(_, _), do: false
+
+  @doc """
+  Gets field names map using the specified callback, with fallback to interop_field_names.
+
+  ## Parameters
+  - `module` - The module to get field names from
+  - `callback` - The callback name to use (e.g., :typescript_field_names)
+
+  ## Examples
+
+      iex> get_field_names_map(MyApp.TaskStats, :typescript_field_names)
+      %{is_active?: "isActive", meta_1: "meta1"}
+  """
+  def get_field_names_map(nil, _callback), do: %{}
+
+  def get_field_names_map(module, callback) when is_atom(module) and is_atom(callback) do
+    cond do
+      function_exported?(module, callback, 0) ->
+        apply(module, callback, []) |> Map.new()
+
+      has_interop_field_names?(module) ->
+        get_interop_field_names_map(module)
+
+      true ->
+        %{}
+    end
+  end
+
+  def get_field_names_map(_, _), do: %{}
 end

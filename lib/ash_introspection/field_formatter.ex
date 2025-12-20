@@ -185,6 +185,33 @@ defmodule AshIntrospection.FieldFormatter do
     String.match?(string, ~r/^[a-z][a-z0-9_]*$/) && String.contains?(string, "_")
   end
 
+  @doc """
+  Converts a field name to an atom, using the formatter to parse the name first.
+
+  This is useful when you need to ensure the field name is an atom for
+  use as a map key or keyword list key.
+
+  ## Examples
+
+      iex> AshIntrospection.FieldFormatter.convert_to_field_atom("userName", :camel_case)
+      :user_name
+
+      iex> AshIntrospection.FieldFormatter.convert_to_field_atom(:user_name, :snake_case)
+      :user_name
+  """
+  def convert_to_field_atom(field_name, _formatter) when is_atom(field_name) do
+    field_name
+  end
+
+  def convert_to_field_atom(field_name, formatter) when is_binary(field_name) do
+    parsed = parse_input_field(field_name, formatter)
+
+    case parsed do
+      atom when is_atom(atom) -> atom
+      string when is_binary(string) -> String.to_atom(string)
+    end
+  end
+
   # Private helper for parsing field names from client format to internal format
   defp parse_field_name(field_name, formatter) do
     case formatter do
