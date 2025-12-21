@@ -30,10 +30,7 @@ defmodule AshIntrospection.Helpers do
   end
 
   def snake_to_pascal_case(snake) when is_binary(snake) do
-    snake
-    |> String.split("_")
-    |> Enum.with_index()
-    |> Enum.map_join(fn {part, _} -> String.capitalize(part) end)
+    Macro.camelize(snake)
   end
 
   @doc """
@@ -54,21 +51,14 @@ defmodule AshIntrospection.Helpers do
   end
 
   def snake_to_camel_case(snake) when is_binary(snake) do
-    snake
-    |> String.split("_")
-    |> Enum.with_index()
-    |> Enum.map_join(fn
-      {part, 0} -> String.downcase(part)
-      {part, _} -> String.capitalize(part)
-    end)
+    case Macro.camelize(snake) do
+      <<first::utf8, rest::binary>> -> String.downcase(<<first::utf8>>) <> rest
+      "" -> ""
+    end
   end
 
   @doc """
   Converts a camelCase string or atom to snake_case.
-
-  Handles:
-  - Standard camelCase (e.g., "userName" -> "user_name")
-  - Mixed case with numbers (e.g., "user1Name" -> "user_1_name")
 
   ## Examples
 
@@ -79,18 +69,7 @@ defmodule AshIntrospection.Helpers do
       "user_name"
   """
   def camel_to_snake_case(camel) when is_binary(camel) do
-    camel
-    # 1. lowercase/digit to uppercase: aB, 1B -> a_B, 1_B
-    |> String.replace(~r/([a-z\d])([A-Z])/, "\\1_\\2")
-    # 2. lowercase to digits: a123 -> a_123
-    |> String.replace(~r/([a-z])(\d+)/, "\\1_\\2")
-    # 3. digits to lowercase: 123a -> 123_a
-    |> String.replace(~r/(\d+)([a-z])/, "\\1_\\2")
-    # 4. digits to uppercase: 123A -> 123_A
-    |> String.replace(~r/(\d+)([A-Z])/, "\\1_\\2")
-    # 5. uppercase to digits: A123 -> A_123
-    |> String.replace(~r/([A-Z])(\d+)/, "\\1_\\2")
-    |> String.downcase()
+    Macro.underscore(camel)
   end
 
   def camel_to_snake_case(camel) when is_atom(camel) do
@@ -117,18 +96,6 @@ defmodule AshIntrospection.Helpers do
   end
 
   def pascal_to_snake_case(pascal) when is_binary(pascal) do
-    pascal
-    # 1. lowercase to uppercase: a123 -> a_123
-    |> String.replace(~r/([a-z\d])([A-Z])/, "\\1_\\2")
-    # 2. lowercase to digits: a123 -> a_123
-    |> String.replace(~r/([a-z])(\d+)/, "\\1_\\2")
-    # 3. digits to lowercase: 123a -> 123_a
-    |> String.replace(~r/(\d+)([a-z])/, "\\1_\\2")
-    # 4. digits to uppercase: 123A -> 123_A
-    |> String.replace(~r/(\d+)([A-Z])/, "\\1_\\2")
-    # 5. uppercase to digits: A123 -> A_123
-    |> String.replace(~r/([A-Z])(\d+)/, "\\1_\\2")
-    |> String.downcase()
-    |> String.trim_leading("_")
+    Macro.underscore(pascal)
   end
 end

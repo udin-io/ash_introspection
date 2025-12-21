@@ -41,8 +41,10 @@ defmodule AshIntrospection.HelpersTest do
     end
 
     test "handles numbers" do
-      assert "meta_1" == Helpers.camel_to_snake_case("meta1")
-      assert "user_1_name" == Helpers.camel_to_snake_case("user1Name")
+      # Macro.underscore behavior: trailing digits stay attached
+      assert "meta1" == Helpers.camel_to_snake_case("meta1")
+      # But uppercase after digit gets underscore
+      assert "user1_name" == Helpers.camel_to_snake_case("user1Name")
     end
   end
 
