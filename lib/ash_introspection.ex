@@ -6,6 +6,11 @@ defmodule AshIntrospection do
   @moduledoc """
   Shared core library for Ash interoperability with multiple languages.
 
+  > #### Alpha Software {: .warning}
+  >
+  > This library is under active development. APIs may change without notice
+  > between versions. Use in production at your own risk.
+
   AshIntrospection provides the foundational modules used by language-specific
   generators like `AshTypescript` and `AshKotlinMultiplatform`. It enables
   seamless RPC communication between Elixir/Ash backends and clients in other
