@@ -24,7 +24,7 @@ defmodule AshIntrospection.MixProject do
       docs: docs(),
       name: "AshIntrospection",
       description: @description,
-      source_url: "https://github.com/ash-project/ash_introspection",
+      source_url: "https://github.com/udin-io/ash_introspection",
       homepage_url: "https://hexdocs.pm/ash_introspection",
       consolidate_protocols: Mix.env() != :test
     ]
@@ -90,10 +90,9 @@ defmodule AshIntrospection.MixProject do
       licenses: ["MIT"],
       files: ~w(lib .formatter.exs mix.exs README* CHANGELOG* LICENSES),
       links: %{
-        "GitHub" => "https://github.com/ash-project/ash_introspection",
+        "GitHub" => "https://github.com/udin-io/ash_introspection",
         "Discord" => "https://discord.gg/HTHRaaVPUc",
-        "Website" => "https://ash-hq.org",
-        "Forum" => "https://elixirforum.com/c/elixir-framework-forums/ash-framework-forum"
+        "Website" => "https://ash-hq.org"
       }
     ]
   end
