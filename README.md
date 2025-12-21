@@ -11,6 +11,8 @@ SPDX-License-Identifier: MIT
 [![Hex version badge](https://img.shields.io/hexpm/v/ash_introspection.svg)](https://hex.pm/packages/ash_introspection)
 [![Hexdocs badge](https://img.shields.io/badge/docs-hexdocs-purple)](https://hexdocs.pm/ash_introspection)
 
+> **Alpha Software**: This library is under active development. APIs may change without notice between versions. Use in production at your own risk.
+
 **Shared core library for Ash interoperability with multiple languages**
 
 AshIntrospection provides the foundational modules used by language-specific generators like [AshTypescript](https://github.com/ash-project/ash_typescript) and AshKotlinMultiplatform. It enables seamless RPC communication between Elixir/Ash backends and clients in TypeScript, Kotlin, Swift, and other languages.
@@ -702,7 +704,7 @@ Contributions are welcome! Please:
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the MIT License.
 
 ## Support
 
