@@ -6,13 +6,79 @@ defmodule AshIntrospection.Codegen.ActionIntrospection do
   @moduledoc """
   Provides helper functions for analyzing Ash actions.
 
-  This module contains utilities for determining action characteristics like:
-  - Pagination support (offset, keyset, required, countable)
-  - Input requirements
-  - Return type field selectability
+  This module contains language-agnostic utilities for determining action
+  characteristics, enabling code generators to produce appropriate client
+  code for different action types.
+
+  ## Features
+
+  - **Pagination Analysis** - Detect offset, keyset, required, and countable pagination
+  - **Input Requirements** - Determine if actions require, optionally accept, or have no input
+  - **Return Type Classification** - Identify field-selectable return types for generic actions
+
+  ## Usage
+
+  ### Pagination Support
+
+  ```elixir
+  alias AshIntrospection.Codegen.ActionIntrospection
+
+  action = Ash.Resource.Info.action(MyApp.Post, :list)
+
+  if ActionIntrospection.action_supports_pagination?(action) do
+    # Generate paginated response type
+    if ActionIntrospection.action_supports_offset_pagination?(action) do
+      # Include offset/limit parameters
+    end
+    if ActionIntrospection.action_supports_keyset_pagination?(action) do
+      # Include after/before parameters
+    end
+  end
+  ```
+
+  ### Input Requirements
+
+  ```elixir
+  case ActionIntrospection.action_input_type(resource, action) do
+    :required -> # Generate required input parameter
+    :optional -> # Generate optional input parameter
+    :none     -> # No input parameter needed
+  end
+
+  # Get specific field lists
+  required_fields = ActionIntrospection.get_required_inputs(resource, action)
+  optional_fields = ActionIntrospection.get_optional_inputs(resource, action)
+  ```
+
+  ### Generic Action Return Types
+
+  ```elixir
+  case ActionIntrospection.action_returns_field_selectable_type?(action) do
+    {:ok, :resource, MyApp.User} ->
+      # Returns a single User, can select fields
+
+    {:ok, :array_of_resource, MyApp.User} ->
+      # Returns array of Users, can select fields
+
+    {:ok, :typed_map, fields} ->
+      # Returns map with typed fields, can select from field list
+
+    {:ok, :unconstrained_map, nil} ->
+      # Returns map without constraints, no field selection
+
+    {:error, :not_field_selectable_type} ->
+      # Returns primitive type, no field selection
+
+    {:error, :not_generic_action} ->
+      # Not a generic action (use standard CRUD handling)
+  end
+  ```
+
+  ## Design Notes
 
   The return type analysis uses a type-driven classification pattern with
-  `classify_return_type/2` for consistent handling of all type variants.
+  `classify_return_type/2` for consistent handling of all type variants
+  including resources, typed maps, typed structs, and primitives.
   """
 
   # Container types that can have field constraints for field selection

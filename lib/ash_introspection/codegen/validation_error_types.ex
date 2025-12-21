@@ -15,29 +15,71 @@ defmodule AshIntrospection.Codegen.ValidationErrorTypes do
 
   The module classifies types into the following error categories:
 
-  - `:primitive_errors` - Simple string error messages (for strings, integers, etc.)
-  - `:array_errors` - Array of inner error type
-  - `:resource_errors` - Validation errors for an Ash resource
-  - `:typed_container_errors` - Errors for a map/struct with field constraints
-  - `:union_errors` - Errors for union type members
-  - `:custom_type_errors` - Errors for custom types with interop_type_name callback
-  - `:unconstrained_map_errors` - Generic record/map errors
+  | Category | Description | Example Target Type |
+  |----------|-------------|---------------------|
+  | `:primitive_errors` | Simple string errors | `string[]` / `List<String>` |
+  | `:array_errors` | Array of inner error type | `UserErrors[]` / `List<UserErrors>` |
+  | `:resource_errors` | Resource validation errors | `UserValidationErrors` |
+  | `:typed_container_errors` | Map/struct with field errors | `{ name?: string[]; age?: string[] }` |
+  | `:union_errors` | Union member errors | `{ text?: string[]; note?: NoteErrors }` |
+  | `:custom_type_errors` | Custom type errors | `MoneyValidationErrors` |
+  | `:unconstrained_map_errors` | Generic map errors | `Record<string, any>` |
 
   ## Usage
 
+  ### Basic Type Classification
+
   ```elixir
-  # Classify a type
-  {:ok, classification} = classify_error_type(Ash.Type.String, [])
-  # => {:ok, {:primitive_errors, nil}}
+  alias AshIntrospection.Codegen.ValidationErrorTypes
+
+  # Classify a primitive type
+  {:ok, {:primitive_errors, nil}} = ValidationErrorTypes.classify_error_type(:string, [])
 
   # Classify an embedded resource
-  {:ok, classification} = classify_error_type(Ash.Type.Struct, [instance_of: MyEmbeddedResource])
-  # => {:ok, {:resource_errors, MyEmbeddedResource}}
+  {:ok, {:resource_errors, MyApp.Address}} =
+    ValidationErrorTypes.classify_error_type(Ash.Type.Struct, instance_of: MyApp.Address)
 
   # Classify an array of resources
-  {:ok, classification} = classify_error_type({:array, Ash.Type.Struct}, [items: [instance_of: MyResource]])
-  # => {:ok, {:array_errors, {:resource_errors, MyResource}}}
+  {:ok, {:array_errors, {:resource_errors, MyApp.Item}}} =
+    ValidationErrorTypes.classify_error_type({:array, Ash.Type.Struct}, items: [instance_of: MyApp.Item])
+
+  # Classify a typed map
+  {:ok, {:typed_container_errors, field_classifications}} =
+    ValidationErrorTypes.classify_error_type(Ash.Type.Map, fields: [name: [type: :string]])
   ```
+
+  ### Action Input Errors
+
+  ```elixir
+  # Get error classifications for all action inputs
+  action = Ash.Resource.Info.action(MyApp.User, :create)
+  classifications = ValidationErrorTypes.classify_action_input_errors(MyApp.User, action)
+
+  # Returns: [{:name, {:primitive_errors, nil}, %Ash.Resource.Attribute{...}}, ...]
+  ```
+
+  ### Generating Language-Specific Types
+
+  ```elixir
+  # TypeScript example
+  defp to_typescript_error_type(classification) do
+    case classification do
+      {:primitive_errors, nil} -> "string[]"
+      {:array_errors, inner} -> "\#{to_typescript_error_type(inner)}[]"
+      {:resource_errors, module} -> "\#{type_name(module)}ValidationErrors"
+      {:typed_container_errors, fields} -> generate_inline_object(fields)
+      {:union_errors, members} -> generate_union_errors(members)
+      {:custom_type_errors, module} -> "\#{module.interop_type_name()}ValidationErrors"
+      {:unconstrained_map_errors, nil} -> "Record<string, any>"
+    end
+  end
+  ```
+
+  ## Design Notes
+
+  The classifier always unwraps NewTypes first using
+  `AshIntrospection.TypeSystem.Introspection.unwrap_new_type/2` to ensure
+  consistent handling regardless of type wrapper depth.
   """
 
   alias AshIntrospection.TypeSystem.Introspection
