@@ -80,10 +80,10 @@ defmodule AshIntrospection.Rpc.Pipeline do
           execute_create_action(request, opts)
 
         :update ->
-          execute_update_action(request, opts)
+          execute_update_action(request, opts, config)
 
         :destroy ->
-          execute_destroy_action(request, opts)
+          execute_destroy_action(request, opts, config)
 
         :action ->
           execute_generic_action(request, opts)
@@ -219,7 +219,7 @@ defmodule AshIntrospection.Rpc.Pipeline do
     |> Ash.create()
   end
 
-  defp execute_update_action(%Request{} = request, opts) do
+  defp execute_update_action(%Request{} = request, opts, config) do
     read_action = Map.get(request.rpc_action, :read_action)
     identities = Map.get(request.rpc_action, :identities, [:_primary_key])
 
@@ -229,7 +229,13 @@ defmodule AshIntrospection.Rpc.Pipeline do
       |> Ash.Query.set_context(opts[:context] || %{})
 
     with {:ok, query_with_identity} <-
-           maybe_apply_identity_filter(base_query, request.identity, identities, request.resource) do
+           maybe_apply_identity_filter(
+             base_query,
+             request.identity,
+             identities,
+             request.resource,
+             config
+           ) do
       query = Ash.Query.limit(query_with_identity, 1)
 
       bulk_opts = [
@@ -274,7 +280,7 @@ defmodule AshIntrospection.Rpc.Pipeline do
     end
   end
 
-  defp execute_destroy_action(%Request{} = request, opts) do
+  defp execute_destroy_action(%Request{} = request, opts, config) do
     read_action = Map.get(request.rpc_action, :read_action)
     identities = Map.get(request.rpc_action, :identities, [:_primary_key])
 
@@ -284,7 +290,13 @@ defmodule AshIntrospection.Rpc.Pipeline do
       |> Ash.Query.set_context(opts[:context] || %{})
 
     with {:ok, query_with_identity} <-
-           maybe_apply_identity_filter(base_query, request.identity, identities, request.resource) do
+           maybe_apply_identity_filter(
+             base_query,
+             request.identity,
+             identities,
+             request.resource,
+             config
+           ) do
       query =
         query_with_identity
         |> Ash.Query.limit(1)
@@ -429,31 +441,26 @@ defmodule AshIntrospection.Rpc.Pipeline do
   # Identity Helpers
   # ---------------------------------------------------------------------------
 
-  defp maybe_apply_identity_filter(query, _identity, [], _resource), do: {:ok, query}
+  defp maybe_apply_identity_filter(query, _identity, [], _resource, _config), do: {:ok, query}
 
-  defp maybe_apply_identity_filter(query, identity, identities, resource)
+  defp maybe_apply_identity_filter(query, identity, identities, resource, config)
        when is_map(identity) do
-    case build_identity_filter(resource, identity, identities) do
-      {:ok, filter} ->
-        {:ok, Ash.Query.do_filter(query, filter)}
-
-      {:error, _} = error ->
-        error
+    with {:ok, filter} <- build_identity_filter(resource, identity, identities),
+         :ok <- validate_scalar_identity_filter(filter, config) do
+      {:ok, Ash.Query.do_filter(query, filter)}
     end
   end
 
-  defp maybe_apply_identity_filter(query, identity, identities, resource)
+  defp maybe_apply_identity_filter(query, identity, identities, resource, config)
        when not is_nil(identity) do
-    case build_identity_filter(resource, identity, identities) do
-      {:ok, filter} ->
-        {:ok, Ash.Query.do_filter(query, filter)}
-
-      {:error, _} = error ->
-        error
+    with {:ok, filter} <- build_identity_filter(resource, identity, identities),
+         :ok <- validate_scalar_identity_filter(filter, config) do
+      {:ok, Ash.Query.do_filter(query, filter)}
     end
   end
 
-  defp maybe_apply_identity_filter(_query, nil, identities, resource) when identities != [] do
+  defp maybe_apply_identity_filter(_query, nil, identities, resource, _config)
+       when identities != [] do
     expected_keys = get_expected_identity_keys(resource, identities)
 
     {:error,
@@ -464,7 +471,32 @@ defmodule AshIntrospection.Rpc.Pipeline do
       }}}
   end
 
-  defp maybe_apply_identity_filter(query, _identity, _identities, _resource), do: {:ok, query}
+  defp maybe_apply_identity_filter(query, _identity, _identities, _resource, _config),
+    do: {:ok, query}
+
+  # Identity values come from the client and are applied through the *trusted*
+  # filter API (Ash.Query.do_filter/2), which reads a map or list operand as an
+  # operator expression — `%{"greater_than" => ""}` becomes `field > ""` — so
+  # an exact-record lookup silently widens into an arbitrary predicate. That
+  # predicate then drives `execute_update_action/3` and
+  # `execute_destroy_action/3`, so it mutates or deletes a record the caller
+  # never named. Identity lookups are equality-only, so reject any non-scalar
+  # value before it reaches the filter.
+  defp validate_scalar_identity_filter(filter, config) do
+    case non_scalar_filter_keys(filter) do
+      [] ->
+        :ok
+
+      keys ->
+        {:error,
+         {:invalid_identity,
+          %{
+            message:
+              "Identity values must be scalar equality operands. Non-scalar value provided for: " <>
+                format_filter_keys(keys, config)
+          }}}
+    end
+  end
 
   defp build_identity_filter(resource, identity, identities) when is_map(identity) do
     result =
