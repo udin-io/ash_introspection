@@ -67,6 +67,31 @@ defmodule AshIntrospection.Rpc.ResultProcessorRedactionTest do
     test "redacts a bare not-loaded field to nil" do
       assert nil == ResultProcessor.normalize_primitive(not_loaded(:address))
     end
+
+    test "omits a not-loaded field nested in a plain struct" do
+      result =
+        ResultProcessor.normalize_primitive(%Envelope{
+          label: "user",
+          payload: not_loaded(:payload)
+        })
+
+      assert %{label: "user"} == result
+    end
+
+    test "omits a not-loaded field nested in an Ash resource struct" do
+      user = struct(AshIntrospection.Test.User, %{name: "Ada", email: not_loaded(:email)})
+
+      result = ResultProcessor.normalize_primitive(user)
+
+      assert "Ada" == result.name
+      refute Map.has_key?(result, :email)
+    end
+
+    test "omits a not-loaded field nested in a plain map" do
+      result = ResultProcessor.normalize_primitive(%{name: "Ada", address: not_loaded(:address)})
+
+      assert %{name: "Ada"} == result
+    end
   end
 
   describe "process/4 without an extraction template" do
@@ -92,6 +117,13 @@ defmodule AshIntrospection.Rpc.ResultProcessorRedactionTest do
       {:ok, result} = Pipeline.process_result(raw, map_action_request())
 
       assert %{"user" => %{label: "Ada", payload: nil}} == result
+    end
+
+    test "omits a not-loaded field in the returned map" do
+      {:ok, result} =
+        Pipeline.process_result(%{"address" => not_loaded(:address)}, map_action_request())
+
+      assert %{} == result
     end
   end
 

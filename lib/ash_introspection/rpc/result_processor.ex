@@ -531,8 +531,10 @@ defmodule AshIntrospection.Rpc.ResultProcessor do
   Handles DateTime, Date, Time, Decimal, CiString, atoms, keyword lists, nested maps,
   regular lists, and Ash.Union types. Recursively normalizes nested structures.
 
-  `%Ash.ForbiddenField{}` and `%Ash.NotLoaded{}` normalize to `nil`, matching
-  the templated path in `extract_value/5`.
+  `%Ash.ForbiddenField{}` and `%Ash.NotLoaded{}` normalize to `nil`. Inside a
+  struct, map or keyword list a not-loaded field is omitted rather than sent as
+  `nil`, so the client can tell "you may not see this" apart from "this was not
+  loaded" — the same distinction the templated path draws in `extract_value/5`.
   """
   def normalize_primitive(nil), do: nil
 
@@ -582,7 +584,7 @@ defmodule AshIntrospection.Rpc.ResultProcessor do
         value
         |> Map.from_struct()
         |> Enum.reduce(%{}, fn {key, val}, acc ->
-          Map.put(acc, key, normalize_primitive(val))
+          put_normalized(acc, key, val)
         end)
 
       is_list(value) ->
@@ -591,8 +593,7 @@ defmodule AshIntrospection.Rpc.ResultProcessor do
         # is distinctly different from an empty object.
         if value != [] and Keyword.keyword?(value) do
           Enum.reduce(value, %{}, fn {key, val}, acc ->
-            string_key = to_string(key)
-            Map.put(acc, string_key, normalize_primitive(val))
+            put_normalized(acc, to_string(key), val)
           end)
         else
           Enum.map(value, &normalize_primitive/1)
@@ -600,7 +601,7 @@ defmodule AshIntrospection.Rpc.ResultProcessor do
 
       is_map(value) ->
         Enum.reduce(value, %{}, fn {key, val}, acc ->
-          Map.put(acc, key, normalize_primitive(val))
+          put_normalized(acc, key, val)
         end)
 
       true ->
@@ -623,12 +624,18 @@ defmodule AshIntrospection.Rpc.ResultProcessor do
     |> Map.from_struct()
     |> Enum.reduce(%{}, fn {key, val}, acc ->
       if MapSet.member?(public_field_names, key) do
-        Map.put(acc, key, normalize_primitive(val))
+        put_normalized(acc, key, val)
       else
         acc
       end
     end)
   end
+
+  # A not-loaded field is absent from the payload rather than `nil`, so the
+  # client never reads "not loaded" as "no value". Mirrors `extract_value/5`,
+  # which returns `:skip` for the same struct on the templated path.
+  defp put_normalized(acc, _key, %Ash.NotLoaded{}), do: acc
+  defp put_normalized(acc, key, value), do: Map.put(acc, key, normalize_primitive(value))
 
   # ─────────────────────────────────────────────────────────────────────────────
   # Helper Functions
