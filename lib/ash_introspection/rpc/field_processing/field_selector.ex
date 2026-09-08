@@ -878,7 +878,7 @@ defmodule AshIntrospection.Rpc.FieldProcessing.FieldSelector do
   defp atomize_field_name(field, resource, config) when is_binary(field) do
     if is_interop_resource?(resource, config) do
       case get_original_field_name(resource, field, config) do
-        original when is_atom(original) -> original
+        original when is_atom(original) and not is_nil(original) -> original
         _ -> field
       end
     else
@@ -934,7 +934,7 @@ defmodule AshIntrospection.Rpc.FieldProcessing.FieldSelector do
   defp resolve_resource_field_name(resource, field_name, config) when is_binary(field_name) do
     if is_interop_resource?(resource, config) do
       case get_original_field_name(resource, field_name, config) do
-        original when is_atom(original) -> original
+        original when is_atom(original) and not is_nil(original) -> original
         _ -> resolve_field_name(field_name, config)
       end
     else

@@ -21,6 +21,7 @@ defmodule AshIntrospection.Rpc.FieldProcessing.FieldSelectorAtomSafetyTest do
 
   alias AshIntrospection.Rpc.FieldProcessing.FieldSelector
   alias AshIntrospection.Test.Post
+  alias AshIntrospection.Test.User
 
   @batch_size 500
 
@@ -40,18 +41,71 @@ defmodule AshIntrospection.Rpc.FieldProcessing.FieldSelectorAtomSafetyTest do
     refute atom_exists?(Macro.underscore(name))
   end
 
-  # Runs `fun` once to settle any first-call atom creation in Ash or the error
-  # path, then asserts the next `@batch_size` distinct names add no atoms.
+  # Runs a full warm-up batch first: Ash's own lazy initialisation creates a few
+  # hundred atoms the first time a selection path runs, and only then does the
+  # count settle. Every batch after that must add exactly zero, which is what
+  # separates a fixed path from one minting an atom per name.
   defp assert_no_atoms_minted(fun) do
-    fun.(unknown_name("atomBombWarmup"))
+    run_batch(fun, "atomBombWarmup")
 
     before = :erlang.system_info(:atom_count)
-
-    for _ <- 1..@batch_size do
-      fun.(unknown_name("atomBombBatch"))
-    end
+    names = run_batch(fun, "atomBombBatch")
 
     assert :erlang.system_info(:atom_count) == before
+    Enum.each(names, &refute_atoms_for/1)
+  end
+
+  defp run_batch(fun, prefix) do
+    for _ <- 1..@batch_size do
+      name = unknown_name(prefix)
+      fun.(name)
+      name
+    end
+  end
+
+  describe "resource fields" do
+    test "an unknown field name is rejected without minting an atom" do
+      name = unknown_name("atomBombResource")
+
+      assert {:error, {:unknown_field, unknown, User, []}} =
+               FieldSelector.process(User, :read, [name])
+
+      assert is_binary(unknown)
+      refute_atoms_for(name)
+    end
+
+    test "a batch of unknown field names mints no atoms" do
+      assert_no_atoms_minted(fn name ->
+        assert {:error, {:unknown_field, _, _, _}} = FieldSelector.process(User, :read, [name])
+      end)
+    end
+
+    test "an unknown nested field name is rejected without minting an atom" do
+      name = unknown_name("atomBombNestedResource")
+
+      assert {:error, {:unknown_field, unknown, User, []}} =
+               FieldSelector.process(User, :read, [%{name => ["id"]}])
+
+      assert is_binary(unknown)
+      refute_atoms_for(name)
+    end
+
+    test "known attribute and aggregate names still resolve" do
+      assert {:ok, {select, load, template}} =
+               FieldSelector.process(User, :read, ["id", "name", "isActive", "addressCount"])
+
+      assert select == [:id, :name, :is_active]
+      assert load == [:address_count]
+      assert template == [:id, :name, :is_active, :address_count]
+    end
+
+    test "known relationship names still resolve" do
+      assert {:ok, {_select, load, template}} =
+               FieldSelector.process(User, :read, [%{"address" => ["street", "city"]}])
+
+      assert load == [{:address, [:street, :city]}]
+      assert template == [address: [:street, :city]]
+    end
   end
 
   describe "typed map fields" do
