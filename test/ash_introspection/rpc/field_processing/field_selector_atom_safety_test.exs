@@ -144,6 +144,32 @@ defmodule AshIntrospection.Rpc.FieldProcessing.FieldSelectorAtomSafetyTest do
     end
   end
 
+  describe "typed struct fields" do
+    test "an unknown field name is rejected without minting an atom" do
+      name = unknown_name("atomBombTypedStruct")
+
+      assert {:error, {:unknown_field, unknown, "field_constrained_type", []}} =
+               FieldSelector.process(Post, :get_task_stats, [name])
+
+      assert is_binary(unknown)
+      refute_atoms_for(name)
+    end
+
+    test "a batch of unknown field names mints no atoms" do
+      assert_no_atoms_minted(fn name ->
+        assert {:error, {:unknown_field, _, _, _}} =
+                 FieldSelector.process(Post, :get_task_stats, [name])
+      end)
+    end
+
+    test "mapped field names still resolve to their internal atoms" do
+      assert {:ok, {_select, _load, template}} =
+               FieldSelector.process(Post, :get_task_stats, ["isActive", "taskCount", "meta1"])
+
+      assert template == [:is_active?, :task_count, :meta_1]
+    end
+  end
+
   describe "tuple fields" do
     test "an unknown field name is rejected without minting an atom" do
       name = unknown_name("atomBombTuple")

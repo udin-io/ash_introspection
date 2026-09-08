@@ -522,13 +522,12 @@ defmodule AshIntrospection.Rpc.FieldProcessing.FieldSelector do
 
   defp resolve_typed_struct_field(field_name, reverse_map, config) when is_binary(field_name) do
     case Map.get(reverse_map, field_name) do
-      nil ->
-        formatter = Map.get(config, :input_field_formatter, :camel_case)
-        converted = FieldFormatter.parse_input_field(field_name, formatter)
-        if is_atom(converted), do: converted, else: String.to_atom(converted)
-
-      internal ->
-        internal
+      # A name absent from the interop map names no field of this struct, so it
+      # stays a string and fails Validation.validate_field_exists!/4 as an
+      # unknown field. Minting an atom here only let client input grow the atom
+      # table.
+      nil -> resolve_field_name(field_name, config)
+      internal -> internal
     end
   end
 
