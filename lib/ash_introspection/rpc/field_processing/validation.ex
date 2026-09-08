@@ -24,6 +24,11 @@ defmodule AshIntrospection.Rpc.FieldProcessing.Validation do
   Normalizes field names using the input formatter before checking for duplicates.
   Throws `{:duplicate_field, field_name, path}` if duplicates are found.
 
+  This runs before any field-existence check, so it sees every name a client
+  sent, valid or not. A name that matches no existing atom stays a string here
+  and is reported as such; the caller rejects it as an unknown field moments
+  later.
+
   ## Parameters
 
   - `fields` - List of field selections
@@ -124,8 +129,10 @@ defmodule AshIntrospection.Rpc.FieldProcessing.Validation do
     :ok
   end
 
-  # Normalizes a string field name to an atom using the formatter
+  # Normalizes a string field name using the formatter, resolving it to an
+  # existing atom where one exists. Never mints an atom: this runs on raw client
+  # input before anything has checked the name against a real field.
   defp normalize_field_name(field_name, formatter) when is_binary(field_name) do
-    FieldFormatter.convert_to_field_atom(field_name, formatter)
+    FieldFormatter.resolve_field_name(field_name, formatter)
   end
 end
