@@ -237,6 +237,18 @@ defmodule AshIntrospection.Test.Post do
       end
     end
 
+    # Generic action returning a tuple with named fields
+    action :get_bounds, :tuple do
+      constraints fields: [
+                    latitude: [type: :float],
+                    longitude: [type: :float]
+                  ]
+
+      run fn _input, _context ->
+        {:ok, {0.0, 0.0}}
+      end
+    end
+
     # Generic action returning unconstrained map
     action :get_metadata, :map do
       run fn _input, _context ->

@@ -115,19 +115,34 @@ defmodule AshIntrospection.Rpc.FieldProcessing.Validation do
   - `path` - Current path for error reporting
   - `error_type` - Error type string for error messages
   """
-  @spec validate_field_exists!(atom(), keyword(), list(), String.t()) :: :ok
+  @spec validate_field_exists!(atom() | String.t(), keyword(), list(), String.t()) :: :ok
   def validate_field_exists!(
         field_name,
         field_specs,
         path,
         error_type \\ "field_constrained_type"
       ) do
-    unless Keyword.has_key?(field_specs, field_name) do
+    unless field_exists?(field_specs, field_name) do
       throw({:unknown_field, field_name, error_type, path})
     end
 
     :ok
   end
+
+  @doc """
+  Checks whether `field_specs` declares `field_name`.
+
+  Accepts a string name, which `Keyword.has_key?/2` rejects outright. A client
+  name that resolved to no existing atom stays a string, and no field spec can
+  be keyed by one, so the answer is always false — the caller then reports it as
+  an unknown field.
+  """
+  @spec field_exists?(keyword(), term()) :: boolean()
+  def field_exists?(field_specs, field_name) when is_atom(field_name) do
+    Keyword.has_key?(field_specs, field_name)
+  end
+
+  def field_exists?(_field_specs, _field_name), do: false
 
   # Normalizes a string field name using the formatter, resolving it to an
   # existing atom where one exists. Never mints an atom: this runs on raw client

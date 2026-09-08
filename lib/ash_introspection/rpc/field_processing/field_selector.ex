@@ -557,18 +557,18 @@ defmodule AshIntrospection.Rpc.FieldProcessing.FieldSelector do
       Enum.reduce(requested_fields, {[], [], []}, fn field, {select, load, template} ->
         case parse_field_request(field) do
           {:simple, field_name} ->
-            internal_name = convert_to_field_atom(field_name, config)
+            internal_name = resolve_field_name(field_name, config)
 
-            unless Keyword.has_key?(field_specs, internal_name) do
+            unless Validation.field_exists?(field_specs, internal_name) do
               throw({:unknown_field, field_name, error_type, path})
             end
 
             {select, load, template ++ [internal_name]}
 
           {:nested, field_name, nested_fields} ->
-            internal_name = convert_to_field_atom(field_name, config)
+            internal_name = resolve_field_name(field_name, config)
 
-            unless Keyword.has_key?(field_specs, internal_name) do
+            unless Validation.field_exists?(field_specs, internal_name) do
               throw({:unknown_field, field_name, error_type, path})
             end
 
@@ -587,7 +587,7 @@ defmodule AshIntrospection.Rpc.FieldProcessing.FieldSelector do
 
           {:multi_nested, entries} ->
             Enum.reduce(entries, {select, load, template}, fn {field_name, nested}, {s, l, t} ->
-              internal_name = convert_to_field_atom(field_name, config)
+              internal_name = resolve_field_name(field_name, config)
               Validation.validate_field_exists!(internal_name, field_specs, path, error_type)
 
               field_spec = Keyword.get(field_specs, internal_name)
@@ -629,9 +629,9 @@ defmodule AshIntrospection.Rpc.FieldProcessing.FieldSelector do
       Enum.reduce(requested_fields, {[], [], []}, fn field, {select, load, template} ->
         case parse_field_request(field) do
           {:simple, field_name} ->
-            field_atom = convert_to_field_atom(field_name, config)
+            field_atom = resolve_field_name(field_name, config)
 
-            if Keyword.has_key?(field_specs, field_atom) do
+            if Validation.field_exists?(field_specs, field_atom) do
               index = Enum.find_index(field_names, &(&1 == field_atom))
               {select, load, template ++ [%{field_name: field_atom, index: index}]}
             else
@@ -639,9 +639,9 @@ defmodule AshIntrospection.Rpc.FieldProcessing.FieldSelector do
             end
 
           {:nested, field_name, nested_fields} ->
-            field_atom = convert_to_field_atom(field_name, config)
+            field_atom = resolve_field_name(field_name, config)
 
-            if Keyword.has_key?(field_specs, field_atom) do
+            if Validation.field_exists?(field_specs, field_atom) do
               field_spec = Keyword.get(field_specs, field_atom)
               field_type = Keyword.get(field_spec, :type)
               field_constraints = Keyword.get(field_spec, :constraints, [])
@@ -657,9 +657,9 @@ defmodule AshIntrospection.Rpc.FieldProcessing.FieldSelector do
 
           {:multi_nested, entries} ->
             Enum.reduce(entries, {select, load, template}, fn {field_name, nested_fields}, {s, l, t} ->
-              field_atom = convert_to_field_atom(field_name, config)
+              field_atom = resolve_field_name(field_name, config)
 
-              unless Keyword.has_key?(field_specs, field_atom) do
+              unless Validation.field_exists?(field_specs, field_atom) do
                 throw({:unknown_field, field_atom, "tuple", path})
               end
 
@@ -935,10 +935,10 @@ defmodule AshIntrospection.Rpc.FieldProcessing.FieldSelector do
     if is_interop_resource?(resource, config) do
       case get_original_field_name(resource, field_name, config) do
         original when is_atom(original) -> original
-        _ -> convert_to_field_atom(field_name, config)
+        _ -> resolve_field_name(field_name, config)
       end
     else
-      convert_to_field_atom(field_name, config)
+      resolve_field_name(field_name, config)
     end
   end
 
@@ -946,9 +946,12 @@ defmodule AshIntrospection.Rpc.FieldProcessing.FieldSelector do
     get_original_field_name(resource, field_name, config)
   end
 
-  defp convert_to_field_atom(field_name, config) do
+  # Resolves a client field name to the atom that names an existing field, or
+  # leaves it a string when no such atom exists. Never mints: an unresolved name
+  # is one no field has, and every existence check below rejects a string.
+  defp resolve_field_name(field_name, config) do
     formatter = Map.get(config, :input_field_formatter, :camel_case)
-    FieldFormatter.convert_to_field_atom(field_name, formatter)
+    FieldFormatter.resolve_field_name(field_name, formatter)
   end
 
   defp requires_nested_selection?(type, type_constraints, config) do
