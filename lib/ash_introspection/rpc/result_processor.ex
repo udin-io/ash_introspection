@@ -530,8 +530,19 @@ defmodule AshIntrospection.Rpc.ResultProcessor do
 
   Handles DateTime, Date, Time, Decimal, CiString, atoms, keyword lists, nested maps,
   regular lists, and Ash.Union types. Recursively normalizes nested structures.
+
+  `%Ash.ForbiddenField{}` and `%Ash.NotLoaded{}` normalize to `nil`, matching
+  the templated path in `extract_value/5`.
   """
   def normalize_primitive(nil), do: nil
+
+  # Authorization-redacted and unloaded fields must never be serialized: the
+  # generic struct branch below would `Map.from_struct/1` them and emit
+  # `Ash.ForbiddenField.original_value` — the real value the actor was denied,
+  # hidden only from `Inspect`. Ported from ash_typescript aa7f9f1
+  # (CVE-2026-82730).
+  def normalize_primitive(%Ash.ForbiddenField{}), do: nil
+  def normalize_primitive(%Ash.NotLoaded{}), do: nil
 
   def normalize_primitive(value) do
     cond do
