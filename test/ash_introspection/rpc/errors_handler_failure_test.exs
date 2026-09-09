@@ -96,7 +96,7 @@ defmodule AshIntrospection.Rpc.ErrorsHandlerFailureTest do
   defp assert_fails_closed(handler) do
     {[response], _log} = with_log(fn -> to_errors(handler, invalid_argument()) end)
 
-    assert response.code == "internal_error"
+    assert response.type == "internal_error"
     assert response.short_message == "Internal error"
     assert response.vars == %{}
     assert response.fields == []

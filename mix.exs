@@ -5,7 +5,7 @@
 defmodule AshIntrospection.MixProject do
   use Mix.Project
 
-  @version "0.2.0"
+  @version "0.3.0"
 
   @description """
   Shared core library for Ash interoperability with multiple languages.
@@ -60,6 +60,7 @@ defmodule AshIntrospection.MixProject do
         "Error Handling": [
           AshIntrospection.Rpc.Error,
           AshIntrospection.Rpc.ErrorBuilder,
+          AshIntrospection.ErrorFormatter,
           AshIntrospection.Rpc.Errors,
           AshIntrospection.Rpc.DefaultErrorHandler
         ],
@@ -101,6 +102,10 @@ defmodule AshIntrospection.MixProject do
     [
       {:ash, "~> 3.33"},
       {:spark, "~> 2.6"},
+      # Powers `mix ash_introspection.upgrade`. Dev and test only: the task
+      # guards itself with `Code.ensure_loaded?(Igniter)`, and a consumer
+      # running an upgrade already has igniter among its own dev dependencies.
+      {:igniter, "~> 0.7", only: [:dev, :test]},
       {:ex_doc, "~> 0.37", only: [:dev, :test], runtime: false},
       {:mix_audit, ">= 0.0.0", only: [:dev, :test], runtime: false}
     ]

@@ -40,7 +40,7 @@ defmodule AshIntrospection.Rpc.Pipeline do
   sharing the core pipeline logic.
   """
 
-  alias AshIntrospection.FieldFormatter
+  alias AshIntrospection.{ErrorFormatter, FieldFormatter}
   alias AshIntrospection.Rpc.{Request, ResultProcessor, ValueFormatter}
   alias AshIntrospection.TypeSystem.Introspection
 
@@ -159,11 +159,23 @@ defmodule AshIntrospection.Rpc.Pipeline do
   Stage 4: Format output for client consumption.
 
   Applies output field formatting and final response structure.
+
+  The error clause covers failures raised before a `%Request{}` exists — action
+  discovery, identity resolution, parameter validation. It formats them exactly
+  as `format_output_with_request/3` does, so both entry points hand the client
+  the same response shape and the same client-resolvable placeholders.
   """
   @spec format_output(term(), config()) :: term()
-  def format_output(filtered_result, config \\ %{}) do
+  def format_output(filtered_result, config \\ %{})
+
+  def format_output(%{success: false, errors: _} = filtered_result, config) do
     formatter = Map.get(config, :output_field_formatter, :camel_case)
-    format_field_names(filtered_result, formatter)
+    format_output_data(filtered_result, formatter, nil, config)
+  end
+
+  def format_output(filtered_result, config) do
+    formatter = Map.get(config, :output_field_formatter, :camel_case)
+    FieldFormatter.format_output_field_names(filtered_result, formatter)
   end
 
   @doc """
@@ -608,33 +620,6 @@ defmodule AshIntrospection.Rpc.Pipeline do
   # Output Formatting Helpers
   # ---------------------------------------------------------------------------
 
-  defp format_field_names(data, formatter) do
-    case data do
-      map when is_map(map) and not is_struct(map) ->
-        Enum.into(map, %{}, fn {key, value} ->
-          formatted_key =
-            case key do
-              atom when is_atom(atom) ->
-                FieldFormatter.format_field_name(to_string(atom), formatter)
-
-              string when is_binary(string) ->
-                FieldFormatter.format_field_name(string, formatter)
-
-              other ->
-                other
-            end
-
-          {formatted_key, format_field_names(value, formatter)}
-        end)
-
-      list when is_list(list) ->
-        Enum.map(list, &format_field_names(&1, formatter))
-
-      other ->
-        other
-    end
-  end
-
   defp format_output_data(
          %{success: true, data: result_data} = result,
          formatter,
@@ -662,7 +647,7 @@ defmodule AshIntrospection.Rpc.Pipeline do
         base_response
 
       meta when is_map(meta) ->
-        formatted_metadata = format_field_names(meta, formatter)
+        formatted_metadata = FieldFormatter.format_output_field_names(meta, formatter)
 
         Map.put(
           base_response,
@@ -673,7 +658,7 @@ defmodule AshIntrospection.Rpc.Pipeline do
   end
 
   defp format_output_data(%{success: false, errors: errors}, formatter, _request, _config) do
-    formatted_errors = Enum.map(errors, &format_field_names(&1, formatter))
+    formatted_errors = Enum.map(errors, &ErrorFormatter.format(&1, formatter))
 
     %{
       FieldFormatter.format_field_name("success", formatter) => false,
