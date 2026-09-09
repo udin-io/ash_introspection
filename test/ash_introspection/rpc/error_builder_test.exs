@@ -47,4 +47,17 @@ defmodule AshIntrospection.Rpc.ErrorBuilderTest do
       assert error.path == [:identity]
     end
   end
+
+  describe "identity_not_supported" do
+    test "names the read action and keeps the placeholder against its vars" do
+      error =
+        ErrorBuilder.build_error_response({:identity_not_supported, %{action: :get_account}})
+
+      assert error.type == "identity_not_supported"
+      assert error.message =~ "%{action}"
+      assert error.vars == %{action: "get_account"}
+      assert error.path == [:identity]
+      assert error.details.suggestion =~ "get_by"
+    end
+  end
 end

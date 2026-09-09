@@ -513,6 +513,23 @@ defmodule AshIntrospection.Rpc.ErrorBuilder do
 
       # === IDENTITY VALIDATION ERRORS ===
 
+      {:identity_not_supported, %{action: action_name}} ->
+        %{
+          type: "identity_not_supported",
+          message:
+            "Read actions do not accept an identity. %{action} looks records up with getBy.",
+          short_message: "Identity not supported",
+          vars: %{action: to_string(action_name)},
+          path: [:identity],
+          fields: [],
+          details: %{
+            action: action_name,
+            suggestion:
+              "Drop the identity parameter. Configure `get_by` on the RPC action and send the lookup fields under getBy.",
+            hint: @stale_generated_file_hint
+          }
+        }
+
       {:invalid_identity, %{provided_keys: provided_keys, expected_keys: expected_keys}} ->
         provided_keys_str = Enum.join(provided_keys, ", ")
         expected_keys_str = Enum.join(expected_keys, ", ")

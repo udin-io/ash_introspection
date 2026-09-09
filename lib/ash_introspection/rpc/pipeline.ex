@@ -193,6 +193,20 @@ defmodule AshIntrospection.Rpc.Pipeline do
   # Action Execution Helpers
   # ---------------------------------------------------------------------------
 
+  # `identity` is an update/destroy lookup key: `execute_update_action/3` and
+  # `execute_destroy_action/3` are its only consumers, and a read selects a
+  # record with `get_by`. A read used to carry `identity` as far as the query
+  # and then drop it, so the caller asked for one record and got the whole
+  # table back, or a `MultipleResults` from `Ash.read_one/1` naming nothing it
+  # could act on. Rejecting is what upstream `ash_typescript` already means:
+  # its `identities` option is empty for every action type but `:update` and
+  # `:destroy`, so no generated client can send it on a read. See the
+  # 2026-09-09 entry in `docs/decisions.md`.
+  defp execute_read_action(%Request{identity: identity} = request, _opts, _config)
+       when not is_nil(identity) do
+    {:error, {:identity_not_supported, %{action: request.action.name}}}
+  end
+
   defp execute_read_action(%Request{} = request, opts, config) do
     if Map.get(request.action, :get?, false) do
       with {:ok, query} <-
