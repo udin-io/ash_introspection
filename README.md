@@ -6,7 +6,7 @@ SPDX-License-Identifier: MIT
 
 # AshIntrospection
 
-![Elixir CI](https://github.com/ash-project/ash_introspection/workflows/CI/badge.svg)
+![Elixir CI](https://github.com/udin-io/ash_introspection/workflows/CI/badge.svg)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Hex version badge](https://img.shields.io/hexpm/v/ash_introspection.svg)](https://hex.pm/packages/ash_introspection)
 [![Hexdocs badge](https://img.shields.io/badge/docs-hexdocs-purple)](https://hexdocs.pm/ash_introspection)
@@ -21,6 +21,22 @@ generators like [AshTypescript](https://github.com/ash-project/ash_typescript)
 and AshKotlinMultiplatform. It enables seamless RPC communication between
 Elixir/Ash backends and clients in TypeScript, Kotlin, Swift, and other
 languages.
+
+## Start here
+
+[`docs/PROJECT.md`](docs/PROJECT.md) is the project's source of truth: what
+this library is, how it relates to `ash_typescript` and
+`ash_kotlin_multiplatform`, what is on the roadmap, which risks are live, and
+the decisions that still shape the code. Read it before changing anything.
+
+- [Architecture](docs/architecture.md) — C4 views and the four-stage RPC
+  pipeline
+- [Roadmap](docs/roadmap.md) — shipped, next, and decided against
+- [Risks](docs/risks.md) — what we watch and what we would do
+- [Decisions](docs/decisions.md) — dated, each with what it cost
+
+Contributors should also read [`CLAUDE.md`](CLAUDE.md) for this repo's working
+rules and its traps.
 
 ## Features
 
@@ -753,5 +769,5 @@ This project is licensed under the MIT License.
 - **Documentation**:
   [https://hexdocs.pm/ash_introspection](https://hexdocs.pm/ash_introspection)
 - **GitHub Issues**:
-  [https://github.com/ash-project/ash_introspection/issues](https://github.com/ash-project/ash_introspection/issues)
+  [https://github.com/udin-io/ash_introspection/issues](https://github.com/udin-io/ash_introspection/issues)
 - **Discord**: [Ash Framework Discord](https://discord.gg/HTHRaaVPUc)
