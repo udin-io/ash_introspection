@@ -38,6 +38,32 @@ defmodule AshIntrospection.Rpc.Pipeline do
 
   This allows each language generator to customize the behavior while
   sharing the core pipeline logic.
+
+  ## Action metadata
+
+  `Request.show_metadata` names the metadata fields stage 3 extracts, and this
+  pipeline extracts exactly what it is given. **Deciding which metadata fields
+  a client may ask for is the caller's job, not this pipeline's.** There is no
+  parse stage here — `parse_request/3` lives in the language-specific wrapper
+  — so nothing in this library filters a client-supplied field list against
+  the action's declaration. A wrapper that passes client input into
+  `show_metadata` unfiltered lets a client read any metadata field the action
+  declares. `ash_kotlin_multiplatform` does filter, in
+  `AshKotlinMultiplatform.Rpc.Runner`: `dsl_metadata_fields/2` reads the
+  allowlist off the RPC DSL and `narrow_metadata_fields/2` intersects the
+  client's request with it, so a client can only narrow, never widen. Upstream
+  `ash_typescript` puts the same check in its own parse stage.
+
+  Each extracted value is formatted once, by the type its action declared for
+  it, and the response envelope then formats only the top-level metadata name.
+  A metadata field declared as an unconstrained `:map` is an explicit opt-out
+  of typing: its keys are the caller's and reach the client verbatim.
+
+  That guarantee holds on `format_output_with_request/3`, which has the request
+  and therefore the types. `format_output/2` has neither, so it falls back to
+  formatting every key it can reach — including the keys inside an
+  unconstrained map. A wrapper that wants type-correct output has to call
+  `format_output_with_request/3`.
   """
 
   alias AshIntrospection.{ErrorFormatter, FieldFormatter}

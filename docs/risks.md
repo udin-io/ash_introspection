@@ -82,7 +82,7 @@ yet and is not on the board.
 **The risk.** `lib/ash_introspection/rpc/` had **zero** test coverage until the
 week of 2026-09-09 (#18). Coverage arrived as regression tests attached to the
 seven fixes shipped in 0.3.0 — one test per fixed bug, not a suite that
-describes the pipeline. `main` is at 301 tests, and whole modules
+describes the pipeline. `main` is at 309 tests, and whole modules
 (`value_formatter.ex`, `field_extractor.ex`, `atomizer.ex`) are still exercised
 only incidentally.
 
@@ -95,6 +95,37 @@ runs the suite on every pull request as of #32.
 
 **What we would do.** Keep landing a regression test with each fix, per #18's
 own preference, and treat a fix that arrives without one as unfinished.
+
+### T4 — Two stage-4 exits, and the consumer uses the untyped one
+
+**The risk.** `Rpc.Pipeline` exposes two stage-4 functions.
+`format_output_with_request/3` has the `%Request{}`, so it formats each value
+by its declared type; `format_output/2` has no request and falls back to
+`FieldFormatter.format_output_field_names/2`, which rewrites every key it can
+reach. The type-driven guarantees #20 landed — a typed map's nested keys
+camelized, a pinned interop name kept, an unconstrained `:map` passed through
+verbatim — hold on the first function only.
+
+**Why it bites.** `ash_kotlin_multiplatform` calls the second one.
+`AshKotlinMultiplatform.Rpc.Runner.run_action/4` ends with
+`Pipeline.format_output(processed)` (`lib/ash_kotlin_multiplatform/rpc/runner.ex:157`),
+so the consumer's successful responses never see the typed path. Its clients
+still get `_id` rewritten to `id` inside an unconstrained map. The library is
+correct and the deployed behaviour is not, which is the worst shape a fix can
+take: a green suite here and no change downstream.
+
+**What we watch.** `grep -rn 'Pipeline.format_output' lib/` in the consumer.
+Measured 2026-09-09: the only live call is the untyped `format_output/1` in
+`Runner`; the consumer's own `format_output/2` wraps
+`format_output_with_request/3` and appears nowhere but its moduledoc example.
+Any new wrapper is checked against the "Action metadata" section of
+`Rpc.Pipeline`'s `@moduledoc` before it ships.
+
+**What we would do.** Move the consumer to `format_output_with_request/3`; it
+already builds the `%Request{}` two lines earlier, so the change is one line
+plus its tests. That is a ticket in `ash_kotlin_multiplatform`, not here.
+Collapsing the two functions into one is the larger answer and needs the
+error-response path, which legitimately has no request, to keep working.
 
 ## Operational
 

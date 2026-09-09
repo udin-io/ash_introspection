@@ -17,6 +17,20 @@ which come first. Numbers in parentheses are GitHub issues on
 
 ### Unreleased
 
+- **Format action metadata once, and by its declared type** (#20). A metadata
+  name is not an attribute, so stage 4 looked it up on the resource, found
+  nothing, and handed the value back untouched: the nested keys of a typed-map
+  metadata value reached the client in snake_case inside a camelCase response.
+  The mutation path had the opposite fault — it camelized the whole metadata
+  map recursively, which renamed the keys inside an unconstrained `:map`, an
+  explicit opt-out of typing whose keys belong to the caller. Values are now
+  formatted at extraction through the same `ValueFormatter` dispatch attributes
+  use, which is why `add_read_metadata/5` and `add_mutation_metadata/5` thread
+  `request.action`, and the response envelope formats only the top-level
+  metadata names. Ports `ash_typescript` `8a05642`, `9e5d05a` and `919e817`.
+  The allowlist half of upstream's metadata fix belongs to a parse stage this
+  library does not have; see [decisions.md](decisions.md) and risk T4 in
+  [risks.md](risks.md).
 - **Guard every consumer-module callback check with `Code.ensure_loaded?/1`**
   (#49). `function_exported?/3` answers `false` for a module the VM has not
   loaded, and Elixir loads lazily, so a domain, resource or type nothing had
@@ -93,7 +107,7 @@ dozen other items.
 1. **#23 — adopt `Ash.Info.Manifest`.** Upstream replaced live introspection
    with a precomputed Spark manifest in `ash` 3.32.3. This repo still calls
    `Ash.Resource.Info` at ~66 sites, which is why upstream's type-discovery
-   fixes do not port cleanly. Blocks #19, #20, #24, #25, #26 and more, and
+   fixes do not port cleanly. Blocks #19, #24, #25, #26 and more, and
    carries the remainder of #21: entrypoint scoping here branches on the action
    kind, where upstream's `Reachability` walks the accepted attributes, loads
    and relationship depth of each declared action.

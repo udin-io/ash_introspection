@@ -44,6 +44,25 @@ and this project adheres to
 
 ### Fixed
 
+- Action metadata is formatted once, by the type its action declared for it
+  ([#20](https://github.com/udin-io/ash_introspection/issues/20)). A metadata
+  name is not an attribute, so stage 4 looked it up on the resource, found
+  nothing and passed the value through: the nested keys of a typed-map
+  metadata value reached the client in snake_case inside a camelCase response.
+  Values now go through the same `ValueFormatter` dispatch attributes use, at
+  extraction, where the declaration is readable.
+- Metadata values are no longer formatted a second time by the response
+  envelope ([#20](https://github.com/udin-io/ash_introspection/issues/20)).
+  Only the top-level metadata names are formatted there. Formatting a value
+  twice is not idempotent: a field pinned to the client name `_rev` by its
+  type's `interop_field_names/0` came out as `rev`.
+- A metadata field declared as an unconstrained `:map` reaches the client with
+  its keys intact
+  ([#20](https://github.com/udin-io/ash_introspection/issues/20)). An
+  unconstrained map is an explicit opt-out of typing, so its keys belong to
+  whoever wrote them. The guarantee holds on
+  `Rpc.Pipeline.format_output_with_request/3`, which has the types;
+  `format_output/2` has no request and still formats every key it reaches.
 - A failing bulk action reaches the client as one error per failed field
   ([#16](https://github.com/udin-io/ash_introspection/issues/16)).
   `Ash.bulk_create/update/destroy` return `%Ash.BulkResult{errors: [...]}` and
