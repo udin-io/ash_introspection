@@ -181,7 +181,7 @@ at the top of every `.ex`, `.exs` and `.md` file. Markdown uses an HTML comment.
 
 ### The consumer is not covered by anything here
 
-**Symptom.** A change passes 274 tests here and breaks
+**Symptom.** A change passes 281 tests here and breaks
 `ash_kotlin_multiplatform`.
 
 **Why.** `ash_kotlin_multiplatform` calls `AshIntrospection` at 35 sites across
@@ -208,7 +208,7 @@ mix hex.audit
 mix deps.audit
 ```
 
-`main` is at **274 tests, 0 failures**. A pull request that changes that number
+`main` is at **281 tests, 0 failures**. A pull request that changes that number
 downward, or that leaves a compiler warning, is not finished. Never suppress a
 warning — fix the cause.
 

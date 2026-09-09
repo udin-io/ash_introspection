@@ -21,10 +21,17 @@ which come first. Numbers in parentheses are GitHub issues on
   (#49). `function_exported?/3` answers `false` for a module the VM has not
   loaded, and Elixir loads lazily, so a domain, resource or type nothing had
   touched silently lost its configuration — a cold VM behaved differently
-  from a warm one. Nine call sites across `Rpc.Errors`, `Rpc.ResultProcessor`,
+  from a warm one. Ten call sites across `Rpc.Errors`, `Rpc.ResultProcessor`,
   `Rpc.FieldProcessing.Atomizer`, `Rpc.FieldProcessing.FieldSelector`,
-  `TypeSystem.Introspection` and `Codegen.TypeDiscovery` are now guarded. One
-  remains, in `Rpc.Pipeline`; #44 owns that file.
+  `Rpc.Pipeline`, `TypeSystem.Introspection` and `Codegen.TypeDiscovery` are
+  now guarded. Nine landed in #52; the tenth, in `Rpc.Pipeline`, came with #44,
+  which owned that file at the time.
+- **Reject `identity` on read actions, and reject null identity values** (#44,
+  [PR #53](https://github.com/udin-io/ash_introspection/pull/53)). `identity`
+  selects the record an update or destroy acts on; a read selects one with
+  `get_by`, the same split upstream `ash_typescript` draws. A read carrying
+  `identity` used to build no filter at all. Breaking for the consumer's
+  generated Swift clients — see [decisions.md](decisions.md).
 
 ### 0.3.0 — 2026-09-09
 
@@ -65,10 +72,9 @@ dozen other items.
    with a precomputed Spark manifest in `ash` 3.32.3. This repo still calls
    `Ash.Resource.Info` at ~66 sites, which is why upstream's type-discovery
    fixes do not port cleanly. Blocks #19, #20, #21, #22, #24, #25, #26 and more.
-2. **Correctness fixes that need no manifest**: #40 (second
-   `rescue` in `process_single_error` has no `catch` clause), #44 (reads
-   silently ignore the `identity` param), #35 (tuple nested selection keys its
-   template from the raw wire name), #16 (a list of errors in
+2. **Correctness fixes that need no manifest**: #40 (second `rescue` in
+   `process_single_error` has no `catch` clause), #35 (tuple nested selection
+   keys its template from the raw wire name), #16 (a list of errors in
    `build_error_response/1` for bulk actions), #17 (unwrap Reactor step errors,
    serialize `Ash.Type.Vector`).
 3. **#18 — the RPC test floor.** Coverage arrives with each fix by preference,

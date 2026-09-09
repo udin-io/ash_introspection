@@ -8,6 +8,22 @@ and this project adheres to
 
 ## [Unreleased]
 
+### Changed
+
+- **Breaking.** A read action carrying `identity` is rejected with
+  `identity_not_supported` instead of having the parameter dropped
+  ([#44](https://github.com/udin-io/ash_introspection/issues/44)). `identity`
+  selects a record for update and destroy; reads select one with `get_by`, the
+  same split upstream `ash_typescript` draws. A read used to build no filter at
+  all, so the caller named one record and got the whole table, or a
+  `MultipleResults` from `Ash.read_one/1`. Generated Swift clients from
+  `ash_kotlin_multiplatform` send `identity` on `get?` reads and must move
+  those calls to `get_by`.
+- **Breaking.** A `null` identity value is rejected with `invalid_identity`
+  ([#44](https://github.com/udin-io/ash_introspection/issues/44)). It used to
+  compile to `key == nil`, which Ash evaluates as unknown, so the lookup
+  matched nothing and surfaced as `NotFound`.
+
 ### Fixed
 
 - A failing bulk action reaches the client as one error per failed field
