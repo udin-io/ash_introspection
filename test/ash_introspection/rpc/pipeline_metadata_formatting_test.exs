@@ -7,10 +7,14 @@ defmodule AshIntrospection.Rpc.PipelineMetadataFormattingTest do
   Pins how action metadata reaches the client: formatted exactly once, and by
   the type the action declared for it.
 
-  The read path used to merge metadata into the record raw, so the nested keys
-  of a typed-map metadata value arrived in snake_case inside a response that
-  was camelCase everywhere else. Found in #20 against upstream `ash_typescript`
-  `8a05642`.
+  Two failures lived here, both found in #20 against upstream `ash_typescript`
+  (`8a05642`, `9e5d05a`):
+
+  - The read path merged metadata into the record raw, so the nested keys of a
+    typed-map metadata value arrived in snake_case inside a response that was
+    camelCase everywhere else.
+  - The mutation path camelized the whole metadata map recursively, so a value
+    the type system had already formatted was formatted a second time.
 
   `AshIntrospection.Test.RevisionInfo` is what makes a second formatting pass
   visible. Camelizing `changedBy` yields `changedBy` again, so double
@@ -68,6 +72,17 @@ defmodule AshIntrospection.Rpc.PipelineMetadataFormattingTest do
     |> response()
   end
 
+  defp mutation_metadata(overrides \\ %{}) do
+    base = %{
+      action: Ash.Resource.Info.action(AuditedRecord, :create_with_metadata),
+      input: %{title: "create-#{System.unique_integer([:positive])}"}
+    }
+
+    %{"metadata" => metadata} = base |> Map.merge(overrides) |> request() |> response()
+
+    metadata
+  end
+
   describe "read action metadata" do
     test "the nested keys of a typed map metadata value are camelized" do
       %{"data" => data} = read_response()
@@ -80,6 +95,23 @@ defmodule AshIntrospection.Rpc.PipelineMetadataFormattingTest do
       %{"data" => data} = read_response()
 
       assert %{"_rev" => "rev-7", "revisedBy" => "ops-team"} == data["revisionInfo"]
+    end
+  end
+
+  describe "mutation action metadata" do
+    test "the nested keys of a typed map metadata value are camelized" do
+      assert %{"changedBy" => "ops-team", "changeReason" => "nightly cleanup"} ==
+               mutation_metadata()["auditEntry"]
+    end
+
+    test "a client name pinned by the declared type survives the formatter" do
+      assert %{"_rev" => "rev-7", "revisedBy" => "ops-team"} ==
+               mutation_metadata()["revisionInfo"]
+    end
+
+    test "only the metadata fields the request asked for reach the client" do
+      assert ["revisionInfo"] ==
+               Map.keys(mutation_metadata(%{show_metadata: [:revision_info]}))
     end
   end
 end

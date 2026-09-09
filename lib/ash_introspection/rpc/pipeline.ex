@@ -687,7 +687,16 @@ defmodule AshIntrospection.Rpc.Pipeline do
         base_response
 
       meta when is_map(meta) ->
-        formatted_metadata = FieldFormatter.format_output_field_names(meta, formatter)
+        # Only the top-level metadata names are formatted here. The values
+        # arrived from `extract_metadata_fields/4` already formatted by their
+        # declared type, and formatting them again would undo that: a typed
+        # value pinned to the client name `_rev` becomes `rev`, and the keys of
+        # an unconstrained `:map` — an explicit opt-out of typing — get
+        # renamed out from under the caller who wrote them.
+        formatted_metadata =
+          Map.new(meta, fn {key, value} ->
+            {FieldFormatter.format_field_name(key, formatter), value}
+          end)
 
         Map.put(
           base_response,
