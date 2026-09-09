@@ -211,6 +211,51 @@ sites. See `test/ash_introspection/rpc/load_restrictions_test.exs`.
 **They are not authorization.** Ash policies apply to every load that gets
 through. Say so in anything you write about them; risk T5 in
 [`docs/risks.md`](docs/risks.md) explains why it matters.
+### An upstream fix that hangs off a Spark extension cannot be ported here
+
+**Symptom.** You start porting an `ash_typescript` commit, reach for
+`AshIntrospection.Resource`, and there is no such module. Nothing errors — you
+are about to invent an extension to hold the port.
+
+**Why.** This library ships no DSL of its own. `grep 'use Spark.Dsl.Extension'
+lib` returns nothing, and the only extension in the tree is the test-only
+`AshIntrospection.Test.RpcDsl` (see its moduledoc). Upstream hangs transformers
+and verifiers off `AshTypescript.Resource`; the equivalent configuration here
+lives in the **consumer** and arrives as callbacks in the pipeline config
+map — `:format_field_for_client`, `:get_original_field_name`,
+`:field_names_callback`.
+The core reads a consumer's DSL only through
+`Spark.Dsl.Extension.fetch_opt/3` on a section it does not name, in
+`Rpc.Errors`.
+
+**What we do.** When an upstream commit's mechanism is a transformer or a
+verifier, stop and check what it reads before porting. If it reads a DSL
+section, the port is not a port: either the consumer wires it up in its own
+extension, or it waits for #23. Do not add a resource extension to this library
+to hold one — that is #23's decision, not a ticket's. #26 was closed this way;
+[`docs/decisions.md`](docs/decisions.md) has the reasoning and the numbers.
+
+### Field-name formatting is 1.7% of the pipeline, and the cost is the regexes
+
+**Symptom.** An upstream performance commit quotes a large call count, and you
+are about to cache something here on the strength of it.
+
+**Why.** Upstream's figures are upstream's. Measured here at `007eedd` on OTP 27
+and Elixir 1.18.4, over 100 single-record RPC runs through
+`execute_ash_action/1`, `process_result/3` and `format_output_with_request/3`:
+`FieldFormatter.format_field_name/2` is called **6 times per record** — the
+selected field names plus the `"success"` and `"data"` envelope literals — at
+~470 ns each. That is 0.73 ms against 41 ms of `execute_ash_action/1`. Ash
+action execution is 95% of the pipeline.
+
+Within that 470 ns, `Macro.camelize/1` — the work that transforms the name —
+is ~60 ns. The rest is `is_camel_case?/1`, `is_pascal_case?/1` and
+`is_snake_case?/1`, which each run one or two `String.match?/2` calls at ~295 ns
+apiece. A binary-walk clause computing the same answer measures ~10 ns.
+
+**What we do.** Measure before optimising this function, and optimise the
+predicates rather than caching the result. A cache helps resource fields only;
+the predicates are on every caller's path, codegen and errors included.
 
 ### No stdlib `JSON`: `mix.exs` declares `elixir: "~> 1.15"`
 
