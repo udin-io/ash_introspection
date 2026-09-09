@@ -37,12 +37,9 @@ jobs:
       - name: Install dependencies
         run: mix deps.get
 
-      # NOTE: `mix format --check-formatted` is deliberately NOT part of this
-      # workflow yet. main is not formatter-clean today: .formatter.exs is
-      # missing `import_deps: [:ash, :spark]`, so running the formatter as-is
-      # rewrites ~13 files unrelated to any given change. Fixing that is
-      # tracked in #30 and must land first; add the format check in a
-      # follow-up once it does.
+      - name: Check formatting
+        run: mix format --check-formatted
+
       - name: Compile (warnings as errors)
         run: mix compile --warnings-as-errors
 
