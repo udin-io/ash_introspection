@@ -285,6 +285,7 @@ defmodule AshIntrospection.Rpc.Errors do
 
   # Formats field names in error structures for client consumption.
   # Applies resource-level field_names mappings (if resource is known) and output formatter.
+  # Serializes the result so the payload is JSON-encodable - see serialize_error/1.
   defp format_error_field_names(error, resource, config) when is_map(error) do
     formatter = Map.get(config, :output_field_formatter, :camel_case)
     field_formatter_module = Map.get(config, :field_formatter_module, AshIntrospection.FieldFormatter)
@@ -293,6 +294,7 @@ defmodule AshIntrospection.Rpc.Errors do
     |> format_fields_array(resource, formatter, field_formatter_module, config)
     |> format_path_array(formatter, field_formatter_module)
     |> format_vars_field(resource, formatter, field_formatter_module, config)
+    |> serialize_error()
   end
 
   defp format_error_field_names(error, _resource, _config), do: error
@@ -358,4 +360,58 @@ defmodule AshIntrospection.Rpc.Errors do
   end
 
   defp format_vars_field(error, _resource, _formatter, _field_formatter_module, _config), do: error
+
+  # An error's `vars` and `path` hold whatever the code that raised it put there,
+  # so any Erlang term can reach here. The payload is handed to a JSON encoder,
+  # which raises on anything it has no representation for - the request would then
+  # die at the encoder instead of returning the error. This walks the payload and
+  # reduces every value to something an encoder accepts.
+  defp serialize_error(nil), do: nil
+
+  defp serialize_error(value) when is_binary(value), do: value
+
+  defp serialize_error(value) when is_number(value), do: value
+
+  defp serialize_error(value) when is_boolean(value), do: value
+
+  defp serialize_error(value) when is_atom(value), do: Atom.to_string(value)
+
+  defp serialize_error(value) when is_tuple(value) do
+    value
+    |> Tuple.to_list()
+    |> Enum.map(&serialize_error/1)
+  end
+
+  defp serialize_error(value) when is_list(value) do
+    cond do
+      value == [] ->
+        []
+
+      Keyword.keyword?(value) ->
+        Enum.into(value, %{}, fn {key, val} ->
+          {to_string(key), serialize_error(val)}
+        end)
+
+      List.ascii_printable?(value) ->
+        List.to_string(value)
+
+      true ->
+        Enum.map(value, &serialize_error/1)
+    end
+  end
+
+  defp serialize_error(%DateTime{} = value), do: DateTime.to_iso8601(value)
+  defp serialize_error(%Date{} = value), do: Date.to_iso8601(value)
+  defp serialize_error(%Time{} = value), do: Time.to_iso8601(value)
+  defp serialize_error(%NaiveDateTime{} = value), do: NaiveDateTime.to_iso8601(value)
+  defp serialize_error(%Decimal{} = value), do: Decimal.to_string(value, :normal)
+  defp serialize_error(%Ash.CiString{} = value), do: Ash.CiString.value(value)
+
+  defp serialize_error(value) when is_map(value) do
+    Enum.into(value, %{}, fn {key, val} ->
+      {key, serialize_error(val)}
+    end)
+  end
+
+  defp serialize_error(value), do: value
 end
