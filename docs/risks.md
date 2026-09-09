@@ -62,8 +62,8 @@ yet and is not on the board.
 
 **The risk.** `lib/ash_introspection/rpc/` had **zero** test coverage until the
 week of 2026-09-09 (#18). Coverage arrived as regression tests attached to the
-seven security fixes shipped in 0.3.0 — one test per fixed bug, not a suite
-that describes the pipeline. `main` is at 255 tests, and whole modules
+seven fixes shipped in 0.3.0 — one test per fixed bug, not a suite that
+describes the pipeline. `main` is at 255 tests, and whole modules
 (`value_formatter.ex`, `field_extractor.ex`, `atomizer.ex`) are still exercised
 only incidentally.
 

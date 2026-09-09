@@ -9,7 +9,7 @@ SPDX-License-Identifier: MIT
 What has shipped, what is open, and what was declined. Drawn on 2026-09-09 from
 `git log --oneline` and `gh issue list --state all`, not from intentions, so a
 reader can trust the "shipped" column without checking the log. Issue #36 asked
-for this page because the board carries 20 open items with no statement of
+for this page because the board carries 19 open items with no statement of
 which come first. Numbers in parentheses are GitHub issues on
 `udin-io/ash_introspection`.
 

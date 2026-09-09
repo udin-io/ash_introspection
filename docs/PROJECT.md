@@ -22,16 +22,16 @@ which stayed a standalone upstream library and does **not** depend on this one.
 Today `ash_kotlin_multiplatform` is the only consumer.
 
 It is a library, not an application: no supervision tree, no endpoint, no
-database. Tests run against `Ash.DataLayer.Ets`. The published surface is 22
-modules under `lib/ash_introspection/` plus the
-`mix ash_introspection.upgrade` codemod task.
+database. Tests run against `Ash.DataLayer.Ets`. The published surface is 21
+modules — `AshIntrospection` plus 20 under `lib/ash_introspection/` — and
+the `mix ash_introspection.upgrade` codemod task.
 
 ## The pages
 
 | Page | Answers | Status |
 |---|---|---|
 | [architecture.md](architecture.md) | What the pieces are, who calls what, which modules the consumer actually uses | Current as of 0.3.0 |
-| [roadmap.md](roadmap.md) | What shipped, what is open with ticket numbers, what is next, what was declined | Current as of 0.3.0; 20 issues open |
+| [roadmap.md](roadmap.md) | What shipped, what is open with ticket numbers, what is next, what was declined | Current as of 0.3.0; 19 issues open |
 | [risks.md](risks.md) | What could go wrong, what we watch, what we would do | 3 live technical risks, 1 operational, 1 product |
 | [decisions.md](decisions.md) | The choices that still shape the library, dated, with what each cost | 6 entries, latest 2026-09-09 |
 
