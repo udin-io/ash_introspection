@@ -10,9 +10,10 @@ defmodule AshIntrospection.Rpc.ErrorDetailLeakTest do
   report — every policy, every check outcome, and the actor inspected in full
   — whenever the struct's `policy_breakdown?` flag is set, and Ash sets that
   flag from its own app-wide `:ash, :policies` toggle at exception time.
-  The report reaches the client through the `AshIntrospection.Rpc.Error`
-  protocol, so these tests assert on the payload a client would receive and scan
-  it recursively for a sentinel rather than trusting a single key.
+  `Ash.Error.Unknown.UnknownError` carries the raw exception text. Both reach
+  the client through the `AshIntrospection.Rpc.Error` protocol, so these tests
+  assert on the payload a client would receive and scan it recursively for a
+  sentinel rather than trusting a single key.
   """
   use ExUnit.Case, async: false
 
@@ -21,6 +22,7 @@ defmodule AshIntrospection.Rpc.ErrorDetailLeakTest do
 
   @actor_secret "sk-live-4f9c1a-ACTOR-SENTINEL"
   @policy_secret "only the owning tenant may read POLICY-SENTINEL"
+  @exception_secret "postgres://appuser:hunter2@10.0.0.7/prod EXCEPTION-SENTINEL"
 
   setup do
     on_exit(fn ->
@@ -95,6 +97,29 @@ defmodule AshIntrospection.Rpc.ErrorDetailLeakTest do
     end
   end
 
+  describe "Ash.Error.Unknown.UnknownError" do
+    test "returns a static message instead of the exception text" do
+      error = Ash.Error.Unknown.UnknownError.exception(error: @exception_secret)
+
+      assert Exception.message(error) =~ @exception_secret
+
+      result = ErrorProtocol.to_error(error)
+
+      assert result.message == "Something went wrong"
+      assert result.short_message == "Unknown error"
+      assert result.type == "unknown_error"
+      refute leaks?(result)
+    end
+
+    test "does not leak the exception text through the full error pipeline" do
+      [result] =
+        Errors.to_errors(Ash.Error.Unknown.UnknownError.exception(error: @exception_secret))
+
+      assert result.message == "Something went wrong"
+      refute leaks?(result)
+    end
+  end
+
   defp policy_error do
     Ash.Error.Forbidden.Policy.exception(
       resource: AshIntrospection.Test.Account,
@@ -115,7 +140,7 @@ defmodule AshIntrospection.Rpc.ErrorDetailLeakTest do
   end
 
   defp leaks?(value) when is_binary(value) do
-    Enum.any?([@actor_secret, @policy_secret], &String.contains?(value, &1))
+    Enum.any?([@actor_secret, @policy_secret, @exception_secret], &String.contains?(value, &1))
   end
 
   defp leaks?(%_{} = value), do: value |> Map.from_struct() |> leaks?()

@@ -19,6 +19,12 @@ and this project adheres to
   development toggle opened every RPC response. The message is now the static
   `"forbidden"` and the `policy_breakdown` key is gone.
 
+- Unknown errors no longer return the raw exception text
+  ([#11](https://github.com/udin-io/ash_introspection/issues/11)).
+  `Ash.Error.Unknown.UnknownError` is the bucket every unrecognised exception
+  falls into, so its message could be a connection string, a stack trace or a
+  third-party library's internals. Clients now get `"Something went wrong"`.
+
 - Client-supplied field names no longer mint atoms
   ([#10](https://github.com/udin-io/ash_introspection/issues/10)). The atom
   table is never garbage collected, so a request carrying unknown field names

@@ -255,9 +255,12 @@ defimpl AshIntrospection.Rpc.Error, for: Ash.Error.Query.ReadActionRequiresActor
 end
 
 defimpl AshIntrospection.Rpc.Error, for: Ash.Error.Unknown.UnknownError do
+  # This is the bucket every unrecognised exception falls into, so its text is
+  # whatever crashed - a database URL, a stack trace, a third-party library's
+  # internals. The client gets a static message; the detail belongs in the logs.
   def to_error(error) do
     %{
-      message: Exception.message(error),
+      message: "Something went wrong",
       short_message: "Unknown error",
       vars: Map.new(error.vars || []),
       type: "unknown_error",
