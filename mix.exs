@@ -99,8 +99,8 @@ defmodule AshIntrospection.MixProject do
 
   defp deps do
     [
-      {:ash, ">= 3.7.0"},
-      {:spark, ">= 2.3.14"},
+      {:ash, "~> 3.33"},
+      {:spark, "~> 2.6"},
       {:ex_doc, "~> 0.37", only: [:dev, :test], runtime: false}
     ]
   end
