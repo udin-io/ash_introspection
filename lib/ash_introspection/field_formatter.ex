@@ -186,6 +186,46 @@ defmodule AshIntrospection.FieldFormatter do
   end
 
   @doc """
+  Recursively formats every key in a nested structure for client consumption.
+
+  Walks maps and lists, converting each key with `formatter`. Structs and
+  primitives are returned untouched, and a key that is neither an atom nor a
+  binary is left as it is.
+
+  Used for any payload handed to the client without passing through a
+  type-driven formatter — the RPC response envelope and error payloads both
+  rely on it, so their field names agree.
+
+  ## Examples
+
+      iex> AshIntrospection.FieldFormatter.format_output_field_names(%{short_message: "x"}, :camel_case)
+      %{"shortMessage" => "x"}
+
+      iex> AshIntrospection.FieldFormatter.format_output_field_names([%{user_name: "a"}], :camel_case)
+      [%{"userName" => "a"}]
+  """
+  def format_output_field_names(data, formatter) do
+    case data do
+      map when is_map(map) and not is_struct(map) ->
+        Enum.into(map, %{}, fn {key, value} ->
+          formatted_key =
+            case key do
+              key when is_atom(key) or is_binary(key) -> format_field_name(key, formatter)
+              other -> other
+            end
+
+          {formatted_key, format_output_field_names(value, formatter)}
+        end)
+
+      list when is_list(list) ->
+        Enum.map(list, &format_output_field_names(&1, formatter))
+
+      other ->
+        other
+    end
+  end
+
+  @doc """
   Resolves a field name to the atom that already names that field.
 
   Atoms pass through unchanged. A string is parsed into internal form by the
