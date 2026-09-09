@@ -588,6 +588,17 @@ defmodule AshIntrospection.Rpc.ErrorBuilder do
           if is_list(result), do: result, else: [result]
         end)
 
+      # === REACTOR ERRORS ===
+
+      # Reactor wraps whatever a step raises or returns. The wrapper is itself an
+      # exception, so without this clause the generic Ash clause below reports
+      # the wrapper — a step-execution notice naming a step the client has never
+      # heard of — instead of the error the step actually produced.
+      %Reactor.Error.Invalid.RunStepError{error: inner_error} ->
+        inner_error
+        |> Ash.Error.to_error_class()
+        |> do_build_error_response(formatter, field_formatter_module, config)
+
       # === ASH FRAMEWORK ERRORS ===
 
       error when is_exception(error) or is_map(error) ->
