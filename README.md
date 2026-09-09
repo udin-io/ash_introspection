@@ -6,7 +6,7 @@ SPDX-License-Identifier: MIT
 
 # AshIntrospection
 
-![Elixir CI](https://github.com/ash-project/ash_introspection/workflows/CI/badge.svg)
+![Elixir CI](https://github.com/udin-io/ash_introspection/workflows/CI/badge.svg)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Hex version badge](https://img.shields.io/hexpm/v/ash_introspection.svg)](https://hex.pm/packages/ash_introspection)
 [![Hexdocs badge](https://img.shields.io/badge/docs-hexdocs-purple)](https://hexdocs.pm/ash_introspection)
@@ -769,5 +769,5 @@ This project is licensed under the MIT License.
 - **Documentation**:
   [https://hexdocs.pm/ash_introspection](https://hexdocs.pm/ash_introspection)
 - **GitHub Issues**:
-  [https://github.com/ash-project/ash_introspection/issues](https://github.com/ash-project/ash_introspection/issues)
+  [https://github.com/udin-io/ash_introspection/issues](https://github.com/udin-io/ash_introspection/issues)
 - **Discord**: [Ash Framework Discord](https://discord.gg/HTHRaaVPUc)
