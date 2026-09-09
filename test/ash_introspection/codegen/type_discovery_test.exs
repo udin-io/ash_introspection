@@ -19,6 +19,8 @@ defmodule AshIntrospection.Codegen.TypeDiscoveryTest do
     EmbeddedFilter,
     EmbeddedNote,
     EmbeddedRendered,
+    EmbeddedUnscoped,
+    Ledger,
     User,
     WrappedContent
   }
@@ -70,6 +72,51 @@ defmodule AshIntrospection.Codegen.TypeDiscoveryTest do
 
     test "finds the type of a read action's metadata", %{discovered: discovered} do
       assert EmbeddedAudit in discovered
+    end
+  end
+
+  describe "entrypoint scoping" do
+    defp entrypoint_config(resources, entrypoints) do
+      %{
+        get_rpc_resources: fn _otp_app -> resources end,
+        get_rpc_action_entrypoints: fn _otp_app -> entrypoints end
+      }
+    end
+
+    test "without declared entrypoints every public action and field is in scope" do
+      discovered =
+        TypeDiscovery.find_embedded_resources(
+          :ash_introspection,
+          %{get_rpc_resources: fn _otp_app -> [Ledger] end}
+        )
+
+      assert EmbeddedUnscoped in discovered
+    end
+
+    test "a generic action entrypoint does not reach the resource's own fields" do
+      config = entrypoint_config([Ledger], [%{resource: Ledger, action: :ping}])
+
+      refute EmbeddedUnscoped in TypeDiscovery.find_embedded_resources(:ash_introspection, config)
+    end
+
+    test "a read action entrypoint does reach the resource's own fields" do
+      config = entrypoint_config([Ledger], [%{resource: Ledger, action: :read}])
+
+      assert EmbeddedUnscoped in TypeDiscovery.find_embedded_resources(:ash_introspection, config)
+    end
+
+    test "a resource with no declared entrypoint contributes nothing" do
+      config = entrypoint_config([Document, Ledger], [%{resource: Document, action: :attach}])
+      discovered = TypeDiscovery.find_embedded_resources(:ash_introspection, config)
+
+      assert EmbeddedAttachment in discovered
+      refute EmbeddedUnscoped in discovered
+    end
+
+    test "entrypoints may be given as {resource, action} tuples" do
+      config = entrypoint_config([Ledger], [{Ledger, :read}])
+
+      assert EmbeddedUnscoped in TypeDiscovery.find_embedded_resources(:ash_introspection, config)
     end
   end
 end

@@ -19,6 +19,12 @@ defmodule AshIntrospection.Codegen.TypeDiscovery do
     # Required: function to get RPC resources from otp_app
     get_rpc_resources: fn otp_app -> [...] end,
 
+    # Optional: function returning the declared action entrypoints, as
+    # %{resource: module, action: atom} maps or {module, atom} tuples.
+    # Supplying it scopes discovery to those actions; omitting it keeps every
+    # public action and field of every RPC resource in scope.
+    get_rpc_action_entrypoints: fn otp_app -> [...] end,
+
     # Optional: callback name for field names (default: :interop_field_names)
     field_names_callback: :interop_field_names,
 
@@ -59,6 +65,7 @@ defmodule AshIntrospection.Codegen.TypeDiscovery do
 
   @type config :: %{
           optional(:get_rpc_resources) => (atom() -> [module()]),
+          optional(:get_rpc_action_entrypoints) => (atom() -> [map() | {module(), atom()}]),
           optional(:field_names_callback) => atom(),
           optional(:has_language_extension?) => (module() -> boolean()),
           optional(:language_name) => String.t()
@@ -67,9 +74,13 @@ defmodule AshIntrospection.Codegen.TypeDiscovery do
   @doc """
   Finds all Ash resources referenced by RPC resources.
 
-  Recursively scans all public attributes, calculations, and aggregates of RPC resources,
-  traversing complex types like maps with fields, unions, typed structs, etc., to find
-  any Ash resource references.
+  Recursively scans the public attributes, calculations (with their arguments)
+  and aggregates of each entrypoint resource, plus each entrypoint action's
+  arguments, `:returns` type and metadata, traversing complex types like maps
+  with fields, unions and typed structs to find any Ash resource references.
+
+  Entrypoints come from `get_rpc_action_entrypoints` when the config supplies
+  it, and otherwise from `get_rpc_resources` with every public action in scope.
 
   ## Parameters
 
@@ -81,12 +92,10 @@ defmodule AshIntrospection.Codegen.TypeDiscovery do
   A list of unique Ash resource modules that are referenced by RPC resources.
   """
   def scan_rpc_resources(otp_app, config) do
-    get_rpc_resources = Map.fetch!(config, :get_rpc_resources)
-    rpc_resources = get_rpc_resources.(otp_app)
-
-    rpc_resources
-    |> Enum.reduce({[], MapSet.new()}, fn resource, {acc, visited} ->
-      {found, new_visited} = scan_rpc_resource(resource, visited)
+    otp_app
+    |> discovery_entrypoints(config)
+    |> Enum.reduce({[], MapSet.new()}, fn {resource, action_scope}, {acc, visited} ->
+      {found, new_visited} = scan_entrypoint(resource, action_scope, visited)
       {acc ++ found, new_visited}
     end)
     |> elem(0)
@@ -94,8 +103,45 @@ defmodule AshIntrospection.Codegen.TypeDiscovery do
     |> Enum.uniq()
   end
 
+  # Returns `[{resource, action_scope}]` in declaration order, where the scope is
+  # either `:all_actions` or an explicit list of action names.
+  defp discovery_entrypoints(otp_app, config) do
+    case Map.get(config, :get_rpc_action_entrypoints) do
+      nil ->
+        get_rpc_resources = Map.fetch!(config, :get_rpc_resources)
+
+        Enum.map(get_rpc_resources.(otp_app), &{&1, :all_actions})
+
+      get_rpc_action_entrypoints ->
+        pairs =
+          otp_app
+          |> get_rpc_action_entrypoints.()
+          |> Enum.flat_map(&normalize_entrypoint/1)
+
+        by_resource = Enum.group_by(pairs, &elem(&1, 0), &elem(&1, 1))
+
+        pairs
+        |> Enum.map(&elem(&1, 0))
+        |> Enum.uniq()
+        |> Enum.map(fn resource -> {resource, Enum.uniq(by_resource[resource])} end)
+    end
+  end
+
+  defp normalize_entrypoint(%{resource: resource, action: action}), do: [{resource, action}]
+
+  defp normalize_entrypoint({resource, action}) when is_atom(resource) and is_atom(action),
+    do: [{resource, action}]
+
+  defp normalize_entrypoint(_), do: []
+
   @doc """
   Discovers embedded resources from RPC resources by scanning and filtering.
+
+  When `config` carries `get_rpc_action_entrypoints`, only the declared actions
+  are treated as entrypoints: a resource exposing nothing but a generic action
+  contributes only what that action names, not every embedded type hanging off
+  its attributes. Without that key every public action and field of every RPC
+  resource is in scope.
 
   ## Parameters
 

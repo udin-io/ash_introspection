@@ -78,6 +78,19 @@ defmodule AshIntrospection.Test.EmbeddedRendered do
   end
 end
 
+defmodule AshIntrospection.Test.EmbeddedUnscoped do
+  @moduledoc """
+  Embedded resource reachable from `AshIntrospection.Test.Ledger`'s attributes
+  and from nothing else, so it is out of reach of any entrypoint set that
+  declares only Ledger's generic action.
+  """
+  use Ash.Resource, data_layer: :embedded
+
+  attributes do
+    attribute(:note, :string, public?: true)
+  end
+end
+
 defmodule AshIntrospection.Test.WrappedUser do
   @moduledoc """
   A NewType over `Ash.Type.Struct`. Its `:instance_of` constraint is invisible
@@ -95,6 +108,31 @@ defmodule AshIntrospection.Test.DiscoveryDomain do
 
   resources do
     resource(AshIntrospection.Test.Document)
+    resource(AshIntrospection.Test.Ledger)
+  end
+end
+
+defmodule AshIntrospection.Test.Ledger do
+  @moduledoc """
+  Resource whose only embedded type hangs off an attribute. Declaring just its
+  generic action as an entrypoint must leave that type undiscovered; declaring
+  a read action must reach it.
+  """
+  use Ash.Resource,
+    domain: AshIntrospection.Test.DiscoveryDomain,
+    data_layer: Ash.DataLayer.Ets
+
+  attributes do
+    uuid_primary_key(:id)
+    attribute(:trail, AshIntrospection.Test.EmbeddedUnscoped, public?: true)
+  end
+
+  actions do
+    defaults([:read, :destroy, create: :*, update: :*])
+
+    action :ping, :boolean do
+      run(fn _input, _context -> {:ok, true} end)
+    end
   end
 end
 
