@@ -576,6 +576,18 @@ defmodule AshIntrospection.Rpc.ErrorBuilder do
           }
         }
 
+      # === LIST OF ERRORS ===
+
+      # `Ash.bulk_create/update/destroy` return `%Ash.BulkResult{errors: [...]}`
+      # and the pipeline forwards that list verbatim. A list is neither an
+      # exception nor a map, so without this clause every per-record error
+      # collapsed into the `other ->` catch-all's single opaque message.
+      errors when is_list(errors) ->
+        Enum.flat_map(errors, fn error ->
+          result = do_build_error_response(error, formatter, field_formatter_module, config)
+          if is_list(result), do: result, else: [result]
+        end)
+
       # === ASH FRAMEWORK ERRORS ===
 
       error when is_exception(error) or is_map(error) ->
