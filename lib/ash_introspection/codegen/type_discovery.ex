@@ -295,13 +295,19 @@ defmodule AshIntrospection.Codegen.TypeDiscovery do
   @doc """
   Finds all Ash resources used as struct arguments in RPC actions.
 
-  Scans all RPC actions for arguments with type `:struct` or `Ash.Type.Struct`
-  that have an `instance_of` constraint pointing to an Ash resource.
+  Scans the given actions' public arguments for:
+
+    * `:struct` or `Ash.Type.Struct` with an `instance_of` constraint pointing
+      at an Ash resource,
+    * an embedded resource named directly as the argument's type,
+    * either of the above behind a NewType wrapper or an array.
+
+  Embedded resources are included. A generator that skipped them produced no
+  type for an argument a client has to construct.
 
   ## Parameters
 
-    * `otp_app` - The OTP application name
-    * `config` - Configuration map with `get_rpc_action_info`
+    * `actions` - A list of action structs to scan
 
   ## Returns
 
@@ -327,32 +333,28 @@ defmodule AshIntrospection.Codegen.TypeDiscovery do
   end
 
   defp find_struct_resources_in_type(type, constraints) do
-    case type do
-      Ash.Type.Struct ->
+    {type, constraints} = Introspection.unwrap_new_type(type, constraints)
+
+    cond do
+      match?({:array, _}, type) ->
+        {:array, inner_type} = type
+        find_struct_resources_in_type(inner_type, Keyword.get(constraints, :items, []))
+
+      # An embedded resource is a type in its own right, so an argument can name
+      # it directly rather than going through `Ash.Type.Struct`.
+      Introspection.is_embedded_resource?(type) ->
+        [type]
+
+      type in [Ash.Type.Struct, :struct] ->
         instance_of = Keyword.get(constraints, :instance_of)
 
-        if instance_of && Spark.Dsl.is?(instance_of, Ash.Resource) &&
-             !Introspection.is_embedded_resource?(instance_of) do
+        if instance_of && Spark.Dsl.is?(instance_of, Ash.Resource) do
           [instance_of]
         else
           []
         end
 
-      :struct ->
-        instance_of = Keyword.get(constraints, :instance_of)
-
-        if instance_of && Spark.Dsl.is?(instance_of, Ash.Resource) &&
-             !Introspection.is_embedded_resource?(instance_of) do
-          [instance_of]
-        else
-          []
-        end
-
-      {:array, inner_type} ->
-        items_constraints = Keyword.get(constraints, :items, [])
-        find_struct_resources_in_type(inner_type, items_constraints)
-
-      _ ->
+      true ->
         []
     end
   end

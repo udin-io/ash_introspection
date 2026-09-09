@@ -33,6 +33,29 @@ defmodule AshIntrospection.Test.WrappedContent do
     ]
 end
 
+defmodule AshIntrospection.Test.EmbeddedAttachment do
+  @moduledoc """
+  Embedded resource reachable only as the direct type of a generic action
+  argument — never through an attribute, a calculation or an aggregate.
+  """
+  use Ash.Resource, data_layer: :embedded
+
+  attributes do
+    attribute(:filename, :string, public?: true)
+  end
+end
+
+defmodule AshIntrospection.Test.WrappedUser do
+  @moduledoc """
+  A NewType over `Ash.Type.Struct`. Its `:instance_of` constraint is invisible
+  on the wrapper, so an argument typed with it hides `Test.User` from any
+  scan that reads raw constraints.
+  """
+  use Ash.Type.NewType,
+    subtype_of: :struct,
+    constraints: [instance_of: AshIntrospection.Test.User]
+end
+
 defmodule AshIntrospection.Test.DiscoveryDomain do
   @moduledoc false
   use Ash.Domain
@@ -61,5 +84,12 @@ defmodule AshIntrospection.Test.Document do
 
   actions do
     defaults([:read, :destroy, create: :*, update: :*])
+
+    action :attach, :boolean do
+      argument(:attachment, AshIntrospection.Test.EmbeddedAttachment)
+      argument(:author, AshIntrospection.Test.WrappedUser)
+
+      run(fn _input, _context -> {:ok, true} end)
+    end
   end
 end
