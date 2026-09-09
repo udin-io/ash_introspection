@@ -81,6 +81,8 @@ defmodule AshIntrospection.Codegen.ActionIntrospection do
   including resources, typed maps, typed structs, and primitives.
   """
 
+  alias AshIntrospection.TypeSystem.Introspection
+
   # Container types that can have field constraints for field selection
   @field_constrained_types [Ash.Type.Map, Ash.Type.Keyword, Ash.Type.Tuple]
 
@@ -338,6 +340,11 @@ defmodule AshIntrospection.Codegen.ActionIntrospection do
   defp check_action_returns(action) do
     {base_type, constraints, is_array} = unwrap_return_type(action)
 
+    # A NewType keeps `:fields` and `:instance_of` on itself, so the wrapper
+    # arrives with empty constraints and classifies as a bare atom. Unwrap to
+    # match the runtime field selector, which sees the underlying type.
+    {base_type, constraints} = Introspection.unwrap_new_type(base_type, constraints)
+
     case classify_return_type(base_type, constraints) do
       {:resource, module} ->
         if is_array do
@@ -389,9 +396,23 @@ defmodule AshIntrospection.Codegen.ActionIntrospection do
           | {:error, atom()}
   defp classify_return_type(type, constraints) do
     cond do
-      # Ash.Type.Struct with instance_of - represents a resource
+      # Ash.Type.Struct with instance_of - a resource, or a plain typed struct.
+      # `instance_of` accepts any struct module, so treating every one as a
+      # resource sent field selection off to build a load statement against a
+      # module with no data layer.
       type == Ash.Type.Struct and Keyword.has_key?(constraints, :instance_of) ->
-        {:resource, Keyword.get(constraints, :instance_of)}
+        instance_of = Keyword.get(constraints, :instance_of)
+
+        cond do
+          Ash.Resource.Info.resource?(instance_of) ->
+            {:resource, instance_of}
+
+          Keyword.has_key?(constraints, :fields) ->
+            {:typed_struct, {instance_of, Keyword.get(constraints, :fields, [])}}
+
+          true ->
+            {:error, :not_field_selectable_type}
+        end
 
       # Ash.Type.Struct without instance_of - error
       type == Ash.Type.Struct ->
