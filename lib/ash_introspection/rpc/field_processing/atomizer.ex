@@ -92,7 +92,8 @@ defmodule AshIntrospection.Rpc.FieldProcessing.Atomizer do
       # Use resource info module if provided
       resource_info_module && resource ->
         is_resource? =
-          if function_exported?(resource_info_module, :interop_resource?, 1) do
+          if Code.ensure_loaded?(resource_info_module) &&
+               function_exported?(resource_info_module, :interop_resource?, 1) do
             apply(resource_info_module, :interop_resource?, [resource])
           else
             false
@@ -151,7 +152,8 @@ defmodule AshIntrospection.Rpc.FieldProcessing.Atomizer do
       # Use resource info module if provided
       resource_info_module && resource ->
         is_resource? =
-          if function_exported?(resource_info_module, :interop_resource?, 1) do
+          if Code.ensure_loaded?(resource_info_module) &&
+               function_exported?(resource_info_module, :interop_resource?, 1) do
             apply(resource_info_module, :interop_resource?, [resource])
           else
             false

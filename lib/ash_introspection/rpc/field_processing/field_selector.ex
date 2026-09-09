@@ -1172,7 +1172,8 @@ defmodule AshIntrospection.Rpc.FieldProcessing.FieldSelector do
       _ ->
         resource_info_module = Map.get(config, :resource_info_module)
 
-        if resource_info_module && function_exported?(resource_info_module, :interop_resource?, 1) do
+        if resource_info_module && Code.ensure_loaded?(resource_info_module) &&
+             function_exported?(resource_info_module, :interop_resource?, 1) do
           apply(resource_info_module, :interop_resource?, [resource])
         else
           # Default: check if it's an Ash resource
@@ -1189,7 +1190,7 @@ defmodule AshIntrospection.Rpc.FieldProcessing.FieldSelector do
       _ ->
         resource_info_module = Map.get(config, :resource_info_module)
 
-        if resource_info_module &&
+        if resource_info_module && Code.ensure_loaded?(resource_info_module) &&
              function_exported?(resource_info_module, :get_original_field_name, 2) do
           apply(resource_info_module, :get_original_field_name, [resource, field_name])
         else

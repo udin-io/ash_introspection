@@ -547,7 +547,8 @@ defmodule AshIntrospection.Codegen.TypeDiscovery do
     instance_of = Keyword.get(constraints, :instance_of)
 
     field_name_mappings =
-      if instance_of && function_exported?(instance_of, field_names_callback, 0) do
+      if instance_of && Code.ensure_loaded?(instance_of) &&
+           function_exported?(instance_of, field_names_callback, 0) do
         apply(instance_of, field_names_callback, [])
       else
         nil
