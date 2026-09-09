@@ -95,12 +95,20 @@ for a module the VM has not loaded yet, so a consumer's domain or type that has
 not been touched in the current process silently takes the fallback path.
 
 **What we do.** Every check against a module we did not write is guarded. #49
-swept the library and guarded nine sites across `Rpc.Errors`,
+swept the library and guarded ten sites across `Rpc.Errors`,
 `Rpc.ResultProcessor`, `Rpc.FieldProcessing.Atomizer`,
-`Rpc.FieldProcessing.FieldSelector`, `TypeSystem.Introspection` and
-`Codegen.TypeDiscovery`. Grep for bare `function_exported?/3` before adding
+`Rpc.FieldProcessing.FieldSelector`, `Rpc.Pipeline`, `TypeSystem.Introspection`
+and `Codegen.TypeDiscovery`. Grep for bare `function_exported?/3` before adding
 another; `grep -rn 'function_exported?' lib | grep -v 'Code.ensure_loaded?'`
-should print only continuation lines of guarded expressions.
+should print only comment and continuation lines of guarded expressions.
+
+**Not every guarded site is observable.** `get_field_mapping_module/3` in
+`Rpc.Pipeline` is the one that has no test. Both of its outcomes — the
+consumer's struct module, or `nil` — reach
+`ResultProcessor.get_field_type_info/3`, which answers `{nil, []}` either way,
+so the whole suite passes with the branch hard-coded to `nil` (measured
+2026-09-09, 281 tests). The guard is still right; do not delete it because
+nothing covers it, and do not write a test that cannot fail.
 
 **Testing it.** A test that calls `Code.ensure_loaded!/1` to reach the branch
 proves nothing — it loads the module and hides the bug. Unload the module
@@ -181,7 +189,7 @@ at the top of every `.ex`, `.exs` and `.md` file. Markdown uses an HTML comment.
 
 ### The consumer is not covered by anything here
 
-**Symptom.** A change passes 274 tests here and breaks
+**Symptom.** A change passes 281 tests here and breaks
 `ash_kotlin_multiplatform`.
 
 **Why.** `ash_kotlin_multiplatform` calls `AshIntrospection` at 35 sites across
@@ -208,7 +216,7 @@ mix hex.audit
 mix deps.audit
 ```
 
-`main` is at **274 tests, 0 failures**. A pull request that changes that number
+`main` is at **281 tests, 0 failures**. A pull request that changes that number
 downward, or that leaves a compiler warning, is not finished. Never suppress a
 warning — fix the cause.
 

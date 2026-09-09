@@ -50,6 +50,15 @@ with a codemod (`mix ash_introspection.upgrade`), which limits the damage to
 Elixir call sites; a generated Kotlin client that reads `error.code` is
 regenerated, not migrated, and nothing checks that it was.
 
+**Now realised, not hypothetical.** #44 found the consumer's Swift generator
+sending `identity` on read actions — `generate_get_function/3` at
+`lib/ash_kotlin_multiplatform/swift/codegen.ex:581-594` emits `identity: id`
+for every `get?` read. This library dropped that parameter without a word, so
+those calls have been returning the wrong record all along. They now fail with
+`identity_not_supported`, which is the right answer and still a break the
+consumer has to act on. Its Kotlin generator was never affected: it gates on
+the same empty `identities` list upstream does.
+
 **What we watch.** `grep -rn 'AshIntrospection' lib/` in the consumer, and the
 consumer's `mix.exs` requirement, on every release here.
 
@@ -63,13 +72,13 @@ yet and is not on the board.
 **The risk.** `lib/ash_introspection/rpc/` had **zero** test coverage until the
 week of 2026-09-09 (#18). Coverage arrived as regression tests attached to the
 seven fixes shipped in 0.3.0 — one test per fixed bug, not a suite that
-describes the pipeline. `main` is at 255 tests, and whole modules
+describes the pipeline. `main` is at 281 tests, and whole modules
 (`value_formatter.ex`, `field_extractor.ex`, `atomizer.ex`) are still exercised
 only incidentally.
 
-**Why it bites.** Every open correctness issue on the board (#16, #17, #35,
-#40, #44) touches code that has no behavioural test around it, so a fix can
-break a neighbour silently.
+**Why it bites.** Every open correctness issue on the board (#35, #40, #16)
+touches code that has no behavioural test around it, so a fix can break a
+neighbour silently.
 
 **What we watch.** `mix test` count and which modules new tests land in. CI
 runs the suite on every pull request as of #32.

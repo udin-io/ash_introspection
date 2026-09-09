@@ -687,6 +687,12 @@ identity: %{org_id: "org-1", user_id: "user-1"}
 identity: %{email: "user@example.com"}
 ```
 
+`identity` selects the record an update or destroy acts on. A read selects one
+with `get_by`, and a read carrying `identity` is rejected with
+`identity_not_supported` rather than having the parameter dropped. Identity
+values are equality operands: a map or list value is rejected as
+`invalid_identity`, and so is `null`.
+
 ### 6. Pagination Response Handling
 
 Handle both paginated and non-paginated responses:

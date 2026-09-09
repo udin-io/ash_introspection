@@ -13,6 +13,46 @@ recorded nowhere in the repo. This page replaces ADRs; there is no `adr/`
 directory here and none should be created. A decision that no longer shapes the
 code is deleted, not archived, because git keeps the history.
 
+## 2026-09-09 — `identity` is an update/destroy key; reads reject it
+
+**Decided.** A read action carrying `identity` fails with
+`identity_not_supported` naming the action. Reads select a record with
+`get_by`. Wiring `identity` into the read path was rejected. Issue #44.
+
+**Why.** Upstream `ash_typescript` already means this. Its `identities` option
+resolves to `[]` for every action type but `:update` and `:destroy`
+(`lib/ash_typescript/rpc/codegen/helpers/config_builder.ex:63-67`), so the
+field is emitted into neither the generated config type nor the request
+payload, and no generated client can send it on a read. This library exists to
+be the shared core of that design, so the alternative — teaching reads a
+lookup key upstream does not have — was the divergence, not the rejection.
+
+It would also have needed rules upstream has never written. `identities`
+defaults to `[:_primary_key]`, and `maybe_apply_identity_filter/5` errors with
+`missing_identity` when the identity is absent but the list is not empty. Reads
+would have needed their own default of `[]`, so the symmetry with update and
+destroy was never real.
+
+Rejecting is what removes the silence the ticket was filed about. The old
+behaviour built no filter: the caller named one record and got the whole table,
+or a `MultipleResults` from `Ash.read_one/1` naming nothing it could act on.
+That is not hypothetical — `ash_kotlin_multiplatform`'s Swift generator sends
+it. `generate_get_function/3` emits `identity: id` for `get?` reads
+(`lib/ash_kotlin_multiplatform/swift/codegen.ex:581-594`), so every generated
+Swift `getX(id:)` call is broken today. Its Kotlin generator gates on the same
+empty list upstream does and never sends it.
+
+**Cost.** A generated Swift client that compiles now fails at runtime with a
+named error instead of returning the wrong record, so
+`ash_kotlin_multiplatform` has to move those reads to `get_by` before it takes
+this release. That is the point — the failure was already there and was
+silent — but it is a real break for a consumer that is not covered by any
+test here. Same release also stops accepting a null identity value: it compiled
+to `key == nil`, which Ash evaluates as unknown, and building `is_nil(key)`
+instead would let a null key match several records, since Ash identities
+default to `nils_distinct?: true` and update and destroy take
+`Ash.Query.limit(query, 1)`.
+
 ## 2026-09-09 — Unify RPC error payloads on `type`, and ship a codemod with it
 
 **Decided.** Every RPC error names its class under `type`. The `code` key is
