@@ -153,6 +153,7 @@ flowchart LR
     tdisc --> tsi
     vet --> tsi
     actint --> vet
+    actint --> tsi
 ```
 
 Measured 2026-09-09: `ash_kotlin_multiplatform` names `AshIntrospection` at 35
