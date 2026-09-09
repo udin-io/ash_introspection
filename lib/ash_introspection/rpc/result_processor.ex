@@ -736,7 +736,8 @@ defmodule AshIntrospection.Rpc.ResultProcessor do
       is_struct(data) && Ash.Resource.Info.resource?(data.__struct__) ->
         {data.__struct__, []}
 
-      is_struct(data) && function_exported?(data.__struct__, field_names_callback, 0) ->
+      is_struct(data) && Code.ensure_loaded?(data.__struct__) &&
+          function_exported?(data.__struct__, field_names_callback, 0) ->
         {Ash.Type.Struct, [instance_of: data.__struct__]}
 
       match?(%Ash.Union{}, data) ->

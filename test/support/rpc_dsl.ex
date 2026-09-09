@@ -102,3 +102,26 @@ defmodule AshIntrospection.Test.LazyLoadedFieldNames do
 
   def typescript_field_names, do: %{is_active?: "isActive"}
 end
+
+defmodule AshIntrospection.Test.LazyLoadedStruct do
+  @moduledoc """
+  Stands in for a consumer's TypedStruct wrapper, for the
+  `ResultProcessor.determine_data_type/3` lazy-loading test.
+  """
+
+  defstruct [:name]
+
+  def interop_field_names, do: %{name: "name"}
+end
+
+defmodule AshIntrospection.Test.LazyLoadedResourceInfo do
+  @moduledoc """
+  Stands in for the `resource_info_module` a consumer passes in its config, for
+  the `Atomizer` lazy-loading test.
+  """
+
+  def interop_resource?(_resource), do: true
+
+  def get_original_field_name(_resource, "givenName"), do: :given_name
+  def get_original_field_name(_resource, _field_name), do: nil
+end

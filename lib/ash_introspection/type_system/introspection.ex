@@ -243,7 +243,7 @@ defmodule AshIntrospection.TypeSystem.Introspection do
   # Check if a type has the field names callback
   # Supports both atom callback names and function references
   defp check_field_names_callback(type, callback) when is_atom(callback) do
-    function_exported?(type, callback, 0)
+    Code.ensure_loaded?(type) && function_exported?(type, callback, 0)
   end
 
   defp check_field_names_callback(type, callback) when is_function(callback, 1) do
@@ -560,7 +560,7 @@ defmodule AshIntrospection.TypeSystem.Introspection do
 
   def get_field_names_map(module, callback) when is_atom(module) and is_atom(callback) do
     cond do
-      function_exported?(module, callback, 0) ->
+      Code.ensure_loaded?(module) && function_exported?(module, callback, 0) ->
         apply(module, callback, []) |> Map.new()
 
       has_interop_field_names?(module) ->
