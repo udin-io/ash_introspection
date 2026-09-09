@@ -123,7 +123,8 @@ defmodule AshIntrospection.Rpc.Errors do
 
     # Apply resource-level error handler if configured
     transformed_error =
-      if resource && function_exported?(resource, :handle_rpc_error, 2) do
+      if resource && Code.ensure_loaded?(resource) &&
+           function_exported?(resource, :handle_rpc_error, 2) do
         apply_error_handler(
           {resource, :handle_rpc_error, []},
           transformed_error,
@@ -199,7 +200,8 @@ defmodule AshIntrospection.Rpc.Errors do
     rpc_dsl_section = Map.get(config, :rpc_dsl_section, :typescript_rpc)
 
     # Check if domain has RPC configuration with error handler
-    with true <- function_exported?(domain, :spark_dsl_config, 0),
+    with true <- Code.ensure_loaded?(domain),
+         true <- function_exported?(domain, :spark_dsl_config, 0),
          {:ok, handler} <-
            Spark.Dsl.Extension.fetch_opt(domain, [rpc_dsl_section], :error_handler) do
       case handler do
@@ -218,7 +220,8 @@ defmodule AshIntrospection.Rpc.Errors do
   defp get_show_raised_errors?(domain, config) do
     rpc_dsl_section = Map.get(config, :rpc_dsl_section, :typescript_rpc)
 
-    with true <- function_exported?(domain, :spark_dsl_config, 0),
+    with true <- Code.ensure_loaded?(domain),
+         true <- function_exported?(domain, :spark_dsl_config, 0),
          {:ok, show_raised_errors?} <-
            Spark.Dsl.Extension.fetch_opt(domain, [rpc_dsl_section], :show_raised_errors?) do
       show_raised_errors?

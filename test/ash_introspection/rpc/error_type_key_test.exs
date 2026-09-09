@@ -57,10 +57,6 @@ defmodule AshIntrospection.Rpc.ErrorTypeKeyTest do
 
   describe "a domain with show_raised_errors? set" do
     test "names the exception's class under type" do
-      # `Errors` gates the branch on `function_exported?/3`, which answers false
-      # for a module the VM has not loaded yet.
-      Code.ensure_loaded!(RaisingErrorsDomain)
-
       [error] =
         Errors.to_errors(
           UnhandledError.exception(message: "shown to the client"),
