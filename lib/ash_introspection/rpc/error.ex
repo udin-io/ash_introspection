@@ -111,21 +111,42 @@ defimpl AshIntrospection.Rpc.Error, for: Ash.Error.Query.Required do
 end
 
 defimpl AshIntrospection.Rpc.Error, for: Ash.Error.Forbidden.Policy do
+  # `Exception.message/1` on this error renders the whole authorization report -
+  # every policy, every check outcome, and the actor inspected in full - as soon
+  # as the struct's `policy_breakdown?` flag is set, and Ash sets that flag from
+  # its app-wide `:ash, :policies, show_policy_breakdowns?` toggle when the
+  # exception is built. That toggle is a development aid, so reading it here
+  # would let a stray dev setting open every RPC response in production.
+  #
+  # The breakdown is gated on this library's own config instead, which nothing
+  # but an explicit decision turns on:
+  #
+  #     config :ash_introspection, :policies, show_policy_breakdowns?: true
+  #
+  # Mirrors ash_graphql's separate `show_policy_descriptions?` setting, and
+  # ports upstream ash_typescript ef29ceb.
   def to_error(error) do
-    base = %{
-      message: Exception.message(error),
+    message =
+      if show_policy_breakdowns?() do
+        Ash.Error.Forbidden.Policy.report(error, help_text?: false)
+      else
+        "forbidden"
+      end
+
+    %{
+      message: message,
       short_message: "Forbidden",
       vars: Map.new(error.vars || []),
       type: "forbidden",
       fields: [],
       path: error.path || []
     }
+  end
 
-    if Map.get(error, :policy_breakdown?) do
-      Map.put(base, :policy_breakdown, Map.get(error, :policies))
-    else
-      base
-    end
+  defp show_policy_breakdowns? do
+    :ash_introspection
+    |> Application.get_env(:policies, [])
+    |> Keyword.get(:show_policy_breakdowns?, false)
   end
 end
 
@@ -234,9 +255,12 @@ defimpl AshIntrospection.Rpc.Error, for: Ash.Error.Query.ReadActionRequiresActor
 end
 
 defimpl AshIntrospection.Rpc.Error, for: Ash.Error.Unknown.UnknownError do
+  # This is the bucket every unrecognised exception falls into, so its text is
+  # whatever crashed - a database URL, a stack trace, a third-party library's
+  # internals. The client gets a static message; the detail belongs in the logs.
   def to_error(error) do
     %{
-      message: Exception.message(error),
+      message: "Something went wrong",
       short_message: "Unknown error",
       vars: Map.new(error.vars || []),
       type: "unknown_error",

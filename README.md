@@ -115,6 +115,20 @@ end
 | `AshIntrospection.Rpc.Errors` | Central error processing pipeline |
 | `AshIntrospection.Rpc.DefaultErrorHandler` | Pass-through error handler |
 
+Client-facing error messages are deliberately terse: a policy failure returns
+`"forbidden"` and an unrecognised exception returns `"Something went wrong"`,
+so neither the authorization rules nor the crash text reach the caller. To see
+the policy breakdown while debugging, opt in explicitly:
+
+```elixir
+config :ash_introspection, :policies, show_policy_breakdowns?: true
+```
+
+That setting is separate from Ash's own
+`config :ash, :policies, show_policy_breakdowns?: true` on purpose — an
+app-wide development toggle must not be able to open RPC responses. Never
+enable it in production.
+
 ### Code Generation
 
 | Module | Description |

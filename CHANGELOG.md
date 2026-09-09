@@ -10,6 +10,21 @@ and this project adheres to
 
 ### Security
 
+- Forbidden errors no longer render the policy breakdown to the client
+  ([#11](https://github.com/udin-io/ash_introspection/issues/11)).
+  `Exception.message/1` on `Ash.Error.Forbidden.Policy` returns the whole
+  authorization report — every policy, every check outcome, and the actor
+  inspected in full — whenever Ash's app-wide
+  `config :ash, :policies, show_policy_breakdowns?: true` is set, so a
+  development toggle opened every RPC response. The message is now the static
+  `"forbidden"` and the `policy_breakdown` key is gone.
+
+- Unknown errors no longer return the raw exception text
+  ([#11](https://github.com/udin-io/ash_introspection/issues/11)).
+  `Ash.Error.Unknown.UnknownError` is the bucket every unrecognised exception
+  falls into, so its message could be a connection string, a stack trace or a
+  third-party library's internals. Clients now get `"Something went wrong"`.
+
 - Client-supplied field names no longer mint atoms
   ([#10](https://github.com/udin-io/ash_introspection/issues/10)). The atom
   table is never garbage collected, so a request carrying unknown field names
@@ -19,6 +34,10 @@ and this project adheres to
 
 ### Added
 
+- `config :ash_introspection, :policies, show_policy_breakdowns?: true` — opt
+  in to sending the policy breakdown back as the forbidden error's message.
+  Deliberately a separate setting from Ash's own `:ash, :policies`, so an
+  app-wide development toggle cannot open RPC responses in production.
 - `AshIntrospection.FieldFormatter.resolve_field_name/2` — resolves a field
   name to an existing atom, or returns the formatted string when none exists.
 - `AshIntrospection.Rpc.FieldProcessing.Validation.field_exists?/2` — field
