@@ -5,16 +5,101 @@
 defmodule AshIntrospection.Rpc.ErrorsJsonSafetyTest do
   @moduledoc """
   An error's `vars` and `path` come from whatever built the error, so they can
-  hold any Erlang term. The RPC payload is handed to a JSON encoder, which
-  raises on anything it has no representation for - the request then dies at
-  the encoder instead of returning the error.
+  hold any Erlang term - a PID from a process that failed, a monitor
+  reference, a callback, an internal struct. The RPC payload is handed to a
+  JSON encoder, which raises on anything it has no representation for: the
+  request then dies at the encoder instead of returning the error.
+
+  Unwrapping a struct into its fields is the other half of the problem. It
+  encodes, but it discloses every field the struct carries, including the ones
+  the struct hides from `Inspect` precisely because the client must not see
+  them.
 
   These tests pin the last step of the error pipeline: whatever reaches the
-  client is JSON-encodable.
+  client is JSON-encodable, and terms with no safe representation are reduced
+  to an opaque marker rather than unwrapped.
   """
   use ExUnit.Case, async: true
 
+  import ExUnit.CaptureLog
+
   alias AshIntrospection.Rpc.Errors
+
+  @secret "sk_live_do_not_disclose"
+
+  defmodule Envelope do
+    @moduledoc false
+    defstruct [:label, :token]
+  end
+
+  describe "terms with no JSON representation" do
+    test "replaces a pid with an opaque term" do
+      assert vars_of(pid: self())[:pid] == "#PID<>"
+    end
+
+    test "replaces a reference with an opaque term" do
+      assert vars_of(ref: make_ref())[:ref] == "#Reference<>"
+    end
+
+    test "replaces an anonymous function with an opaque term" do
+      assert vars_of(fun: fn -> :ok end)[:fun] == "#Function<>"
+    end
+
+    test "replaces a pid in the error path with an opaque term" do
+      [response] = to_errors(error(path: [:profile, self()]))
+
+      assert response.path == ["profile", "#PID<>"]
+    end
+  end
+
+  describe "an unknown struct" do
+    test "is reduced to its module name" do
+      {vars, _log} =
+        with_log(fn -> vars_of(envelope: %Envelope{label: "api key", token: @secret}) end)
+
+      assert vars[:envelope] == "##{inspect(Envelope)}<>"
+    end
+
+    test "does not disclose the fields it carries" do
+      {[response], _log} =
+        with_log(fn -> to_errors(error(vars: [envelope: %Envelope{token: @secret}])) end)
+
+      refute leaks_secret?(response)
+    end
+
+    test "is logged with the module that was dropped" do
+      {_response, log} =
+        with_log(fn -> to_errors(error(vars: [envelope: %Envelope{token: @secret}])) end)
+
+      assert log =~ inspect(Envelope)
+      assert log =~ "serializing an RPC error"
+      refute log =~ @secret
+    end
+  end
+
+  describe "the payload handed to the client" do
+    test "encodes as JSON with every unencodable term present" do
+      {[response], _log} =
+        with_log(fn ->
+          to_errors(
+            error(
+              vars: [
+                pid: self(),
+                ref: make_ref(),
+                fun: fn -> :ok end,
+                envelope: %Envelope{token: @secret},
+                nested: %{deeper: [self()]},
+                pair: {:timeout, 500}
+              ],
+              path: [:profile, self()]
+            )
+          )
+        end)
+
+      assert is_binary(JSON.encode!(response))
+      refute leaks_secret?(response)
+    end
+  end
 
   describe "values that already have a representation" do
     test "keeps binaries, numbers and booleans" do
@@ -77,4 +162,16 @@ defmodule AshIntrospection.Rpc.ErrorsJsonSafetyTest do
   end
 
   defp to_errors(error), do: Errors.to_errors(error, nil, nil, nil, %{}, %{})
+
+  defp leaks_secret?(value) when is_binary(value), do: String.contains?(value, @secret)
+  defp leaks_secret?(value) when is_atom(value), do: leaks_secret?(Atom.to_string(value))
+  defp leaks_secret?(%_{} = value), do: value |> Map.from_struct() |> leaks_secret?()
+
+  defp leaks_secret?(value) when is_map(value) do
+    Enum.any?(value, fn {key, val} -> leaks_secret?(key) or leaks_secret?(val) end)
+  end
+
+  defp leaks_secret?(value) when is_list(value), do: Enum.any?(value, &leaks_secret?/1)
+  defp leaks_secret?(value) when is_tuple(value), do: value |> Tuple.to_list() |> leaks_secret?()
+  defp leaks_secret?(_value), do: false
 end

@@ -407,11 +407,33 @@ defmodule AshIntrospection.Rpc.Errors do
   defp serialize_error(%Decimal{} = value), do: Decimal.to_string(value, :normal)
   defp serialize_error(%Ash.CiString{} = value), do: Ash.CiString.value(value)
 
+  # Structs we have no serialization for are reduced to their module name.
+  # Unwrapping them with Map.from_struct/1 would emit every field to the client,
+  # defeating redaction the struct itself declares - `Ash.ForbiddenField`, for
+  # instance, hides the `original_value` the actor is not allowed to see.
+  defp serialize_error(%module{}) do
+    Logger.warning("""
+    Dropped a #{inspect(module)} value while serializing an RPC error.
+
+    Structs without a known serialization are replaced with their module name so
+    their fields are not disclosed to the client. Convert the value to a string,
+    number, or plain map before putting it in an error's `vars` or `path`.
+    """)
+
+    opaque_term(module)
+  end
+
   defp serialize_error(value) when is_map(value) do
     Enum.into(value, %{}, fn {key, val} ->
       {key, serialize_error(val)}
     end)
   end
 
+  defp serialize_error(value) when is_pid(value), do: opaque_term(PID)
+  defp serialize_error(value) when is_reference(value), do: opaque_term(Reference)
+  defp serialize_error(value) when is_function(value), do: opaque_term(Function)
+
   defp serialize_error(value), do: value
+
+  defp opaque_term(module), do: "##{inspect(module)}<>"
 end
