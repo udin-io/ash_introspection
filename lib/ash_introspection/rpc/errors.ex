@@ -146,13 +146,38 @@ defmodule AshIntrospection.Rpc.Errors do
     end
   rescue
     e ->
-      Logger.warning("""
-      Error handler failed: #{inspect(e)}
-      Handler: #{inspect({module, function, args})}
-      Original error: #{inspect(error)}
-      """)
+      handler_failure(inspect(e), __STACKTRACE__, {module, function, args}, error)
+  end
 
-      error
+  # Error handlers are the application's hook for redacting or suppressing errors
+  # before they reach the client, so a handler that fails must fail closed - never
+  # fall back to the unredacted error it was supposed to sanitize. The generic
+  # error carries a UUID so the real error stays correlatable in the server log.
+  defp handler_failure(reason, stacktrace, handler, error) do
+    uuid = Ash.UUID.generate()
+
+    Logger.error("""
+    Error handler failed, returning a generic error instead of the unhandled one.
+    Error ID: #{uuid}
+    Handler: #{inspect(handler)}
+    Failure: #{reason}
+    Original error: #{inspect(error)}
+    #{Exception.format_stacktrace(stacktrace)}
+    """)
+
+    generic_internal_error(uuid, [])
+  end
+
+  defp generic_internal_error(uuid, path) do
+    %{
+      message: "Something went wrong. Unique error id: #{uuid}",
+      short_message: "Internal error",
+      code: "internal_error",
+      vars: %{},
+      fields: [],
+      path: path,
+      error_id: uuid
+    }
   end
 
   defp get_domain_error_handler(domain, config) do
