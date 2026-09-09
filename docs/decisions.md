@@ -69,23 +69,26 @@ cannot see inside a closure the consumer supplies.
 
 **Why — the cost the ticket describes is not the cost this library has.** The
 ticket quotes upstream's ~1,500 calls of one `(field, resource, formatter)`
-triple per sync. Measured here on `main` at `007eedd`, OTP 27 and Elixir
-1.18.4, over 100 single-record RPC runs against `AshIntrospection.Test.Account`
-with four public fields selected, each run passing through
-`execute_ash_action/1`, `process_result/3` and `format_output_with_request/3`:
+triple per sync. Measured here at `0dd9ac5`, OTP 27 and Elixir 1.18.4, over 100
+single-record RPC runs against `AshIntrospection.Test.Account` with four public
+fields selected, each run passing through `execute_ash_action/1`,
+`process_result/3` and `format_output_with_request/3`. Call counts come from
+`:erlang.trace/3` on `{FieldFormatter, :format_field_name, 2}`, timings from
+`:timer.tc/1` on warmed loops; the ranges are five runs on one laptop, so read
+the shares, not the milliseconds:
 
 | Measurement | Value |
 |---|---|
 | `format_field_name/2` calls | 6 per record — 4 field names, plus `"success"` and `"data"` |
 | `format_field_name/2` cost | ~470 ns per call, warm |
-| Time in `format_field_name/2` | 0.73 ms per 100-record run |
-| `execute_ash_action/1` | 41.0 ms (410 µs per record) |
-| `process_result/3` | 0.55 ms |
-| `format_output_with_request/3` | 1.39 ms |
-| Share of the output-formatting stage | 53% |
-| **Share of the whole pipeline** | **1.7%** |
+| Time in `format_field_name/2` | 0.65–0.82 ms per 100-record run |
+| `execute_ash_action/1` | 32–42 ms (320–420 µs per record) |
+| `process_result/3` | 0.44–0.55 ms |
+| `format_output_with_request/3` | 1.15–1.48 ms |
+| Share of the output-formatting stage | 53–59% |
+| **Share of the whole pipeline** | **1.7–2.1%** |
 
-A perfect cache replaces ~470 ns with a ~7 ns map lookup, so 1.7% of pipeline
+A perfect cache replaces ~470 ns with a ~7 ns map lookup, so ~2% of pipeline
 wall clock is the ceiling on the entire idea. Ash action execution is 95% of it.
 
 **Why — a transformer would reach only two thirds of even that.** Tracing the

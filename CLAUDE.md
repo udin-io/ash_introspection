@@ -235,18 +235,18 @@ extension, or it waits for #23. Do not add a resource extension to this library
 to hold one — that is #23's decision, not a ticket's. #26 was closed this way;
 [`docs/decisions.md`](docs/decisions.md) has the reasoning and the numbers.
 
-### Field-name formatting is 1.7% of the pipeline, and the cost is the regexes
+### Field-name formatting is ~2% of the pipeline; the cost is the regexes
 
 **Symptom.** An upstream performance commit quotes a large call count, and you
 are about to cache something here on the strength of it.
 
-**Why.** Upstream's figures are upstream's. Measured here at `007eedd` on OTP 27
-and Elixir 1.18.4, over 100 single-record RPC runs through
+**Why.** Upstream's figures are upstream's. Measured here at `0dd9ac5` on OTP
+27 and Elixir 1.18.4, over 100 single-record RPC runs through
 `execute_ash_action/1`, `process_result/3` and `format_output_with_request/3`:
 `FieldFormatter.format_field_name/2` is called **6 times per record** — the
 selected field names plus the `"success"` and `"data"` envelope literals — at
-~470 ns each. That is 0.73 ms against 41 ms of `execute_ash_action/1`. Ash
-action execution is 95% of the pipeline.
+~470 ns each. That is under 1 ms against 32-42 ms of `execute_ash_action/1`.
+Ash action execution is 95% of the pipeline.
 
 Within that 470 ns, `Macro.camelize/1` — the work that transforms the name —
 is ~60 ns. The rest is `is_camel_case?/1`, `is_pascal_case?/1` and

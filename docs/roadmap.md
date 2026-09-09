@@ -169,8 +169,8 @@ dozen other items.
   transformer is listed in a `use Spark.Dsl.Extension` call and this library
   ships no DSL, so upstream's `PersistFormattedFields` has nothing to attach
   to; the resource-to-client mapping lives in the consumer's closure, which a
-  cache in the core cannot see into. Measured on `main` at `007eedd`,
-  `format_field_name/2` is 1.7% of RPC pipeline wall clock — 6 calls per
+  cache in the core cannot see into. Measured at `0dd9ac5`,
+  `format_field_name/2` is ~2% of RPC pipeline wall clock — 6 calls per
   record, two of them response-envelope literals no resource cache would ever
   reach. The cost is the regex predicates, not the missing cache: see
   [decisions.md](decisions.md) for the numbers and the cheaper fix.
