@@ -101,6 +101,10 @@ defmodule AshIntrospection.MixProject do
     [
       {:ash, "~> 3.33"},
       {:spark, "~> 2.6"},
+      # Powers `mix ash_introspection.upgrade`. Dev and test only: the task
+      # guards itself with `Code.ensure_loaded?(Igniter)`, and a consumer
+      # running an upgrade already has igniter among its own dev dependencies.
+      {:igniter, "~> 0.7", only: [:dev, :test]},
       {:ex_doc, "~> 0.37", only: [:dev, :test], runtime: false},
       {:mix_audit, ">= 0.0.0", only: [:dev, :test], runtime: false}
     ]
