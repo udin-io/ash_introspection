@@ -101,7 +101,8 @@ defmodule AshIntrospection.MixProject do
     [
       {:ash, "~> 3.33"},
       {:spark, "~> 2.6"},
-      {:ex_doc, "~> 0.37", only: [:dev, :test], runtime: false}
+      {:ex_doc, "~> 0.37", only: [:dev, :test], runtime: false},
+      {:mix_audit, ">= 0.0.0", only: [:dev, :test], runtime: false}
     ]
   end
 end
