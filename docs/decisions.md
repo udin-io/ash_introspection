@@ -60,6 +60,30 @@ exactly the wire names a client cannot reconstruct.
 holds on `format_output_with_request/3`, which has the types, and not on
 `format_output/2`, which does not — and `format_output/2` is what
 `ash_kotlin_multiplatform` calls. See risk T4 in [risks.md](risks.md).
+## 2026-09-09 — The writable test resource gets a private ETS table
+
+**Decided.** `AshIntrospection.Test.Account` declares `ets do private?(true)
+end`, and the five test files that write to it no longer call
+`Ash.DataLayer.Ets.stop/1` from `on_exit`. Issue #55.
+
+**Why.** Without `private?`, the Ets data layer keeps one named table for the
+whole VM behind a `TableManager` GenServer, so the only way to empty it between
+tests was `stop/1` — which sends that GenServer `Process.exit(pid, :shutdown)`
+and returns. The kill is asynchronous, so the next test's `setup` could wrap
+the table before the VM reaped it and then write to a dead reference. `mix
+test` failed 5 times in 200 runs on `main`; the file that carried most of it,
+`pipeline_filter_injection_test.exs`, failed 11 times in 200 runs of that one
+file alone. `private?` moves the isolation into the data layer: each test
+process gets its own unnamed table, reaped when the process exits, so there is
+nothing left to tear down and nothing shared to race on.
+
+**Cost.** A private table is visible only to the process that created it. A
+test that writes `Account` from a spawned process, a `Task`, or a `setup_all`
+block will see an empty table rather than the records it just wrote. That is
+the trade for the isolation, and it is recorded in [`CLAUDE.md`](../CLAUDE.md).
+It also turns off the Ash async engine for this resource
+(`Ash.DataLayer.Ets.can?/2` answers `false` for `:async_engine` when
+`private?`), which nothing here depends on.
 
 ## 2026-09-09 — `identity` is an update/destroy key; reads reject it
 

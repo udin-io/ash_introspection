@@ -26,8 +26,6 @@ defmodule AshIntrospection.Rpc.ValueFormatterVectorTest do
   @embedding [0.5, -1.5, 2.25]
 
   setup do
-    on_exit(fn -> Ash.DataLayer.Ets.stop(Account) end)
-
     suffix = System.unique_integer([:positive])
 
     account =

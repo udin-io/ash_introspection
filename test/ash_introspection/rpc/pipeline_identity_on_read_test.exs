@@ -20,8 +20,6 @@ defmodule AshIntrospection.Rpc.PipelineIdentityOnReadTest do
   alias AshIntrospection.Test.RpcDomain
 
   setup do
-    on_exit(fn -> Ash.DataLayer.Ets.stop(Account) end)
-
     suffix = System.unique_integer([:positive])
 
     alice =

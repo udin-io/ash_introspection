@@ -139,34 +139,43 @@ camelCase changes under a second pass: `AshIntrospection.Test.RevisionInfo`
 maps `:revision` to `_rev`, which a second camelization rewrites to `rev`. See
 `test/ash_introspection/rpc/pipeline_metadata_formatting_test.exs`.
 
-### The `Test.Account` suite flakes on a torn-down ETS table
+### Never call `Ash.DataLayer.Ets.stop/1` in a test — fixed in #55
 
-**Symptom.** Roughly one full `mix test` run in twelve fails on `main` with no
-source change, always in a file that writes `AshIntrospection.Test.Account`:
-`PipelineFilterInjectionTest`, `PipelineIdentityOnReadTest`,
-`PipelineIdentityBooleanTest` or `ValueFormatterVectorTest`. The message is
-either `record with id: "..." not found` or, uncovered, the real one:
+**Symptom, before the fix.** Roughly one `mix test` run in forty failed on
+`main` with no source change, always in a file that writes
+`AshIntrospection.Test.Account`. The message was either `record with id: "..."
+not found` or the real one:
 
 ```
 ** (ArgumentError) errors were found at the given arguments:
   * 1st argument: the table identifier does not refer to an existing ETS table
 ```
 
-Measured 2026-09-09 at `91ecead`: 7 failures in 87 consecutive runs of the
-untouched suite. **It is not your change.** Re-run before you start bisecting.
+**Why.** Five test files called `Ash.DataLayer.Ets.stop(Account)` from
+`on_exit`. Without `private?`, the Ets data layer keeps one named table per
+resource for the whole VM, owned by a `TableManager` GenServer, and `stop/1`
+only sends it `Process.exit(pid, :shutdown)` before returning
+(`deps/ash/lib/ash/data_layer/ets/ets.ex:180`). The kill is asynchronous, so
+the next test's `setup` could reach `TableManager.start/3`, wrap the table the
+VM had not yet reaped, and write to a dead reference. The race is **inside one
+file**, between one test's `on_exit` and the next test's `setup` — not across
+files, and `async: false` does not prevent it.
 
-**Why.** Five test files call `Ash.DataLayer.Ets.stop(Account)` from `on_exit`
-(`pipeline_filter_injection_test.exs:21`,
-`pipeline_identity_on_read_test.exs:23`, `value_formatter_vector_test.exs:29`,
-`pipeline_identity_boolean_test.exs:31`,
-`error_builder_bulk_errors_test.exs:29`). There is one ETS table per resource
-for the whole VM, so that teardown is global. Every one of those files is
-`async: false`, so the ordering that breaks it has not been pinned down — the
-table reference a test holds simply stops existing under it.
+**The measurement.** Both figures are 200 consecutive runs on this machine, at
+`f43a4ea`: the full suite failed 5 times before the fix and 0 after, and
+`pipeline_filter_injection_test.exs` run alone failed 11 times before and 0
+after. `--seed` does not pin it: seed `850929` failed once in 30 runs of that
+file, the same rate as any other seed. It is a timing race, so a failing seed
+is not a repro — a loop is.
 
-**What we do.** Nothing yet; no ticket owns it. Do not add a sixth
-`Ash.DataLayer.Ets.stop/1`, and do not claim a green suite from one run — run
-`mix test` a few times before calling a change clean.
+**What we do.** `test/support/rpc_resources.ex` declares `ets do private?(true)
+end` on `Account`, so every test process gets its own unnamed table that the VM
+reaps when the process exits. There is nothing to tear down: **do not add an
+`Ash.DataLayer.Ets.stop/1` call anywhere.** The one thing a private table
+forbids is writing the resource from another process — a `Task`, a spawned
+process, or a `setup_all` block sees an empty table, because the table lives in
+the creating process's dictionary. Keep writes in the test process. If a new
+test resource needs writing, give it `private? true` at birth.
 
 ### No stdlib `JSON`: `mix.exs` declares `elixir: "~> 1.15"`
 
