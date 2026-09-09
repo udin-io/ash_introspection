@@ -147,6 +147,14 @@ defmodule AshIntrospection.Rpc.Errors do
   rescue
     e ->
       handler_failure(inspect(e), __STACKTRACE__, {module, function, args}, error)
+  catch
+    kind, reason ->
+      handler_failure(
+        "#{kind}: #{inspect(reason)}",
+        __STACKTRACE__,
+        {module, function, args},
+        error
+      )
   end
 
   # Error handlers are the application's hook for redacting or suppressing errors

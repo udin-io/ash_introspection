@@ -13,7 +13,7 @@ defmodule AshIntrospection.Rpc.ErrorsHandlerFailureTest do
   Handlers are usually written as a function head matching the error shapes the
   developer anticipated, so an unanticipated shape raises `FunctionClauseError`
   rather than being passed through deliberately. These tests pin the closed
-  behaviour for a handler that raises.
+  behaviour for a handler that raises, throws and exits.
   """
   use ExUnit.Case, async: true
 
@@ -32,6 +32,16 @@ defmodule AshIntrospection.Rpc.ErrorsHandlerFailureTest do
     # No clause for any other error type -> FunctionClauseError.
   end
 
+  defmodule ThrowingHandler do
+    @moduledoc false
+    def handle_rpc_error(_error, _context), do: throw(:handler_bailed)
+  end
+
+  defmodule ExitingHandler do
+    @moduledoc false
+    def handle_rpc_error(_error, _context), do: exit(:handler_gave_up)
+  end
+
   describe "a handler that succeeds" do
     test "redacts the error class it matches" do
       [response] = to_errors(RaisingHandler, invalid_attribute())
@@ -44,6 +54,14 @@ defmodule AshIntrospection.Rpc.ErrorsHandlerFailureTest do
   describe "a handler that crashes" do
     test "returns a generic error when the handler raises" do
       assert_fails_closed(RaisingHandler)
+    end
+
+    test "returns a generic error when the handler throws" do
+      assert_fails_closed(ThrowingHandler)
+    end
+
+    test "returns a generic error when the handler exits" do
+      assert_fails_closed(ExitingHandler)
     end
   end
 
@@ -60,6 +78,18 @@ defmodule AshIntrospection.Rpc.ErrorsHandlerFailureTest do
       assert log =~ inspect(RaisingHandler)
       assert log =~ "FunctionClauseError"
       assert log =~ @secret
+    end
+
+    test "names the kind and reason for a handler that throws" do
+      {_response, log} = with_log(fn -> to_errors(ThrowingHandler, invalid_argument()) end)
+
+      assert log =~ "throw: :handler_bailed"
+    end
+
+    test "names the kind and reason for a handler that exits" do
+      {_response, log} = with_log(fn -> to_errors(ExitingHandler, invalid_argument()) end)
+
+      assert log =~ "exit: :handler_gave_up"
     end
   end
 
