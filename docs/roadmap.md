@@ -25,7 +25,9 @@ which come first. Numbers in parentheses are GitHub issues on
   `Rpc.FieldProcessing.Atomizer`, `Rpc.FieldProcessing.FieldSelector`,
   `Rpc.Pipeline`, `TypeSystem.Introspection` and `Codegen.TypeDiscovery` are
   now guarded. Nine landed in #52; the tenth, in `Rpc.Pipeline`, came with #44,
-  which owned that file at the time.
+  which owned that file at the time. That tenth site has no test: both of its
+  outcomes converge on `{nil, []}` downstream, so nothing observable changes.
+  See [`CLAUDE.md`](../CLAUDE.md).
 - **Reject `identity` on read actions, and reject null identity values** (#44,
   [PR #53](https://github.com/udin-io/ash_introspection/pull/53)). `identity`
   selects the record an update or destroy acts on; a read selects one with

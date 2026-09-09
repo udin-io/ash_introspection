@@ -785,7 +785,14 @@ defmodule AshIntrospection.Rpc.Pipeline do
           resource_module
 
         {:typed_struct, module} ->
-          if function_exported?(module, field_names_callback, 0), do: module, else: nil
+          # `Code.ensure_loaded?/1` first: Elixir loads modules lazily, so
+          # `function_exported?/3` answers `false` for a consumer's struct
+          # module nothing has touched in this process, and the mapping module
+          # silently becomes `nil`. #49 swept the library for this; #52 guarded
+          # nine sites and left this one, because #44 held this file.
+          if Code.ensure_loaded?(module) and function_exported?(module, field_names_callback, 0),
+            do: module,
+            else: nil
 
         _ ->
           default_resource
