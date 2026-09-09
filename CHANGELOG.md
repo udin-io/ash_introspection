@@ -23,6 +23,24 @@ and this project adheres to
   ([#44](https://github.com/udin-io/ash_introspection/issues/44)). It used to
   compile to `key == nil`, which Ash evaluates as unknown, so the lookup
   matched nothing and surfaced as `NotFound`.
+- `AshIntrospection.Codegen.TypeDiscovery` accepts an optional
+  `get_rpc_action_entrypoints` config callback
+  ([#21](https://github.com/udin-io/ash_introspection/issues/21)). It returns
+  `%{resource: module, action: atom}` maps or `{module, atom}` tuples, and
+  scopes discovery to those actions: a read, create, update or destroy
+  entrypoint keeps the resource's own fields in scope, a generic action reaches
+  only its own arguments, `:returns` and metadata. Omitting the key keeps the
+  previous whole-resource scope, so no consumer has to act.
+- `action_returns_field_selectable_type?/1` distinguishes a resource from a
+  plain typed struct
+  ([#22](https://github.com/udin-io/ash_introspection/issues/22)).
+  `Ash.Type.Struct` accepts any struct module as `:instance_of`, and every one
+  used to come back as `{:ok, :resource, module}`, sending field selection off
+  to build a load statement against a module with no data layer. A non-resource
+  `instance_of` now returns `{:ok, :typed_struct, {module, fields}}`, or
+  `{:error, :not_field_selectable_type}` when it declares no fields. Both were
+  already documented returns of this function; a consumer matching only
+  `{:ok, :resource, _}` for such an action sees the change.
 
 ### Fixed
 
@@ -42,6 +60,30 @@ and this project adheres to
   `%Ash.Vector{}` keeps its floats in a packed binary that `Jason` refuses to
   encode, so selecting a vector field either crashed the encoder or put
   `%{data: <<...>>, dimensions: n}` on the wire.
+- Type discovery unwraps NewTypes before reading constraints
+  ([#21](https://github.com/udin-io/ash_introspection/issues/21)). A NewType
+  keeps its `:types`, `:fields` and `:instance_of` on itself, so the wrapper's
+  raw constraints are empty: a union behind one contributed no members and its
+  embedded resources reached no generator.
+- Type discovery finds an embedded resource named directly as an action
+  argument ([#21](https://github.com/udin-io/ash_introspection/issues/21)).
+  Discovery matched only bare `Ash.Type.Struct` and then excluded embedded
+  resources on purpose, so a client got no type for an argument it has to
+  build.
+- Type discovery walks calculation arguments, action arguments, a generic
+  action's `:returns` and a read action's metadata
+  ([#21](https://github.com/udin-io/ash_introspection/issues/21)). It covered
+  attributes, calculations and aggregates only.
+- `classify_return_type/2` unwraps NewTypes, so a generic action returning one
+  is no longer refused field selection on a shape that supports it
+  ([#22](https://github.com/udin-io/ash_introspection/issues/22)).
+- `Ash.Type.Duration` classifies as a primitive
+  ([#22](https://github.com/udin-io/ash_introspection/issues/22)). It reaches a
+  client as one ISO 8601 string and has no fields to select.
+- `classify_error_type/2` reads a custom type's `interop_type_name/0` off the
+  original type rather than the unwrapped subtype
+  ([#22](https://github.com/udin-io/ash_introspection/issues/22)). A NewType
+  declaring its own interop name was routed to the container branch instead.
 
 ## [0.3.0] - 2026-09-09
 

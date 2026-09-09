@@ -102,6 +102,40 @@ defmodule AshIntrospection.Test.TaskStats do
   end
 end
 
+defmodule AshIntrospection.Test.WrappedCustomType do
+  @moduledoc """
+  A NewType that names its own interop type. Unwrapping it first yields
+  `Ash.Type.Map`, which carries no such callback, so the declared name is lost
+  and the type is routed to the wrong error category.
+  """
+  use Ash.Type.NewType,
+    subtype_of: :map,
+    constraints: [fields: [label: [type: :string]]]
+
+  def interop_type_name, do: "WrappedCustom"
+end
+
+defmodule AshIntrospection.Test.Suggestion do
+  @moduledoc """
+  A plain struct that is not an Ash resource. It is the shape `instance_of` can
+  legally carry with no data layer behind it — the case return-type
+  classification used to mistake for a resource, sending field selection off to
+  build a load statement against nothing.
+  """
+  defstruct [:name, :score]
+end
+
+defmodule AshIntrospection.Test.FeaturedUser do
+  @moduledoc """
+  A NewType over `Ash.Type.Struct`. Its `:instance_of` constraint lives on the
+  NewType, so classifying the wrapper sees a bare atom with empty constraints
+  and refuses field selection on a shape that supports it.
+  """
+  use Ash.Type.NewType,
+    subtype_of: :struct,
+    constraints: [instance_of: AshIntrospection.Test.User]
+end
+
 defmodule AshIntrospection.Test.CustomType do
   @moduledoc """
   A custom type with interop_type_name callback.
@@ -241,6 +275,36 @@ defmodule AshIntrospection.Test.Post do
     action :get_task_stats, AshIntrospection.Test.TaskStats do
       run fn _input, _context ->
         {:ok, %{is_active?: true, task_count: 0, meta_1: "none"}}
+      end
+    end
+
+    # Generic action returning a NewType that wraps a struct over a resource
+    action :get_featured_user, AshIntrospection.Test.FeaturedUser do
+      run fn _input, _context ->
+        {:ok, nil}
+      end
+    end
+
+    # Generic action returning a plain struct that is not an Ash resource
+    action :suggest, :struct do
+      constraints instance_of: AshIntrospection.Test.Suggestion,
+                  fields: [
+                    name: [type: :string],
+                    score: [type: :integer]
+                  ]
+
+      run fn _input, _context ->
+        {:ok, %AshIntrospection.Test.Suggestion{name: "Test", score: 1}}
+      end
+    end
+
+    # Generic action returning a struct with neither a resource nor field
+    # constraints, so nothing can be selected from it
+    action :opaque_suggestion, :struct do
+      constraints instance_of: AshIntrospection.Test.Suggestion
+
+      run fn _input, _context ->
+        {:ok, %AshIntrospection.Test.Suggestion{name: "Test", score: 1}}
       end
     end
 

@@ -34,6 +34,10 @@ defmodule AshIntrospection.TypeSystem.IntrospectionTest do
       assert Introspection.is_primitive_type?(Ash.Type.UUID)
     end
 
+    test "returns true for Duration, which carries no selectable fields" do
+      assert Introspection.is_primitive_type?(Ash.Type.Duration)
+    end
+
     test "returns false for complex types" do
       refute Introspection.is_primitive_type?(Ash.Type.Union)
       refute Introspection.is_primitive_type?(Ash.Type.Map)

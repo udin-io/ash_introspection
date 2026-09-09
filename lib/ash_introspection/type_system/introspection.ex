@@ -55,6 +55,9 @@ defmodule AshIntrospection.TypeSystem.Introspection do
       Ash.Type.DateTime,
       Ash.Type.NaiveDatetime,
       Ash.Type.UtcDatetime,
+      # A %Duration{} is a struct, but it carries no selectable fields: a client
+      # receives it as one ISO 8601 scalar.
+      Ash.Type.Duration,
       Ash.Type.Atom,
       Ash.Type.UUID,
       Ash.Type.Binary

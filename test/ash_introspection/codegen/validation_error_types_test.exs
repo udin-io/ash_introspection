@@ -6,7 +6,7 @@ defmodule AshIntrospection.Codegen.ValidationErrorTypesTest do
   use ExUnit.Case, async: true
 
   alias AshIntrospection.Codegen.ValidationErrorTypes
-  alias AshIntrospection.Test.{EmbeddedAddress, CustomType, Post, User}
+  alias AshIntrospection.Test.{EmbeddedAddress, CustomType, Post, User, WrappedCustomType}
 
   # ─────────────────────────────────────────────────────────────────
   # Basic Type Classification Tests
@@ -76,6 +76,11 @@ defmodule AshIntrospection.Codegen.ValidationErrorTypesTest do
     test "classifies custom type with interop_type_name" do
       assert {:ok, {:custom_type_errors, CustomType}} =
                ValidationErrorTypes.classify_error_type(CustomType, [])
+    end
+
+    test "keeps the name a NewType declares for itself rather than its subtype's" do
+      assert {:ok, {:custom_type_errors, WrappedCustomType}} =
+               ValidationErrorTypes.classify_error_type(WrappedCustomType, [])
     end
   end
 

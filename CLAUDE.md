@@ -119,6 +119,35 @@ only a module with a `.beam` file on disk can be loaded back. Unloading is
 global to the VM, so such a file is `async: false`. See
 `test/ash_introspection/lazy_module_loading_test.exs`.
 
+### The `Test.Account` suite flakes on a torn-down ETS table
+
+**Symptom.** Roughly one full `mix test` run in twelve fails on `main` with no
+source change, always in a file that writes `AshIntrospection.Test.Account`:
+`PipelineFilterInjectionTest`, `PipelineIdentityOnReadTest`,
+`PipelineIdentityBooleanTest` or `ValueFormatterVectorTest`. The message is
+either `record with id: "..." not found` or, uncovered, the real one:
+
+```
+** (ArgumentError) errors were found at the given arguments:
+  * 1st argument: the table identifier does not refer to an existing ETS table
+```
+
+Measured 2026-09-09 at `91ecead`: 7 failures in 87 consecutive runs of the
+untouched suite. **It is not your change.** Re-run before you start bisecting.
+
+**Why.** Five test files call `Ash.DataLayer.Ets.stop(Account)` from `on_exit`
+(`pipeline_filter_injection_test.exs:21`,
+`pipeline_identity_on_read_test.exs:23`, `value_formatter_vector_test.exs:29`,
+`pipeline_identity_boolean_test.exs:31`,
+`error_builder_bulk_errors_test.exs:29`). There is one ETS table per resource
+for the whole VM, so that teardown is global. Every one of those files is
+`async: false`, so the ordering that breaks it has not been pinned down — the
+table reference a test holds simply stops existing under it.
+
+**What we do.** Nothing yet; no ticket owns it. Do not add a sixth
+`Ash.DataLayer.Ets.stop/1`, and do not claim a green suite from one run — run
+`mix test` a few times before calling a change clean.
+
 ### No stdlib `JSON`: `mix.exs` declares `elixir: "~> 1.15"`
 
 **Symptom.** Code using the `JSON` module compiles on your machine and fails on

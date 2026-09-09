@@ -34,6 +34,26 @@ which come first. Numbers in parentheses are GitHub issues on
   `get_by`, the same split upstream `ash_typescript` draws. A read carrying
   `identity` used to build no filter at all. Breaking for the consumer's
   generated Swift clients — see [decisions.md](decisions.md).
+- **Fix type discovery: NewType unwrapping, action arguments, entrypoint
+  scoping** (#21). Traversal read the raw constraints of a NewType, so a union
+  behind one contributed no members. An embedded resource named directly as an
+  action argument was excluded on purpose. Calculation arguments, action
+  arguments, a generic action's `:returns` and a read action's metadata were
+  never walked at all. Discovery now also takes an optional
+  `get_rpc_action_entrypoints` config callback, so a resource exposing only a
+  generic action stops pulling every embedded type off its attributes into the
+  generated output. Ports `ash_typescript` `8a4051f` and `d981ba6`, and the
+  intent of `437901f`; the finer-grained reachability upstream gets from
+  `Ash.Info.Manifest` waits on #23.
+- **Fix return-type and validation-error classification** (#22).
+  `classify_return_type/2` was handed the wrapper rather than the unwrapped
+  type, so a generic action returning a NewType was refused field selection on
+  a shape that supports it; and every `Ash.Type.Struct` carrying `:instance_of`
+  was reported as a resource, including a plain struct with no data layer.
+  `Ash.Type.Duration` is now a primitive. `classify_error_type/2` reads a
+  custom type's interop name off the original type rather than the unwrapped
+  subtype. Ports `ash_typescript` `88783c0`, `618851b`, `ecb1364` and
+  `a74c551`.
 
 ### 0.3.0 — 2026-09-09
 
@@ -73,7 +93,10 @@ dozen other items.
 1. **#23 — adopt `Ash.Info.Manifest`.** Upstream replaced live introspection
    with a precomputed Spark manifest in `ash` 3.32.3. This repo still calls
    `Ash.Resource.Info` at ~66 sites, which is why upstream's type-discovery
-   fixes do not port cleanly. Blocks #19, #20, #21, #22, #24, #25, #26 and more.
+   fixes do not port cleanly. Blocks #19, #20, #24, #25, #26 and more, and
+   carries the remainder of #21: entrypoint scoping here branches on the action
+   kind, where upstream's `Reachability` walks the accepted attributes, loads
+   and relationship depth of each declared action.
 2. **Correctness fixes that need no manifest**: #40 (second `rescue` in
    `process_single_error` has no `catch` clause), #35 (tuple nested selection
    keys its template from the raw wire name), #16 (a list of errors in

@@ -36,6 +36,16 @@ port the rest against the manifest instead of against live introspection.
 Re-porting each fix onto live introspection is the expensive path and it is the
 one we are on until #23 lands.
 
+**A port can now be partial, which is new.** #21 landed the behaviour of
+upstream `437901f` by hand, because upstream's own version of that commit calls
+`Ash.Info.Manifest.Generator.Reachability` and there is nothing here to call.
+Discovery scopes to declared entrypoints by action kind: a read, create, update
+or destroy entrypoint keeps the whole resource in scope, a generic action keeps
+only what it names. Upstream is finer — it walks each action's accepted
+attributes, loads and relationship depth — so this repo still over-discovers
+for a resource whose read action exposes fields no client asks for. A partial
+port reads as a closed issue in the log and is not one; #23 carries the rest.
+
 ### T2 — One consumer, no contract test
 
 **The risk.** `ash_kotlin_multiplatform` depends on `ash_introspection ~> 0.2.0`
@@ -72,7 +82,7 @@ yet and is not on the board.
 **The risk.** `lib/ash_introspection/rpc/` had **zero** test coverage until the
 week of 2026-09-09 (#18). Coverage arrived as regression tests attached to the
 seven fixes shipped in 0.3.0 — one test per fixed bug, not a suite that
-describes the pipeline. `main` is at 281 tests, and whole modules
+describes the pipeline. `main` is at 301 tests, and whole modules
 (`value_formatter.ex`, `field_extractor.ex`, `atomizer.ex`) are still exercised
 only incidentally.
 

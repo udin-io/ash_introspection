@@ -231,6 +231,38 @@ defmodule AshIntrospection.Codegen.ActionIntrospectionTest do
                )
     end
 
+    test "returns typed_map for a NewType wrapping a map with fields" do
+      result =
+        ActionIntrospection.action_returns_field_selectable_type?(get_action(:get_task_stats))
+
+      assert {:ok, :typed_map, fields} = result
+      assert Keyword.has_key?(fields, :is_active?)
+      assert Keyword.has_key?(fields, :task_count)
+      assert Keyword.has_key?(fields, :meta_1)
+    end
+
+    test "returns resource for a NewType wrapping a struct over a resource" do
+      assert {:ok, :resource, AshIntrospection.Test.User} =
+               ActionIntrospection.action_returns_field_selectable_type?(
+                 get_action(:get_featured_user)
+               )
+    end
+
+    test "returns typed_struct for a struct whose instance_of is not a resource" do
+      assert {:ok, :typed_struct, {AshIntrospection.Test.Suggestion, fields}} =
+               ActionIntrospection.action_returns_field_selectable_type?(get_action(:suggest))
+
+      assert Keyword.has_key?(fields, :name)
+      assert Keyword.has_key?(fields, :score)
+    end
+
+    test "returns error for a non-resource struct with no field constraints" do
+      assert {:error, :not_field_selectable_type} =
+               ActionIntrospection.action_returns_field_selectable_type?(
+                 get_action(:opaque_suggestion)
+               )
+    end
+
     test "returns error for primitive return types" do
       assert {:error, :not_field_selectable_type} =
                ActionIntrospection.action_returns_field_selectable_type?(get_action(:get_count))

@@ -19,6 +19,12 @@ defmodule AshIntrospection.Codegen.TypeDiscovery do
     # Required: function to get RPC resources from otp_app
     get_rpc_resources: fn otp_app -> [...] end,
 
+    # Optional: function returning the declared action entrypoints, as
+    # %{resource: module, action: atom} maps or {module, atom} tuples.
+    # Supplying it scopes discovery to those actions; omitting it keeps every
+    # public action and field of every RPC resource in scope.
+    get_rpc_action_entrypoints: fn otp_app -> [...] end,
+
     # Optional: callback name for field names (default: :interop_field_names)
     field_names_callback: :interop_field_names,
 
@@ -49,12 +55,17 @@ defmodule AshIntrospection.Codegen.TypeDiscovery do
   - `{:union_member, :type_name}` - Union member
   - `{:array_items}` - Array items
   - `{:map_field, :field_name}` - Map field
+  - `{:action, :action_name}` - Action
+  - `{:argument, :argument_name}` - Action or calculation argument
+  - `{:metadata, :metadata_name}` - Action metadata
+  - `:returns` - Generic action return type
   """
 
   alias AshIntrospection.TypeSystem.Introspection
 
   @type config :: %{
           optional(:get_rpc_resources) => (atom() -> [module()]),
+          optional(:get_rpc_action_entrypoints) => (atom() -> [map() | {module(), atom()}]),
           optional(:field_names_callback) => atom(),
           optional(:has_language_extension?) => (module() -> boolean()),
           optional(:language_name) => String.t()
@@ -63,9 +74,13 @@ defmodule AshIntrospection.Codegen.TypeDiscovery do
   @doc """
   Finds all Ash resources referenced by RPC resources.
 
-  Recursively scans all public attributes, calculations, and aggregates of RPC resources,
-  traversing complex types like maps with fields, unions, typed structs, etc., to find
-  any Ash resource references.
+  Recursively scans the public attributes, calculations (with their arguments)
+  and aggregates of each entrypoint resource, plus each entrypoint action's
+  arguments, `:returns` type and metadata, traversing complex types like maps
+  with fields, unions and typed structs to find any Ash resource references.
+
+  Entrypoints come from `get_rpc_action_entrypoints` when the config supplies
+  it, and otherwise from `get_rpc_resources` with every public action in scope.
 
   ## Parameters
 
@@ -77,12 +92,10 @@ defmodule AshIntrospection.Codegen.TypeDiscovery do
   A list of unique Ash resource modules that are referenced by RPC resources.
   """
   def scan_rpc_resources(otp_app, config) do
-    get_rpc_resources = Map.fetch!(config, :get_rpc_resources)
-    rpc_resources = get_rpc_resources.(otp_app)
-
-    rpc_resources
-    |> Enum.reduce({[], MapSet.new()}, fn resource, {acc, visited} ->
-      {found, new_visited} = scan_rpc_resource(resource, visited)
+    otp_app
+    |> discovery_entrypoints(config)
+    |> Enum.reduce({[], MapSet.new()}, fn {resource, action_scope}, {acc, visited} ->
+      {found, new_visited} = scan_entrypoint(resource, action_scope, visited)
       {acc ++ found, new_visited}
     end)
     |> elem(0)
@@ -90,8 +103,45 @@ defmodule AshIntrospection.Codegen.TypeDiscovery do
     |> Enum.uniq()
   end
 
+  # Returns `[{resource, action_scope}]` in declaration order, where the scope is
+  # either `:all_actions` or an explicit list of action names.
+  defp discovery_entrypoints(otp_app, config) do
+    case Map.get(config, :get_rpc_action_entrypoints) do
+      nil ->
+        get_rpc_resources = Map.fetch!(config, :get_rpc_resources)
+
+        Enum.map(get_rpc_resources.(otp_app), &{&1, :all_actions})
+
+      get_rpc_action_entrypoints ->
+        pairs =
+          otp_app
+          |> get_rpc_action_entrypoints.()
+          |> Enum.flat_map(&normalize_entrypoint/1)
+
+        by_resource = Enum.group_by(pairs, &elem(&1, 0), &elem(&1, 1))
+
+        pairs
+        |> Enum.map(&elem(&1, 0))
+        |> Enum.uniq()
+        |> Enum.map(fn resource -> {resource, Enum.uniq(by_resource[resource])} end)
+    end
+  end
+
+  defp normalize_entrypoint(%{resource: resource, action: action}), do: [{resource, action}]
+
+  defp normalize_entrypoint({resource, action}) when is_atom(resource) and is_atom(action),
+    do: [{resource, action}]
+
+  defp normalize_entrypoint(_), do: []
+
   @doc """
   Discovers embedded resources from RPC resources by scanning and filtering.
+
+  When `config` carries `get_rpc_action_entrypoints`, only the declared actions
+  are treated as entrypoints: a resource exposing nothing but a generic action
+  contributes only what that action names, not every embedded type hanging off
+  its attributes. Without that key every public action and field of every RPC
+  resource is in scope.
 
   ## Parameters
 
@@ -138,6 +188,11 @@ defmodule AshIntrospection.Codegen.TypeDiscovery do
   @doc """
   Scans a single resource to find all referenced resources.
 
+  Covers the resource's public attributes, calculations (including their
+  arguments) and aggregates, plus every public action's arguments, `:returns`
+  type and metadata. An action is part of a resource's public surface, so a
+  type it names is a type the client has to be able to build or read.
+
   ## Parameters
 
     * `resource` - An Ash resource module
@@ -150,8 +205,100 @@ defmodule AshIntrospection.Codegen.TypeDiscovery do
     * `updated_visited` - Updated MapSet of visited resources
   """
   def scan_rpc_resource(resource, visited \\ MapSet.new()) do
+    scan_entrypoint(resource, :all_actions, visited)
+  end
+
+  defp scan_entrypoint(resource, action_scope, visited) do
     path = [{:root, resource}]
-    find_referenced_resources_with_visited(resource, path, visited)
+    actions = entrypoint_actions(resource, action_scope)
+
+    {field_resources, visited} =
+      if scan_resource_fields?(action_scope, actions) do
+        find_referenced_resources_with_visited(resource, path, visited)
+      else
+        {[], visited}
+      end
+
+    {action_resources, visited} = traverse_actions(actions, path, visited)
+
+    {field_resources ++ action_resources, visited}
+  end
+
+  defp entrypoint_actions(resource, :all_actions) do
+    resource
+    |> Ash.Resource.Info.actions()
+    |> Enum.filter(&Map.get(&1, :public?, true))
+  end
+
+  defp entrypoint_actions(resource, action_names) when is_list(action_names) do
+    action_names
+    |> Enum.map(&Ash.Resource.Info.action(resource, &1))
+    |> Enum.reject(&is_nil/1)
+  end
+
+  # A read, create, update or destroy action hands back the resource itself, so
+  # its attributes, calculations and aggregates are all reachable. A generic
+  # action reaches only what it names.
+  defp scan_resource_fields?(:all_actions, _actions), do: true
+
+  defp scan_resource_fields?(action_names, actions) when is_list(action_names) do
+    Enum.any?(actions, &(&1.type != :action))
+  end
+
+  defp traverse_actions(actions, current_path, visited) do
+    Enum.reduce(actions, {[], visited}, fn action, {acc, visited} ->
+      {found, visited} = traverse_action(action, current_path, visited)
+      {acc ++ found, visited}
+    end)
+  end
+
+  defp traverse_action(action, current_path, visited) do
+    action_path = current_path ++ [{:action, action.name}]
+
+    {argument_resources, visited} =
+      action.arguments
+      |> Enum.filter(&Map.get(&1, :public?, true))
+      |> Enum.reduce({[], visited}, fn argument, {acc, visited} ->
+        {found, visited} =
+          traverse_type_with_visited(
+            argument.type,
+            argument.constraints || [],
+            action_path ++ [{:argument, argument.name}],
+            visited
+          )
+
+        {acc ++ found, visited}
+      end)
+
+    {return_resources, visited} =
+      case Map.get(action, :returns) do
+        nil ->
+          {[], visited}
+
+        returns ->
+          traverse_type_with_visited(
+            returns,
+            Map.get(action, :constraints) || [],
+            action_path ++ [:returns],
+            visited
+          )
+      end
+
+    {metadata_resources, visited} =
+      (Map.get(action, :metadata) || [])
+      |> Enum.reduce({[], visited}, fn metadata, {acc, visited} ->
+        {found, visited} =
+          traverse_type_with_visited(
+            metadata.type,
+            metadata.constraints || [],
+            action_path ++ [{:metadata, metadata.name}],
+            visited
+          )
+
+        {acc ++ found, visited}
+      end)
+
+    {argument_resources ++ return_resources ++ metadata_resources, visited}
   end
 
   @doc """
@@ -295,13 +442,19 @@ defmodule AshIntrospection.Codegen.TypeDiscovery do
   @doc """
   Finds all Ash resources used as struct arguments in RPC actions.
 
-  Scans all RPC actions for arguments with type `:struct` or `Ash.Type.Struct`
-  that have an `instance_of` constraint pointing to an Ash resource.
+  Scans the given actions' public arguments for:
+
+    * `:struct` or `Ash.Type.Struct` with an `instance_of` constraint pointing
+      at an Ash resource,
+    * an embedded resource named directly as the argument's type,
+    * either of the above behind a NewType wrapper or an array.
+
+  Embedded resources are included. A generator that skipped them produced no
+  type for an argument a client has to construct.
 
   ## Parameters
 
-    * `otp_app` - The OTP application name
-    * `config` - Configuration map with `get_rpc_action_info`
+    * `actions` - A list of action structs to scan
 
   ## Returns
 
@@ -327,32 +480,28 @@ defmodule AshIntrospection.Codegen.TypeDiscovery do
   end
 
   defp find_struct_resources_in_type(type, constraints) do
-    case type do
-      Ash.Type.Struct ->
+    {type, constraints} = Introspection.unwrap_new_type(type, constraints)
+
+    cond do
+      match?({:array, _}, type) ->
+        {:array, inner_type} = type
+        find_struct_resources_in_type(inner_type, Keyword.get(constraints, :items, []))
+
+      # An embedded resource is a type in its own right, so an argument can name
+      # it directly rather than going through `Ash.Type.Struct`.
+      Introspection.is_embedded_resource?(type) ->
+        [type]
+
+      type in [Ash.Type.Struct, :struct] ->
         instance_of = Keyword.get(constraints, :instance_of)
 
-        if instance_of && Spark.Dsl.is?(instance_of, Ash.Resource) &&
-             !Introspection.is_embedded_resource?(instance_of) do
+        if instance_of && Spark.Dsl.is?(instance_of, Ash.Resource) do
           [instance_of]
         else
           []
         end
 
-      :struct ->
-        instance_of = Keyword.get(constraints, :instance_of)
-
-        if instance_of && Spark.Dsl.is?(instance_of, Ash.Resource) &&
-             !Introspection.is_embedded_resource?(instance_of) do
-          [instance_of]
-        else
-          []
-        end
-
-      {:array, inner_type} ->
-        items_constraints = Keyword.get(constraints, :items, [])
-        find_struct_resources_in_type(inner_type, items_constraints)
-
-      _ ->
+      true ->
         []
     end
   end
@@ -440,6 +589,10 @@ defmodule AshIntrospection.Codegen.TypeDiscovery do
   defp format_path_segment({:union_member, name}), do: "(union member: #{name})"
   defp format_path_segment(:array_items), do: "[]"
   defp format_path_segment({:map_field, name}), do: to_string(name)
+  defp format_path_segment({:action, name}), do: "(action: #{name})"
+  defp format_path_segment({:argument, name}), do: "(argument: #{name})"
+  defp format_path_segment({:metadata, name}), do: "(metadata: #{name})"
+  defp format_path_segment(:returns), do: "(returns)"
 
   defp format_path_segment({:relationship_path, names}) do
     "(via relationships: #{Enum.join(names, " -> ")})"
@@ -594,10 +747,26 @@ defmodule AshIntrospection.Codegen.TypeDiscovery do
         Enum.reduce(calculations, {[], visited}, fn calc, {acc, visited} ->
           calc_path = current_path ++ [{:calculation, calc.name}]
 
-          {found, new_visited} =
+          {found, visited} =
             traverse_type_with_visited(calc.type, calc.constraints || [], calc_path, visited)
 
-          {acc ++ found, new_visited}
+          # A calculation argument is client-supplied, so its type needs
+          # generating even when nothing else in the resource mentions it.
+          {argument_found, visited} =
+            (Map.get(calc, :arguments) || [])
+            |> Enum.reduce({[], visited}, fn argument, {arg_acc, visited} ->
+              {found, visited} =
+                traverse_type_with_visited(
+                  argument.type,
+                  argument.constraints || [],
+                  calc_path ++ [{:argument, argument.name}],
+                  visited
+                )
+
+              {arg_acc ++ found, visited}
+            end)
+
+          {acc ++ found ++ argument_found, visited}
         end)
 
       {aggregate_resources, visited} =
@@ -634,6 +803,11 @@ defmodule AshIntrospection.Codegen.TypeDiscovery do
 
   defp traverse_type_with_visited(type, constraints, current_path, visited)
        when is_list(constraints) do
+    # A NewType keeps its own constraints, so the wrapper's raw constraints are
+    # empty and every `:types`, `:fields` and `:instance_of` below would read as
+    # missing. Unwrap before matching on the type.
+    {type, constraints} = Introspection.unwrap_new_type(type, constraints)
+
     case type do
       {:array, inner_type} ->
         items_constraints = Keyword.get(constraints, :items, [])
