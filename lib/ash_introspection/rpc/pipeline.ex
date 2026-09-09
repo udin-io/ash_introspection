@@ -38,6 +38,32 @@ defmodule AshIntrospection.Rpc.Pipeline do
 
   This allows each language generator to customize the behavior while
   sharing the core pipeline logic.
+
+  ## Action metadata
+
+  `Request.show_metadata` names the metadata fields stage 3 extracts, and this
+  pipeline extracts exactly what it is given. **Deciding which metadata fields
+  a client may ask for is the caller's job, not this pipeline's.** There is no
+  parse stage here — `parse_request/3` lives in the language-specific wrapper
+  — so nothing in this library filters a client-supplied field list against
+  the action's declaration. A wrapper that passes client input into
+  `show_metadata` unfiltered lets a client read any metadata field the action
+  declares. `ash_kotlin_multiplatform` does filter, in
+  `AshKotlinMultiplatform.Rpc.Runner`: `dsl_metadata_fields/2` reads the
+  allowlist off the RPC DSL and `narrow_metadata_fields/2` intersects the
+  client's request with it, so a client can only narrow, never widen. Upstream
+  `ash_typescript` puts the same check in its own parse stage.
+
+  Each extracted value is formatted once, by the type its action declared for
+  it, and the response envelope then formats only the top-level metadata name.
+  A metadata field declared as an unconstrained `:map` is an explicit opt-out
+  of typing: its keys are the caller's and reach the client verbatim.
+
+  That guarantee holds on `format_output_with_request/3`, which has the request
+  and therefore the types. `format_output/2` has neither, so it falls back to
+  formatting every key it can reach — including the keys inside an
+  unconstrained map. A wrapper that wants type-correct output has to call
+  `format_output_with_request/3`.
   """
 
   alias AshIntrospection.{ErrorFormatter, FieldFormatter}
@@ -687,7 +713,16 @@ defmodule AshIntrospection.Rpc.Pipeline do
         base_response
 
       meta when is_map(meta) ->
-        formatted_metadata = FieldFormatter.format_output_field_names(meta, formatter)
+        # Only the top-level metadata names are formatted here. The values
+        # arrived from `extract_metadata_fields/4` already formatted by their
+        # declared type, and formatting them again would undo that: a typed
+        # value pinned to the client name `_rev` becomes `rev`, and the keys of
+        # an unconstrained `:map` — an explicit opt-out of typing — get
+        # renamed out from under the caller who wrote them.
+        formatted_metadata =
+          Map.new(meta, fn {key, value} ->
+            {FieldFormatter.format_field_name(key, formatter), value}
+          end)
 
         Map.put(
           base_response,
@@ -723,30 +758,30 @@ defmodule AshIntrospection.Rpc.Pipeline do
   end
 
   defp format_resource_output(data, resource, formatter, config) do
-    value_formatter_config = %{
-      input_field_formatter: Map.get(config, :input_field_formatter, :camel_case),
-      output_field_formatter: formatter,
-      field_names_callback: Map.get(config, :field_names_callback, :interop_field_names),
-      get_original_field_name: Map.get(config, :get_original_field_name),
-      format_field_for_client: Map.get(config, :format_field_for_client)
-    }
-
-    ValueFormatter.format(data, resource, [], :output, value_formatter_config)
+    ValueFormatter.format(data, resource, [], :output, value_formatter_config(formatter, config))
   end
 
   defp format_generic_action_output(data, action, formatter, config) do
     return_type = action.returns
     constraints = action.constraints || []
 
-    value_formatter_config = %{
+    ValueFormatter.format(
+      data,
+      return_type,
+      constraints,
+      :output,
+      value_formatter_config(formatter, config)
+    )
+  end
+
+  defp value_formatter_config(formatter, config) do
+    %{
       input_field_formatter: Map.get(config, :input_field_formatter, :camel_case),
       output_field_formatter: formatter,
       field_names_callback: Map.get(config, :field_names_callback, :interop_field_names),
       get_original_field_name: Map.get(config, :get_original_field_name),
       format_field_for_client: Map.get(config, :format_field_for_client)
     }
-
-    ValueFormatter.format(data, return_type, constraints, :output, value_formatter_config)
   end
 
   # ---------------------------------------------------------------------------
@@ -836,7 +871,7 @@ defmodule AshIntrospection.Rpc.Pipeline do
   # Metadata Helpers
   # ---------------------------------------------------------------------------
 
-  defp add_metadata(filtered_result, original_result, %Request{} = request, _config) do
+  defp add_metadata(filtered_result, original_result, %Request{} = request, config) do
     if Enum.empty?(request.show_metadata) do
       filtered_result
     else
@@ -845,14 +880,18 @@ defmodule AshIntrospection.Rpc.Pipeline do
           add_read_metadata(
             filtered_result,
             original_result,
-            request.show_metadata
+            request.show_metadata,
+            request.action,
+            config
           )
 
         action_type when action_type in [:create, :update, :destroy] ->
           add_mutation_metadata(
             filtered_result,
             original_result,
-            request.show_metadata
+            request.show_metadata,
+            request.action,
+            config
           )
 
         _ ->
@@ -861,58 +900,89 @@ defmodule AshIntrospection.Rpc.Pipeline do
     end
   end
 
-  defp add_read_metadata(filtered_result, original_result, show_metadata)
+  defp add_read_metadata(filtered_result, original_result, show_metadata, action, config)
        when is_list(filtered_result) do
     if is_list(original_result) do
       Enum.zip(filtered_result, original_result)
       |> Enum.map(fn {filtered_record, original_record} ->
-        do_add_read_metadata(filtered_record, original_record, show_metadata)
+        do_add_read_metadata(filtered_record, original_record, show_metadata, action, config)
       end)
     else
       filtered_result
     end
   end
 
-  defp add_read_metadata(filtered_result, original_result, show_metadata)
+  defp add_read_metadata(filtered_result, original_result, show_metadata, action, config)
        when is_map(filtered_result) do
     if Map.has_key?(filtered_result, :results) do
       updated_results =
         Enum.zip(filtered_result[:results] || [], original_result.results)
         |> Enum.map(fn {filtered_record, original_record} ->
-          do_add_read_metadata(filtered_record, original_record, show_metadata)
+          do_add_read_metadata(filtered_record, original_record, show_metadata, action, config)
         end)
 
       Map.put(filtered_result, :results, updated_results)
     else
-      do_add_read_metadata(filtered_result, original_result, show_metadata)
+      do_add_read_metadata(filtered_result, original_result, show_metadata, action, config)
     end
   end
 
-  defp add_read_metadata(filtered_result, _original_result, _show_metadata) do
+  defp add_read_metadata(filtered_result, _original_result, _show_metadata, _action, _config) do
     filtered_result
   end
 
-  defp do_add_read_metadata(filtered_record, original_record, show_metadata)
+  defp do_add_read_metadata(filtered_record, original_record, show_metadata, action, config)
        when is_map(filtered_record) do
     metadata_map = Map.get(original_record, :__metadata__, %{})
-    extracted_metadata = extract_metadata_fields(metadata_map, show_metadata)
+    extracted_metadata = extract_metadata_fields(metadata_map, show_metadata, action, config)
     Map.merge(filtered_record, extracted_metadata)
   end
 
-  defp do_add_read_metadata(filtered_record, _original_record, _show_metadata) do
+  defp do_add_read_metadata(filtered_record, _original_record, _show_metadata, _action, _config) do
     filtered_record
   end
 
-  defp add_mutation_metadata(filtered_result, original_result, show_metadata) do
+  defp add_mutation_metadata(filtered_result, original_result, show_metadata, action, config) do
     metadata_map = Map.get(original_result, :__metadata__, %{})
-    extracted_metadata = extract_metadata_fields(metadata_map, show_metadata)
+    extracted_metadata = extract_metadata_fields(metadata_map, show_metadata, action, config)
     %{data: filtered_result, metadata: extracted_metadata}
   end
 
-  defp extract_metadata_fields(metadata_map, show_metadata) do
+  # Each metadata value is formatted by the type its action declared for it, the
+  # same type-driven dispatch attributes and calculations go through. That is
+  # the only place the value can be formatted correctly, because it is the only
+  # place the type is known: a metadata name is not an attribute, so stage 4
+  # looks it up on the resource, finds nothing and hands the value back
+  # untouched. Formatting here means stage 4 must not format these values a
+  # second time — see `format_output_data/4`.
+  #
+  # Keys stay internal atoms. Stage 4 formats the top-level metadata name, once.
+  defp extract_metadata_fields(metadata_map, show_metadata, action, config) do
+    metadata_defs = Map.get(action, :metadata) || []
+    formatter = Map.get(config, :output_field_formatter, :camel_case)
+    value_config = value_formatter_config(formatter, config)
+
     Enum.reduce(show_metadata, %{}, fn metadata_field, acc ->
-      Map.put(acc, metadata_field, Map.get(metadata_map, metadata_field))
+      {type, constraints} = metadata_field_type(metadata_defs, metadata_field)
+      value = Map.get(metadata_map, metadata_field)
+
+      Map.put(
+        acc,
+        metadata_field,
+        ValueFormatter.format(value, type, constraints, :output, value_config)
+      )
     end)
+  end
+
+  # A metadata field the action does not declare formats as `nil`, which
+  # `ValueFormatter.format/5` passes through unchanged. That is the same answer
+  # an unconstrained `:map` gets, and it is the right one: with no declared type
+  # there is nothing to format the value by.
+  defp metadata_field_type(metadata_defs, field_name) do
+    case Enum.find(metadata_defs, &(Map.get(&1, :name) == field_name)) do
+      nil -> {nil, []}
+      definition -> {Map.get(definition, :type), Map.get(definition, :constraints) || []}
+    end
   end
 
   # ---------------------------------------------------------------------------

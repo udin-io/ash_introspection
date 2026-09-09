@@ -119,6 +119,26 @@ only a module with a `.beam` file on disk can be loaded back. Unloading is
 global to the VM, so such a file is `async: false`. See
 `test/ash_introspection/lazy_module_loading_test.exs`.
 
+### A casing assertion cannot see double formatting
+
+**Symptom.** You suspect a value is being formatted twice, write a test that
+asserts the final key casing, and it passes against both the buggy and the
+fixed code.
+
+**Why.** `FieldFormatter.format_field_name/2` is idempotent for ordinary
+names: `changed_by` camelizes to `changedBy`, and `changedBy` is already
+camelCase so a second pass returns it unchanged. The same holds for digits and
+leading underscores — `_id` and `field_1_name` both settle after one pass
+(measured 2026-09-09 across `_id`, `_type`, `_created_at`, `field_1_name`,
+`meta_1`, `a__b`, `id_`, `http_url`, `v2_token`). So a double-formatting bug is
+invisible to a casing assertion.
+
+**What we do.** Reach for a name the formatter cannot derive. A NewType with
+`interop_field_names/0` pins its client names, and a pinned name that is not
+camelCase changes under a second pass: `AshIntrospection.Test.RevisionInfo`
+maps `:revision` to `_rev`, which a second camelization rewrites to `rev`. See
+`test/ash_introspection/rpc/pipeline_metadata_formatting_test.exs`.
+
 ### The `Test.Account` suite flakes on a torn-down ETS table
 
 **Symptom.** Roughly one full `mix test` run in twelve fails on `main` with no
@@ -245,7 +265,7 @@ mix hex.audit
 mix deps.audit
 ```
 
-`main` is at **281 tests, 0 failures**. A pull request that changes that number
+`main` is at **309 tests, 0 failures**. A pull request that changes that number
 downward, or that leaves a compiler warning, is not finished. Never suppress a
 warning — fix the cause.
 

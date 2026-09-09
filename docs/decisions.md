@@ -13,6 +13,54 @@ recorded nowhere in the repo. This page replaces ADRs; there is no `adr/`
 directory here and none should be created. A decision that no longer shapes the
 code is deleted, not archived, because git keeps the history.
 
+## 2026-09-09 — The metadata allowlist stays with the caller
+
+**Decided.** This pipeline extracts exactly the metadata fields
+`Request.show_metadata` names. Deciding **which** fields a client may ask for
+was left out on purpose. Issue #20.
+
+**Why.** There is nothing here to hang it on. Upstream `ash_typescript`
+filters the requested list in its parse stage; this library has no parse
+stage, because `parse_request/3` lives in each language-specific wrapper.
+Building one to hold a single check would duplicate a stage that already
+exists downstream, and `ash_kotlin_multiplatform`'s `Rpc.Runner` already has
+the check: `dsl_metadata_fields/2` reads the allowlist off the RPC DSL and
+`narrow_metadata_fields/2` intersects the client's request with it, so a
+client can only narrow, never widen.
+
+**Cost.** A responsibility that is documented rather than enforced. A future
+wrapper that pipes client input into `Request.show_metadata` unfiltered
+exposes every metadata field its actions declare, and nothing here stops it or
+says so at compile time. The "Action metadata" section of `Rpc.Pipeline`'s
+`@moduledoc` names the obligation; that is the whole of the enforcement.
+
+## 2026-09-09 — Metadata is formatted by its declared type
+
+**Decided.** An action's metadata values are formatted once, at extraction, by
+the type the action declared for them — the same `ValueFormatter` dispatch an
+attribute goes through. The response envelope then formats the top-level
+metadata name and nothing below it. A metadata field declared as an
+unconstrained `:map` reaches the client verbatim. Issue #20.
+
+**Why.** The type is only knowable at extraction. A metadata name is not an
+attribute, so the stage-4 resource lookup finds nothing and passes the value
+through — which is how a typed map's nested keys reached the client in
+snake_case inside a camelCase response. Moving the formatting to where the
+declaration is readable fixes that, and it forces the envelope to stop
+recursing, because formatting a value twice is not idempotent in general: a
+field pinned to the client name `_rev` came out as `rev`.
+
+Unconstrained maps are excluded because declaring `:map` with no field
+constraints is a statement, not an omission. The caller said the shape is not
+the type system's business; renaming its keys contradicts that, and the keys
+that get renamed — `_id`, `_rev`, anything with a leading underscore — are
+exactly the wire names a client cannot reconstruct.
+
+**Cost.** The guarantee is narrower than the pipeline's output surface. It
+holds on `format_output_with_request/3`, which has the types, and not on
+`format_output/2`, which does not — and `format_output/2` is what
+`ash_kotlin_multiplatform` calls. See risk T4 in [risks.md](risks.md).
+
 ## 2026-09-09 — `identity` is an update/destroy key; reads reject it
 
 **Decided.** A read action carrying `identity` fails with

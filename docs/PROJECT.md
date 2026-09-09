@@ -32,8 +32,8 @@ the `mix ash_introspection.upgrade` codemod task.
 |---|---|---|
 | [architecture.md](architecture.md) | What the pieces are, who calls what, which modules the consumer actually uses | Current as of 0.3.0 |
 | [roadmap.md](roadmap.md) | What shipped, what is open with ticket numbers, what is next, what was declined | Current as of 0.3.0; 19 issues open |
-| [risks.md](risks.md) | What could go wrong, what we watch, what we would do | 3 live technical risks, 1 operational, 1 product |
-| [decisions.md](decisions.md) | The choices that still shape the library, dated, with what each cost | 6 entries, latest 2026-09-09 |
+| [risks.md](risks.md) | What could go wrong, what we watch, what we would do | 4 live technical risks, 1 operational, 1 product |
+| [decisions.md](decisions.md) | The choices that still shape the library, dated, with what each cost | 9 entries, latest 2026-09-09 |
 
 ## Keeping this current
 
