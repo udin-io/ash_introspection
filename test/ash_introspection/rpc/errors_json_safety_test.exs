@@ -25,6 +25,11 @@ defmodule AshIntrospection.Rpc.ErrorsJsonSafetyTest do
 
   alias AshIntrospection.Rpc.Errors
 
+  # Encodability is asserted with Jason, not the stdlib `JSON` module. `mix.exs`
+  # declares `elixir: "~> 1.15"` and `JSON` only exists from 1.18, so `JSON` here
+  # would fail to compile on a supported version. Ash depends on Jason
+  # non-optionally, so it is always available.
+
   @secret "sk_live_do_not_disclose"
 
   defmodule Envelope do
@@ -96,7 +101,7 @@ defmodule AshIntrospection.Rpc.ErrorsJsonSafetyTest do
           )
         end)
 
-      assert is_binary(JSON.encode!(response))
+      assert is_binary(Jason.encode!(response))
       refute leaks_secret?(response)
     end
   end
@@ -145,7 +150,7 @@ defmodule AshIntrospection.Rpc.ErrorsJsonSafetyTest do
     test "encodes the whole payload as JSON" do
       [response] = to_errors(error(vars: [pair: {:timeout, 500}, at: ~U[2026-02-14 01:02:03Z]]))
 
-      assert is_binary(JSON.encode!(response))
+      assert is_binary(Jason.encode!(response))
     end
   end
 
