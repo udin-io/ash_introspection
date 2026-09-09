@@ -246,15 +246,7 @@ defmodule AshIntrospection.Rpc.Errors do
     end
     """)
 
-    %{
-      message: "Something went wrong. Unique error id: #{uuid}",
-      short_message: "Internal error",
-      code: "internal_error",
-      vars: %{},
-      fields: [],
-      path: Map.get(error, :path, []),
-      error_id: uuid
-    }
+    generic_internal_error(uuid, Map.get(error, :path, []))
   end
 
   defp handle_unimplemented_error(error, _show_raised_errors?) do
@@ -266,15 +258,7 @@ defmodule AshIntrospection.Rpc.Errors do
     Error: #{inspect(error)}
     """)
 
-    %{
-      message: "Something went wrong. Unique error id: #{uuid}",
-      short_message: "Internal error",
-      code: "internal_error",
-      vars: %{},
-      fields: [],
-      path: [],
-      error_id: uuid
-    }
+    generic_internal_error(uuid, [])
   end
 
   defp fallback_error_response(error, _show_raised_errors?) when is_exception(error) do
