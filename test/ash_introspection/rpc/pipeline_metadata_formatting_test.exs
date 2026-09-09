@@ -7,14 +7,17 @@ defmodule AshIntrospection.Rpc.PipelineMetadataFormattingTest do
   Pins how action metadata reaches the client: formatted exactly once, and by
   the type the action declared for it.
 
-  Two failures lived here, both found in #20 against upstream `ash_typescript`
-  (`8a05642`, `9e5d05a`):
+  Three failures lived here, all found in #20 against upstream `ash_typescript`
+  (`8a05642`, `9e5d05a`, `919e817`):
 
   - The read path merged metadata into the record raw, so the nested keys of a
     typed-map metadata value arrived in snake_case inside a response that was
     camelCase everywhere else.
   - The mutation path camelized the whole metadata map recursively, so a value
     the type system had already formatted was formatted a second time.
+  - That same recursion renamed the keys inside an unconstrained `:map`. An
+    unconstrained map is an explicit opt-out of typing: its keys belong to
+    whoever wrote them and no formatter may touch them.
 
   `AshIntrospection.Test.RevisionInfo` is what makes a second formatting pass
   visible. Camelizing `changedBy` yields `changedBy` again, so double
@@ -33,6 +36,16 @@ defmodule AshIntrospection.Rpc.PipelineMetadataFormattingTest do
   alias AshIntrospection.Test.MetadataDomain
 
   @show_metadata [:audit_entry, :revision_info, :raw_audit]
+
+  # The unconstrained map the fixture's actions hand back, verbatim. Its keys
+  # are the caller's: a leading underscore, a snake_case word, and a nested map
+  # carrying both. Every one of them is a key the camel-case formatter would
+  # rewrite if it were allowed to.
+  @raw_audit %{
+    "_id" => "audit-1",
+    "field_name" => "title",
+    "nested" => %{"_rev" => "rev-7", "changed_by" => "ops-team"}
+  }
 
   defp request(overrides) do
     %{
@@ -112,6 +125,29 @@ defmodule AshIntrospection.Rpc.PipelineMetadataFormattingTest do
     test "only the metadata fields the request asked for reach the client" do
       assert ["revisionInfo"] ==
                Map.keys(mutation_metadata(%{show_metadata: [:revision_info]}))
+    end
+  end
+
+  describe "unconstrained maps" do
+    test "a read leaves the keys of an unconstrained map metadata value alone" do
+      %{"data" => data} = read_response()
+
+      assert @raw_audit == data["rawAudit"]
+    end
+
+    test "a mutation leaves the keys of an unconstrained map metadata value alone" do
+      assert @raw_audit == mutation_metadata()["rawAudit"]
+    end
+
+    test "a generic action returning an unconstrained map hands its keys back" do
+      assert %{"data" => @raw_audit} =
+               request(%{
+                 action: Ash.Resource.Info.action(AuditedRecord, :raw_payload),
+                 select: [],
+                 extraction_template: [],
+                 show_metadata: []
+               })
+               |> response()
     end
   end
 end
