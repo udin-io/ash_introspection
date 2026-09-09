@@ -15,6 +15,17 @@ which come first. Numbers in parentheses are GitHub issues on
 
 ## Shipped
 
+### Unreleased
+
+- **Guard every consumer-module callback check with `Code.ensure_loaded?/1`**
+  (#49). `function_exported?/3` answers `false` for a module the VM has not
+  loaded, and Elixir loads lazily, so a domain, resource or type nothing had
+  touched silently lost its configuration — a cold VM behaved differently
+  from a warm one. Nine call sites across `Rpc.Errors`, `Rpc.ResultProcessor`,
+  `Rpc.FieldProcessing.Atomizer`, `Rpc.FieldProcessing.FieldSelector`,
+  `TypeSystem.Introspection` and `Codegen.TypeDiscovery` are now guarded. One
+  remains, in `Rpc.Pipeline`; #44 owns that file.
+
 ### 0.3.0 — 2026-09-09
 
 A security release, then the breaking change it forced. Every entry below is a
@@ -54,8 +65,7 @@ dozen other items.
    with a precomputed Spark manifest in `ash` 3.32.3. This repo still calls
    `Ash.Resource.Info` at ~66 sites, which is why upstream's type-discovery
    fixes do not port cleanly. Blocks #19, #20, #21, #22, #24, #25, #26 and more.
-2. **Correctness fixes that need no manifest**: #49 (bare
-   `function_exported?/3` gives a false negative on a cold VM), #40 (second
+2. **Correctness fixes that need no manifest**: #40 (second
    `rescue` in `process_single_error` has no `catch` clause), #44 (reads
    silently ignore the `identity` param), #35 (tuple nested selection keys its
    template from the raw wire name), #16 (a list of errors in

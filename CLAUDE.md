@@ -94,11 +94,22 @@ between a warm and a cold VM. A test only reaches the branch after calling
 for a module the VM has not loaded yet, so a consumer's domain or type that has
 not been touched in the current process silently takes the fallback path.
 
-**What we do.** Every check against a module we did not write is guarded.
-`lib/ash_introspection/type_system/introspection.ex` does it correctly at lines
-276, 352, 464, 507 and 537. Issue #49 tracks one site that does not
-(`Errors.get_show_raised_errors?/2`); grep for bare `function_exported?/3`
-before adding another.
+**What we do.** Every check against a module we did not write is guarded. #49
+swept the library and guarded nine sites across `Rpc.Errors`,
+`Rpc.ResultProcessor`, `Rpc.FieldProcessing.Atomizer`,
+`Rpc.FieldProcessing.FieldSelector`, `TypeSystem.Introspection` and
+`Codegen.TypeDiscovery`. Grep for bare `function_exported?/3` before adding
+another; `grep -rn 'function_exported?' lib | grep -v 'Code.ensure_loaded?'`
+should print only continuation lines of guarded expressions.
+
+**Testing it.** A test that calls `Code.ensure_loaded!/1` to reach the branch
+proves nothing — it loads the module and hides the bug. Unload the module
+first (`:code.purge/1`, `:code.delete/1`, `:code.purge/1`), assert
+`refute :erlang.module_loaded(module)`, then call the public function. The
+module must be defined in `test/support/*.ex` and not inline in the `.exs`:
+only a module with a `.beam` file on disk can be loaded back. Unloading is
+global to the VM, so such a file is `async: false`. See
+`test/ash_introspection/lazy_module_loading_test.exs`.
 
 ### No stdlib `JSON`: `mix.exs` declares `elixir: "~> 1.15"`
 
@@ -170,7 +181,7 @@ at the top of every `.ex`, `.exs` and `.md` file. Markdown uses an HTML comment.
 
 ### The consumer is not covered by anything here
 
-**Symptom.** A change passes 255 tests here and breaks
+**Symptom.** A change passes 274 tests here and breaks
 `ash_kotlin_multiplatform`.
 
 **Why.** `ash_kotlin_multiplatform` calls `AshIntrospection` at 35 sites across
@@ -197,7 +208,7 @@ mix hex.audit
 mix deps.audit
 ```
 
-`main` is at **255 tests, 0 failures**. A pull request that changes that number
+`main` is at **274 tests, 0 failures**. A pull request that changes that number
 downward, or that leaves a compiler warning, is not finished. Never suppress a
 warning — fix the cause.
 
