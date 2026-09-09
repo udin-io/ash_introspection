@@ -15,6 +15,10 @@ defmodule AshIntrospection.Rpc.PipelineIdentityBooleanTest do
   and `execute_destroy_action/3` (reads use `get_by`), so these tests exercise
   those two against three accounts that differ only in `:active` — `false`,
   `true` and `nil` — and assert which record changed and which did not.
+
+  Since #44 a genuinely `nil` identity value is rejected rather than compiled
+  to `active == nil`, so the `false`/`nil` distinction is now enforced from
+  both sides.
   """
   use ExUnit.Case, async: false
 
@@ -113,18 +117,31 @@ defmodule AshIntrospection.Rpc.PipelineIdentityBooleanTest do
                emails(ctx)
     end
 
-    test "an identity value of nil never resolves the false record", %{name: name} = ctx do
-      # `false` and `nil` must not be interchangeable. A nil identity value
-      # compiles to `active == nil`, which Ash evaluates as unknown and so
-      # matches no record — that is a separate concern from this fix, and the
-      # point here is only that it does not reach the `active: false` account.
-      assert {:error, %Ash.Error.Query.NotFound{}} =
+    test "an identity value of nil is rejected and changes nothing", %{name: name} = ctx do
+      # `false` and `nil` must not be interchangeable. Until #44 a nil value
+      # compiled to `active == nil`, which Ash evaluates as unknown, so the
+      # update failed as `NotFound` — an answer that reads as "no such record"
+      # when the real fault is an identity that cannot name one.
+      assert {:error, {:invalid_identity, %{message: message}}} =
                Pipeline.execute_ash_action(
                  update_request(%{name: name, active: nil}, %{email: "renamed@example.com"})
                )
 
+      assert message =~ "null"
+      assert message =~ "active"
+
       assert %{inactive: ctx.inactive.email, active: ctx.active.email, unset: ctx.unset.email} ==
                emails(ctx)
+    end
+
+    test "a nil identity value is rejected on destroy too and destroys nothing",
+         %{name: name} = ctx do
+      assert {:error, {:invalid_identity, %{message: _}}} =
+               Pipeline.execute_ash_action(destroy_request(%{name: name, active: nil}))
+
+      assert Ash.get!(Account, ctx.inactive.id)
+      assert Ash.get!(Account, ctx.active.id)
+      assert Ash.get!(Account, ctx.unset.id)
     end
   end
 
