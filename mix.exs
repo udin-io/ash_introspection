@@ -5,7 +5,7 @@
 defmodule AshIntrospection.MixProject do
   use Mix.Project
 
-  @version "0.2.0"
+  @version "0.3.0"
 
   @description """
   Shared core library for Ash interoperability with multiple languages.
@@ -60,6 +60,7 @@ defmodule AshIntrospection.MixProject do
         "Error Handling": [
           AshIntrospection.Rpc.Error,
           AshIntrospection.Rpc.ErrorBuilder,
+          AshIntrospection.ErrorFormatter,
           AshIntrospection.Rpc.Errors,
           AshIntrospection.Rpc.DefaultErrorHandler
         ],

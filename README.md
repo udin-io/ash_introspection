@@ -11,20 +11,31 @@ SPDX-License-Identifier: MIT
 [![Hex version badge](https://img.shields.io/hexpm/v/ash_introspection.svg)](https://hex.pm/packages/ash_introspection)
 [![Hexdocs badge](https://img.shields.io/badge/docs-hexdocs-purple)](https://hexdocs.pm/ash_introspection)
 
-> **Alpha Software**: This library is under active development. APIs may change without notice between versions. Use in production at your own risk.
+> **Alpha Software**: This library is under active development. APIs may change
+> without notice between versions. Use in production at your own risk.
 
 **Shared core library for Ash interoperability with multiple languages**
 
-AshIntrospection provides the foundational modules used by language-specific generators like [AshTypescript](https://github.com/ash-project/ash_typescript) and AshKotlinMultiplatform. It enables seamless RPC communication between Elixir/Ash backends and clients in TypeScript, Kotlin, Swift, and other languages.
+AshIntrospection provides the foundational modules used by language-specific
+generators like [AshTypescript](https://github.com/ash-project/ash_typescript)
+and AshKotlinMultiplatform. It enables seamless RPC communication between
+Elixir/Ash backends and clients in TypeScript, Kotlin, Swift, and other
+languages.
 
 ## Features
 
-- **Unified Type Introspection** - Consistent type classification and analysis across all Ash types
-- **Language-Agnostic RPC Pipeline** - Execute Ash actions with field selection, filtering, and pagination
-- **Bidirectional Field Name Mapping** - Convert between snake_case (Elixir) and camelCase (clients)
-- **Type-Driven Value Formatting** - Format values based on their Ash types for input/output
-- **Comprehensive Error Handling** - Standardized error responses with field paths and interpolation
-- **Code Generation Utilities** - Type discovery, action introspection, and validation error classification
+- **Unified Type Introspection** - Consistent type classification and analysis
+  across all Ash types
+- **Language-Agnostic RPC Pipeline** - Execute Ash actions with field selection,
+  filtering, and pagination
+- **Bidirectional Field Name Mapping** - Convert between snake_case (Elixir) and
+  camelCase (clients)
+- **Type-Driven Value Formatting** - Format values based on their Ash types for
+  input/output
+- **Comprehensive Error Handling** - Standardized error responses with field
+  paths and interpolation
+- **Code Generation Utilities** - Type discovery, action introspection, and
+  validation error classification
 
 ## Installation
 
@@ -33,10 +44,22 @@ Add to your `mix.exs`:
 ```elixir
 def deps do
   [
-    {:ash_introspection, "~> 0.2"}
+    {:ash_introspection, "~> 0.3"}
   ]
 end
 ```
+
+### Upgrading
+
+Breaking releases ship a codemod. After bumping the version, run:
+
+```
+mix igniter.upgrade ash_introspection
+```
+
+It rewrites what it can decide safely and prints the shapes it cannot, so the
+search left to you is short. [CHANGELOG.md](CHANGELOG.md) says what each
+release breaks.
 
 ## Architecture Overview
 
@@ -150,7 +173,8 @@ The RPC pipeline executes Ash actions in four stages:
 
 ### Stage 1: Parse Request (Language-Specific)
 
-Implemented by each language generator. Parses and validates client input, builds the `Request` struct.
+Implemented by each language generator. Parses and validates client input,
+builds the `Request` struct.
 
 ### Stage 2: Execute Ash Action
 
@@ -158,7 +182,8 @@ Implemented by each language generator. Parses and validates client input, build
 {:ok, result} = AshIntrospection.Rpc.Pipeline.execute_ash_action(request, config)
 ```
 
-Executes read, create, update, destroy, or generic actions with proper authorization.
+Executes read, create, update, destroy, or generic actions with proper
+authorization.
 
 ### Stage 3: Process Result
 
@@ -236,7 +261,8 @@ end
 
 ## Type-Driven Dispatch
 
-Many modules use a unified dispatch pattern based on `{type, constraints}` tuples:
+Many modules use a unified dispatch pattern based on `{type, constraints}`
+tuples:
 
 ```elixir
 # ValueFormatter dispatches based on type
@@ -249,7 +275,8 @@ ResultProcessor.process(result, template, resource, config)
 FieldSelector.process(fields, resource, action, config)
 ```
 
-This makes types self-describing and enables consistent handling across all modules.
+This makes types self-describing and enables consistent handling across all
+modules.
 
 ## Code Generation Utilities
 
@@ -318,7 +345,8 @@ classifications = ValidationErrorTypes.classify_action_input_errors(resource, ac
 
 # Integrating a New Language
 
-This section guides you through creating a new language generator (e.g., AshKotlin, AshSwift, AshGo) using AshIntrospection.
+This section guides you through creating a new language generator (e.g.,
+AshKotlin, AshSwift, AshGo) using AshIntrospection.
 
 ## Overview
 
@@ -348,7 +376,7 @@ defmodule AshKotlin.MixProject do
   defp deps do
     [
       {:ash, "~> 3.0"},
-      {:ash_introspection, "~> 0.2"},
+      {:ash_introspection, "~> 0.3"},
       {:spark, "~> 2.0"}
     ]
   end
@@ -722,6 +750,8 @@ This project is licensed under the MIT License.
 
 ## Support
 
-- **Documentation**: [https://hexdocs.pm/ash_introspection](https://hexdocs.pm/ash_introspection)
-- **GitHub Issues**: [https://github.com/ash-project/ash_introspection/issues](https://github.com/ash-project/ash_introspection/issues)
+- **Documentation**:
+  [https://hexdocs.pm/ash_introspection](https://hexdocs.pm/ash_introspection)
+- **GitHub Issues**:
+  [https://github.com/ash-project/ash_introspection/issues](https://github.com/ash-project/ash_introspection/issues)
 - **Discord**: [Ash Framework Discord](https://discord.gg/HTHRaaVPUc)
