@@ -108,6 +108,7 @@ flowchart LR
 
     subgraph internal["ash_introspection: reached through the pipeline"]
         fsel["Rpc.FieldProcessing.FieldSelector"]
+        lrest["Rpc.LoadRestrictions"]
         atomz["Rpc.FieldProcessing.Atomizer"]
         fval["Rpc.FieldProcessing.Validation"]
         rproc["Rpc.ResultProcessor"]
@@ -140,6 +141,7 @@ flowchart LR
     pipeline --> efmt
     pipeline --> tsi
     pipeline --> ash
+    fsel -->|"one load path per append"| lrest
     fsel --> atomz
     fsel --> fval
     fsel --> rfields
@@ -182,6 +184,7 @@ sequenceDiagram
     P->>K: params, actor, tenant
     Note over K: Stage 1 is language-specific<br/>and lives in the consumer
     K->>F: process(fields, resource, action, config)
+    Note over F: each append to the load statement<br/>passes Rpc.LoadRestrictions.check!/2<br/>when config carries :load_restrictions
     F-->>K: {select, load, extraction_template}
     K->>S: execute_ash_action(%Request{}, config)
     S->>A: Ash.read / create / update / destroy / run_action

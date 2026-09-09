@@ -136,6 +136,32 @@ already builds the `%Request{}` two lines earlier, so the change is one line
 plus its tests. That is a ticket in `ash_kotlin_multiplatform`, not here.
 Collapsing the two functions into one is the larger answer and needs the
 error-response path, which legitimately has no request, to keep working.
+
+### T5 — Load restrictions read as a security control
+
+**The risk.** `allowed_loads` / `denied_loads` (#19) shape which relationships,
+calculations and aggregates a client may ask an action for. They look exactly
+like an access-control list, and the next person to need "hide this field from
+this caller" will reach for them. They are not that. Ash policies, field
+policies and tenancy are what decide who may see a value, and they apply to
+every load that passes a restriction.
+
+**Why it bites.** A field denied on one action stays readable through every
+other action and through any caller that is not this pipeline — a codegen
+consumer, a LiveView, a script. Someone who believes the deny list is the
+boundary ships a resource with no policy on it and no error to tell them.
+
+**What we watch.** Every mention of load restrictions in a moduledoc, a doc
+page or an error message says what they are for, which is cost: keeping an
+expensive load off an endpoint that has no need for it. The moduledoc on
+`AshIntrospection.Rpc.LoadRestrictions` says it first and says it plainly.
+Upstream `ash_typescript` draws the same line in `24266dc`.
+
+**What we would do.** If a consumer is found using a deny list where a policy
+belongs, the fix is the policy; the restriction stays as the surface control it
+is. If the confusion recurs, rename the config key to something that cannot be
+read as authorization.
+
 ## Operational
 
 ### O1 — Security drift in the dependency floor

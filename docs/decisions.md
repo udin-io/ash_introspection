@@ -13,6 +13,39 @@ recorded nowhere in the repo. This page replaces ADRs; there is no `adr/`
 directory here and none should be created. A decision that no longer shapes the
 code is deleted, not archived, because git keeps the history.
 
+## 2026-09-09 — Load restrictions ride on the config map, not a manifest
+
+**Decided.** `allowed_loads` / `denied_loads` reach field selection through an
+optional `:load_restrictions` key on the config map that
+`FieldSelector.process/4` already takes, the same shape `:is_interop_resource?`
+and `get_rpc_action_entrypoints` use. Upstream `ash_typescript` reads them from
+`Ash.Info.Manifest` instead. Issue #19.
+
+**Why.** This library has not adopted the manifest and will not for a while
+(#23, below). Waiting for it would have left every generator built on this core
+unable to shape an action's loadable surface, which is why
+`ash_kotlin_multiplatform` shipped without the feature. The config map is
+already threaded to every point that appends to the load statement, so the
+value arrives where the check happens with no new plumbing, and omitting the
+key means `:none`, so no existing caller changes behaviour.
+
+**Also decided:** restrictions are checked **during** field selection, at each
+of the six points where `FieldSelector` appends to the load statement, rather
+than by walking the finished load statement. A separate traversal has to
+re-derive which parts of a load list are loads and which are selects, and
+upstream's did: nested scalar loads escaped it entirely until `3aaae6b`. A
+check at the append site cannot disagree with field selection about what is
+being loaded, because it is field selection.
+
+**Cost.** A second place restrictions can come from once #23 lands, and someone
+will have to decide whether the manifest supersedes the config key or feeds it.
+The config key is also unvalidated: a typo in a field name is a path that
+matches nothing, which under `{:deny, ...}` silently restricts nothing. A
+manifest-backed DSL would catch that at compile time. And this is an API
+surface tool, not authorization — Ash policies still apply to every load that
+gets through, which the moduledoc says plainly because the failure mode of
+believing otherwise is a security hole.
+
 ## 2026-09-09 — The metadata allowlist stays with the caller
 
 **Decided.** This pipeline extracts exactly the metadata fields

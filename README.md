@@ -144,6 +144,7 @@ release breaks.
 | `AshIntrospection.Rpc.FieldProcessing.Atomizer` | Convert client field names to atoms |
 | `AshIntrospection.Rpc.FieldProcessing.FieldSelector` | Type-driven recursive field selection |
 | `AshIntrospection.Rpc.FieldProcessing.Validation` | Duplicate detection and field validation |
+| `AshIntrospection.Rpc.LoadRestrictions` | Shapes which loads an action will accept |
 
 ### Error Handling
 
@@ -233,6 +234,32 @@ config = %{
   end
 }
 ```
+
+### Load Restrictions
+
+An optional `:load_restrictions` key on the config map shapes which
+relationships, calculations and aggregates an action will load. Omit it and
+every load is permitted, which is the default.
+
+```elixir
+# comments may be loaded, but not comments.score
+config = %{load_restrictions: {:deny, [comments: [:score]]}}
+
+# only comments and comments.score may be loaded
+config = %{load_restrictions: {:allow, [comments: [:score]]}}
+```
+
+A deny inherits downwards: denying `comments` denies everything under it. An
+allow does not: allowing `comments` does not allow `comments.score`, but naming
+`comments.score` allows `comments` as the step needed to reach it. Attributes
+are selected rather than loaded and are never restricted.
+
+**This is not authorization.** Load restrictions keep an expensive load off an
+endpoint that has no need for it. They say nothing about who may see a value —
+Ash policies and field policies do that, and they apply to every load that gets
+through. A field that must be hidden from an actor needs a policy; a deny list
+leaves it readable through every other action. See
+`AshIntrospection.Rpc.LoadRestrictions`.
 
 ## Field Name Mapping
 
