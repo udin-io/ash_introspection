@@ -634,6 +634,11 @@ defmodule AshIntrospection.Codegen.TypeDiscovery do
 
   defp traverse_type_with_visited(type, constraints, current_path, visited)
        when is_list(constraints) do
+    # A NewType keeps its own constraints, so the wrapper's raw constraints are
+    # empty and every `:types`, `:fields` and `:instance_of` below would read as
+    # missing. Unwrap before matching on the type.
+    {type, constraints} = Introspection.unwrap_new_type(type, constraints)
+
     case type do
       {:array, inner_type} ->
         items_constraints = Keyword.get(constraints, :items, [])
