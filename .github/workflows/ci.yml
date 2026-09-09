@@ -1,0 +1,56 @@
+# SPDX-FileCopyrightText: 2025 ash_introspection contributors
+#
+# SPDX-License-Identifier: MIT
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  MIX_ENV: test
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Elixir
+        uses: erlef/setup-beam@v1
+        with:
+          otp-version: "27"
+          elixir-version: "1.18.4"
+
+      - name: Restore deps and _build cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            deps
+            _build
+          key: ${{ runner.os }}-mix-${{ hashFiles('**/mix.lock') }}
+          restore-keys: ${{ runner.os }}-mix-
+
+      - name: Install dependencies
+        run: mix deps.get
+
+      # NOTE: `mix format --check-formatted` is deliberately NOT part of this
+      # workflow yet. main is not formatter-clean today: .formatter.exs is
+      # missing `import_deps: [:ash, :spark]`, so running the formatter as-is
+      # rewrites ~13 files unrelated to any given change. Fixing that is
+      # tracked in #30 and must land first; add the format check in a
+      # follow-up once it does.
+      - name: Compile (warnings as errors)
+        run: mix compile --warnings-as-errors
+
+      - name: Run tests
+        run: mix test
+
+      - name: Audit retired Hex packages
+        run: mix hex.audit
+
+      - name: Audit dependencies for known vulnerabilities
+        run: mix deps.audit
