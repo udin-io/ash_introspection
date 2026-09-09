@@ -96,6 +96,16 @@ runs the suite on every pull request as of #32.
 **What we would do.** Keep landing a regression test with each fix, per #18's
 own preference, and treat a fix that arrives without one as unfinished.
 
+**The suite no longer flakes, and that is new.** Until #55, `mix test` failed
+about 1 run in 40 on an unchanged `main` because five test files tore down a
+VM-wide ETS table from `on_exit`. A flaky gate teaches reviewers to re-run
+rather than read, which costs more than the flake.
+`AshIntrospection.Test.Account` is now `private? true`, so isolation is a
+property of the data layer. The replacement risk is smaller and stated here so
+it is not rediscovered: a private ETS table belongs to the process that created
+it, so a test that writes `Account` from a `Task` or a `setup_all` block will
+read an empty table instead of failing loudly. Keep writes in the test process.
+
 ### T4 — Two stage-4 exits, and the consumer uses the untyped one
 
 **The risk.** `Rpc.Pipeline` exposes two stage-4 functions.
@@ -126,7 +136,6 @@ already builds the `%Request{}` two lines earlier, so the change is one line
 plus its tests. That is a ticket in `ash_kotlin_multiplatform`, not here.
 Collapsing the two functions into one is the larger answer and needs the
 error-response path, which legitimately has no request, to keep working.
-
 ## Operational
 
 ### O1 — Security drift in the dependency floor

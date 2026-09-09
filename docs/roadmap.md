@@ -31,6 +31,15 @@ which come first. Numbers in parentheses are GitHub issues on
   The allowlist half of upstream's metadata fix belongs to a parse stage this
   library does not have; see [decisions.md](decisions.md) and risk T4 in
   [risks.md](risks.md).
+- **Stop the suite flaking on a torn-down ETS table** (#55).
+  `AshIntrospection.Test.Account` now declares `private? true`, so each test
+  process gets its own unnamed ETS table instead of sharing one named table for
+  the whole VM. The five `Ash.DataLayer.Ets.stop/1` calls in `on_exit` are gone
+  with it: `stop/1` kills the table's owning GenServer asynchronously, and the
+  next test could wrap the table before the VM reaped it. Measured on the
+  branch: `mix test` failed 5 times in 200 runs before the change and 0 times
+  in 200 runs after; `pipeline_filter_injection_test.exs` alone went from 11
+  failures in 200 runs to 0. See [decisions.md](decisions.md).
 - **Guard every consumer-module callback check with `Code.ensure_loaded?/1`**
   (#49). `function_exported?/3` answers `false` for a module the VM has not
   loaded, and Elixir loads lazily, so a domain, resource or type nothing had
