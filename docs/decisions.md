@@ -45,6 +45,76 @@ manifest-backed DSL would catch that at compile time. And this is an API
 surface tool, not authorization — Ash policies still apply to every load that
 gets through, which the moduledoc says plainly because the failure mode of
 believing otherwise is a security hole.
+## 2026-09-09 — No compile-time field-name cache: nothing to attach it to
+
+**Decided.** Do not port upstream `ash_typescript`'s `PersistFormattedFields`
+Spark transformer (`b2d30bf`), and do not build a variant of it here. Issue #26
+is closed as decided against. The measurement below is the evidence; re-run it
+before reopening.
+
+**Why — the transformer cannot exist in this library.** A Spark transformer is
+listed in a `use Spark.Dsl.Extension` call, and **this library ships no DSL of
+its own**: `grep 'use Spark.Dsl.Extension' lib` returns nothing, and the only
+extension in the tree is the test-only `AshIntrospection.Test.RpcDsl`.
+Upstream's transformer body reads `[:typescript], :field_names` off the
+resource's DSL state, a section this library neither owns nor can name. The
+equivalent mapping lives entirely in the consumer:
+`ash_kotlin_multiplatform` holds it in
+`AshKotlinMultiplatform.Resource.Info.kotlin_field_names/1` and injects the
+lookup as the `:format_field_for_client` closure in the pipeline config. There
+is no public `format_field_for_client/3` here at all — only the private
+`ValueFormatter.format_field_for_client/4`, which calls the consumer's closure
+or falls back to `FieldFormatter.format_field_name/2`. A cache the core owns
+cannot see inside a closure the consumer supplies.
+
+**Why — the cost the ticket describes is not the cost this library has.** The
+ticket quotes upstream's ~1,500 calls of one `(field, resource, formatter)`
+triple per sync. Measured here at `0dd9ac5`, OTP 27 and Elixir 1.18.4, over 100
+single-record RPC runs against `AshIntrospection.Test.Account` with four public
+fields selected, each run passing through `execute_ash_action/1`,
+`process_result/3` and `format_output_with_request/3`. Call counts come from
+`:erlang.trace/3` on `{FieldFormatter, :format_field_name, 2}`, timings from
+`:timer.tc/1` on warmed loops; the ranges are five runs on one laptop, so read
+the shares, not the milliseconds:
+
+| Measurement | Value |
+|---|---|
+| `format_field_name/2` calls | 6 per record — 4 field names, plus `"success"` and `"data"` |
+| `format_field_name/2` cost | ~470 ns per call, warm |
+| Time in `format_field_name/2` | 0.65–0.82 ms per 100-record run |
+| `execute_ash_action/1` | 32–42 ms (320–420 µs per record) |
+| `process_result/3` | 0.44–0.55 ms |
+| `format_output_with_request/3` | 1.15–1.48 ms |
+| Share of the output-formatting stage | 53–59% |
+| **Share of the whole pipeline** | **1.7–2.1%** |
+
+A perfect cache replaces ~470 ns with a ~7 ns map lookup, so ~2% of pipeline
+wall clock is the ceiling on the entire idea. Ash action execution is 95% of it.
+
+**Why — a transformer would reach only two thirds of even that.** Tracing the
+arguments of all six calls for one record: four are resource field atoms, which
+a transformer could persist. `"success"` and `"data"` are string literals in
+the response envelope, formatted on every response and belonging to no
+resource. No resource-attached cache reaches them.
+
+**What we found instead.** The cost is not the missing cache, it is the
+predicate. `format_field_name/2` runs `is_camel_case?/1`, `is_pascal_case?/1`
+or `is_snake_case?/1`, each one or two `String.match?/2` calls against a regex.
+One `String.match?/2` measures ~295 ns; a binary-walk clause computing the same
+answer measures ~10 ns; and `Macro.camelize/1`, the work that actually
+transforms the name, is only ~60 ns. Replacing the three predicates would cut
+the function to roughly 130 ns for every caller, resource field or not, with no
+extension, no transformer and no consumer wiring. That is filed as its own
+issue rather than folded into this one: those predicates decide casing
+behaviour across the whole library, and a faithful rewrite needs equivalence
+tests of its own.
+
+**Cost.** Upstream drift widens by one more commit, and this drift is invisible
+in a diff — a reader comparing the two trees sees a transformer that is
+missing, not one that was declined. This entry is the marker. If #23 lands and
+the library adopts `Ash.Info.Manifest`, upstream's successor to this work is
+`Manifest.Custom.formatted_field_names`, which arrives with the manifest for
+free. That is the second reason not to build a bespoke mechanism now.
 
 ## 2026-09-09 — The metadata allowlist stays with the caller
 

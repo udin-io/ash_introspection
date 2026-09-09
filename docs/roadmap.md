@@ -128,7 +128,9 @@ dozen other items.
 1. **#23 — adopt `Ash.Info.Manifest`.** Upstream replaced live introspection
    with a precomputed Spark manifest in `ash` 3.32.3. This repo still calls
    `Ash.Resource.Info` at ~66 sites, which is why upstream's type-discovery
-   fixes do not port cleanly. Blocks #24, #25, #26 and more, and
+   fixes do not port cleanly. Blocks #24 and #25 and more, and it is where
+   the field-name cache declined in #26 would arrive for free, as upstream's
+   `Manifest.Custom.formatted_field_names`. It also
    carries the remainder of #21: entrypoint scoping here branches on the action
    kind, where upstream's `Reachability` walks the accepted attributes, loads
    and relationship depth of each declared action.
@@ -140,8 +142,7 @@ dozen other items.
 3. **#18 — the RPC test floor.** Coverage arrives with each fix by preference,
    but the harness and the fixtures are still a ticket of their own.
 4. **Upstream parity features**: #24 (relationship query envelopes), #25
-   (calculation load-through and nested first-aggregates), #26 (persist
-   formatted field names via a Spark transformer). #24 touches the same
+   (calculation load-through and nested first-aggregates). #24 touches the same
    `FieldSelector` clauses #19 just guarded: a relationship loaded through an
    `%Ash.Query{}` envelope is a seventh append site and needs its own
    `check_load_allowed!/3`.
@@ -164,6 +165,15 @@ dozen other items.
 - **Shipping this library's own `config/`.** `mix.exs` keeps `config` out of
   the published `files` list so a consumer chooses its own Ash settings; see
   the `default_string_length_count` entry in [decisions.md](decisions.md).
+- **Persisting formatted field names via a Spark transformer** (#26). A
+  transformer is listed in a `use Spark.Dsl.Extension` call and this library
+  ships no DSL, so upstream's `PersistFormattedFields` has nothing to attach
+  to; the resource-to-client mapping lives in the consumer's closure, which a
+  cache in the core cannot see into. Measured at `0dd9ac5`,
+  `format_field_name/2` is ~2% of RPC pipeline wall clock — 6 calls per
+  record, two of them response-envelope literals no resource cache would ever
+  reach. The cost is the regex predicates, not the missing cache: see
+  [decisions.md](decisions.md) for the numbers and the cheaper fix.
 
 ## Keeping this page current
 
