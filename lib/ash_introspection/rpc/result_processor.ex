@@ -494,11 +494,11 @@ defmodule AshIntrospection.Rpc.ResultProcessor do
     Enum.reduce(template, %{}, fn field_spec, acc ->
       case field_spec do
         field_atom when is_atom(field_atom) ->
-          field_value = Map.get(value, field_atom) || Map.get(value, to_string(field_atom))
+          field_value = plain_map_field(value, field_atom)
           Map.put(acc, field_atom, normalize_primitive(field_value))
 
         {field_atom, nested_template} when is_atom(field_atom) ->
-          field_value = Map.get(value, field_atom) || Map.get(value, to_string(field_atom))
+          field_value = plain_map_field(value, field_atom)
 
           nested_extracted =
             if is_map(field_value) and nested_template != [] do
@@ -513,6 +513,18 @@ defmodule AshIntrospection.Rpc.ResultProcessor do
           acc
       end
     end)
+  end
+
+  # Untyped maps reach us with either atom or string keys, so both forms are
+  # tried. `Map.fetch/2` rather than `Map.get/2 || Map.get/2`: a field present
+  # and `false` (or `nil`) is falsy, so `||` hands the lookup to the string key
+  # and reports the field as absent. The client then receives `nil` for a value
+  # that was legitimately `false`.
+  defp plain_map_field(map, field_atom) do
+    case Map.fetch(map, field_atom) do
+      {:ok, value} -> value
+      :error -> Map.get(map, to_string(field_atom))
+    end
   end
 
   # ─────────────────────────────────────────────────────────────────────────────
