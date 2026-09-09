@@ -566,9 +566,19 @@ defmodule AshIntrospection.Rpc.Pipeline do
     end
   end
 
+  # `Map.fetch/2` rather than `Map.get/2 || Map.get/2`: a boolean identity key
+  # valued `false` is falsy, so the `||` discarded it and the filter became
+  # `key == nil`. The update or destroy then ran against a record the caller
+  # never named, or against none at all.
   defp build_named_identity_filter(identity, parsed_identity) when is_map(parsed_identity) do
     Enum.map(identity.keys, fn key ->
-      {key, Map.get(parsed_identity, key) || Map.get(parsed_identity, Atom.to_string(key))}
+      value =
+        case Map.fetch(parsed_identity, key) do
+          {:ok, value} -> value
+          :error -> Map.get(parsed_identity, Atom.to_string(key))
+        end
+
+      {key, value}
     end)
   end
 
