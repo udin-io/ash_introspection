@@ -432,6 +432,20 @@ defmodule AshIntrospection.Rpc.ErrorBuilder do
           }
         }
 
+      {:invalid_get_by, %{message: message}} ->
+        %{
+          type: "invalid_get_by",
+          message: message,
+          short_message: "Invalid getBy value",
+          vars: %{},
+          path: [:get_by],
+          fields: [],
+          details: %{
+            suggestion: "Provide a scalar value for each getBy field",
+            hint: @stale_generated_file_hint
+          }
+        }
+
       {:empty_fields_array, _fields} ->
         %{
           type: "empty_fields_array",
