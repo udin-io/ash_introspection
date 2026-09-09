@@ -123,7 +123,12 @@ defmodule AshIntrospection.Codegen.ValidationErrorTypes do
   def classify_error_type(nil, _constraints), do: {:ok, {:primitive_errors, nil}}
 
   def classify_error_type(type, constraints) do
-    # Unwrap NewTypes FIRST (consistent with ValueFormatter pattern)
+    # Unwrapping serves the complex-type branches below, which need the subtype's
+    # merged constraints. It must not come first for anything the consumer
+    # declares on the type itself: a NewType names its own interop type and its
+    # subtype does not carry that name. Any callback added here later — an
+    # interop error name, a serializer hook — is read off the ORIGINAL `type`
+    # for the same reason.
     {unwrapped_type, full_constraints} = Introspection.unwrap_new_type(type, constraints)
 
     classification =
@@ -135,9 +140,10 @@ defmodule AshIntrospection.Codegen.ValidationErrorTypes do
           {:ok, inner_classification} = classify_error_type(inner_type, inner_constraints)
           {:array_errors, inner_classification}
 
-        # Custom types with interop_type_name (check before embedded resource)
-        Introspection.is_custom_interop_type?(unwrapped_type) ->
-          {:custom_type_errors, unwrapped_type}
+        # Custom types with interop_type_name, read off the original type so a
+        # NewType keeps the name it declares for itself
+        Introspection.is_custom_interop_type?(type) ->
+          {:custom_type_errors, type}
 
         # Embedded resources
         Introspection.is_embedded_resource?(unwrapped_type) ->

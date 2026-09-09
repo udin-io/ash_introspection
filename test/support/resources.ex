@@ -102,6 +102,19 @@ defmodule AshIntrospection.Test.TaskStats do
   end
 end
 
+defmodule AshIntrospection.Test.WrappedCustomType do
+  @moduledoc """
+  A NewType that names its own interop type. Unwrapping it first yields
+  `Ash.Type.Map`, which carries no such callback, so the declared name is lost
+  and the type is routed to the wrong error category.
+  """
+  use Ash.Type.NewType,
+    subtype_of: :map,
+    constraints: [fields: [label: [type: :string]]]
+
+  def interop_type_name, do: "WrappedCustom"
+end
+
 defmodule AshIntrospection.Test.Suggestion do
   @moduledoc """
   A plain struct that is not an Ash resource. It is the shape `instance_of` can
