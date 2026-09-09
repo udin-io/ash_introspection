@@ -177,6 +177,41 @@ process, or a `setup_all` block sees an empty table, because the table lives in
 the creating process's dictionary. Keep writes in the test process. If a new
 test resource needs writing, give it `private? true` at birth.
 
+### A new load in `FieldSelector` needs a `check_load_allowed!/3`
+
+**Symptom.** A load restriction that works for every other field is silently
+ignored for the one you just added, and no test fails.
+
+**Why.** `AshIntrospection.Rpc.LoadRestrictions` is enforced at the six points
+where `Rpc.FieldProcessing.FieldSelector` appends to the Ash load statement,
+not by walking the finished load statement. That is deliberate — a separate
+traversal has to re-derive which parts of a load list are loads and which are
+selects, and upstream's did it wrong (`ash_typescript` `3aaae6b`). The price is
+that a seventh append site added later is unguarded by default and nothing says
+so.
+
+**What we do.** Check that every hit of this grep has a
+`check_load_allowed!(path, internal_name, config)` above it:
+
+```
+grep -n 'load ++ \|load_acc ++' \
+  lib/ash_introspection/rpc/field_processing/field_selector.ex
+```
+
+#24 (relationship query envelopes) adds one: a relationship loaded through an
+`%Ash.Query{}` envelope.
+
+**Two of the six cannot be made to refuse.** The embedded-attribute and
+union-member sites only fire when a nested selection already produced a load,
+and that nested load passed the check one level deeper; a passing child implies
+a passing parent under both `:allow` and `:deny`. Do not write a test that
+claims otherwise, and do not delete the guards — see the comments at those
+sites. See `test/ash_introspection/rpc/load_restrictions_test.exs`.
+
+**They are not authorization.** Ash policies apply to every load that gets
+through. Say so in anything you write about them; risk T5 in
+[`docs/risks.md`](docs/risks.md) explains why it matters.
+
 ### No stdlib `JSON`: `mix.exs` declares `elixir: "~> 1.15"`
 
 **Symptom.** Code using the `JSON` module compiles on your machine and fails on

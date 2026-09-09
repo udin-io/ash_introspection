@@ -483,6 +483,42 @@ defmodule AshIntrospection.Rpc.ErrorBuilder do
           }
         }
 
+      # === LOAD RESTRICTION ERRORS ===
+      # Thrown by AshIntrospection.Rpc.LoadRestrictions during field selection.
+      # These shape an action's API surface; they are not authorization, which
+      # Ash policies handle independently of anything here.
+
+      {:load_not_allowed, disallowed_paths} ->
+        %{
+          type: "load_not_allowed",
+          message: "Loading the following fields is not allowed: %{fields}",
+          short_message: "Load not allowed",
+          vars: %{fields: Enum.join(disallowed_paths, ", ")},
+          path: [],
+          fields: disallowed_paths,
+          details: %{
+            disallowed_paths: disallowed_paths,
+            suggestion:
+              "Remove these fields from your request, or add them to the action's allowed loads",
+            hint: @stale_generated_file_hint
+          }
+        }
+
+      {:load_denied, denied_paths} ->
+        %{
+          type: "load_denied",
+          message: "Loading the following fields is denied: %{fields}",
+          short_message: "Load denied",
+          vars: %{fields: Enum.join(denied_paths, ", ")},
+          path: [],
+          fields: denied_paths,
+          details: %{
+            denied_paths: denied_paths,
+            suggestion: "Remove these fields from your request",
+            hint: @stale_generated_file_hint
+          }
+        }
+
       {:invalid_input_format, invalid_input} ->
         %{
           type: "invalid_input_format",

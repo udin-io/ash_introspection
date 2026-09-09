@@ -17,6 +17,18 @@ which come first. Numbers in parentheses are GitHub issues on
 
 ### Unreleased
 
+- **Shape an action's loadable surface with `allowed_loads` / `denied_loads`**
+  (#19). The core could not restrict what a client loads, so no generator
+  built on it could either, and `ash_kotlin_multiplatform` shipped without the
+  feature. `AshIntrospection.Rpc.LoadRestrictions` now carries the algebra and
+  `FieldSelector` calls `check!/2` at all six points where it appends to the
+  Ash load statement, so a nested path is checked at every level rather than
+  re-derived from a finished load statement. Restrictions arrive on the config
+  map under an optional `:load_restrictions` key, not from
+  `Ash.Info.Manifest`, which this repo has not adopted (#23) — see
+  [decisions.md](decisions.md). Omitting the key changes nothing for existing
+  callers. Ports `ash_typescript` `3aaae6b`, and keeps its framing from
+  `24266dc`: this shapes an API surface, it is not authorization.
 - **Format action metadata once, and by its declared type** (#20). A metadata
   name is not an attribute, so stage 4 looked it up on the resource, found
   nothing, and handed the value back untouched: the nested keys of a typed-map
@@ -116,7 +128,7 @@ dozen other items.
 1. **#23 — adopt `Ash.Info.Manifest`.** Upstream replaced live introspection
    with a precomputed Spark manifest in `ash` 3.32.3. This repo still calls
    `Ash.Resource.Info` at ~66 sites, which is why upstream's type-discovery
-   fixes do not port cleanly. Blocks #19, #24, #25, #26 and more, and
+   fixes do not port cleanly. Blocks #24, #25, #26 and more, and
    carries the remainder of #21: entrypoint scoping here branches on the action
    kind, where upstream's `Reachability` walks the accepted attributes, loads
    and relationship depth of each declared action.
@@ -127,9 +139,12 @@ dozen other items.
    serialize `Ash.Type.Vector`).
 3. **#18 — the RPC test floor.** Coverage arrives with each fix by preference,
    but the harness and the fixtures are still a ticket of their own.
-4. **Upstream parity features**: #19 (load restrictions), #24 (relationship
-   query envelopes), #25 (calculation load-through and nested first-aggregates),
-   #26 (persist formatted field names via a Spark transformer).
+4. **Upstream parity features**: #24 (relationship query envelopes), #25
+   (calculation load-through and nested first-aggregates), #26 (persist
+   formatted field names via a Spark transformer). #24 touches the same
+   `FieldSelector` clauses #19 just guarded: a relationship loaded through an
+   `%Ash.Query{}` envelope is a seventh append site and needs its own
+   `check_load_allowed!/3`.
 5. **Housekeeping**: #27 (dead code and a wrong pipeline moduledoc), #45 (the
    remaining `||` key-lookup pattern in `field_selector`), #39 (README wrapping
    — half of it, the test-domain warning, is already fixed in

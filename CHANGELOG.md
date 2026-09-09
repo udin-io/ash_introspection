@@ -8,6 +8,21 @@ and this project adheres to
 
 ## [Unreleased]
 
+### Added
+
+- `AshIntrospection.Rpc.LoadRestrictions`, and an optional `:load_restrictions`
+  key on the field-selection config map
+  ([#19](https://github.com/udin-io/ash_introspection/issues/19)). It takes
+  `{:allow, spec}` or `{:deny, spec}`, where `spec` nests internal field names
+  (`[comments: [:score]]`), and shapes which relationships, calculations and
+  aggregates an action will load.
+  `AshIntrospection.Rpc.FieldProcessing.FieldSelector` checks it at all six
+  points where it appends to the Ash load statement, so a nested path is
+  checked at every level. Omitting the key permits every load, so no consumer
+  has to act. A refused load answers `load_not_allowed` or `load_denied`,
+  naming the dotted path. **This is an API surface control, not
+  authorization** — Ash policies apply to every load that gets through.
+
 ### Changed
 
 - **Breaking.** A read action carrying `identity` is rejected with

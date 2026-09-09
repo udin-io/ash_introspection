@@ -34,6 +34,7 @@ defmodule AshIntrospection.Rpc.FieldProcessing.FieldSelector do
 
   alias AshIntrospection.FieldFormatter
   alias AshIntrospection.Rpc.FieldProcessing.Validation
+  alias AshIntrospection.Rpc.LoadRestrictions
   alias AshIntrospection.TypeSystem.Introspection
 
   @type select_result :: {select :: [atom()], load :: [term()], template :: [term()]}
@@ -43,7 +44,8 @@ defmodule AshIntrospection.Rpc.FieldProcessing.FieldSelector do
           optional(:field_names_callback) => atom(),
           optional(:resource_info_module) => module(),
           optional(:is_interop_resource?) => (module() -> boolean()),
-          optional(:get_original_field_name) => (module(), term() -> atom() | nil)
+          optional(:get_original_field_name) => (module(), term() -> atom() | nil),
+          optional(:load_restrictions) => term()
         }
 
   # ---------------------------------------------------------------------------
@@ -60,7 +62,10 @@ defmodule AshIntrospection.Rpc.FieldProcessing.FieldSelector do
   - `resource` - The Ash resource module
   - `action_name` - The action name (atom)
   - `requested_fields` - List of field selections (atoms, strings, or maps)
-  - `config` - Language-specific configuration
+  - `config` - Language-specific configuration. An optional
+    `:load_restrictions` key shapes which relationships, calculations and
+    aggregates the caller may ask for - see
+    `AshIntrospection.Rpc.LoadRestrictions`. Omitting it permits every load.
 
   ## Examples
 
@@ -74,6 +79,8 @@ defmodule AshIntrospection.Rpc.FieldProcessing.FieldSelector do
     if is_nil(action) do
       throw({:action_not_found, action_name})
     end
+
+    config = normalize_load_restrictions(config)
 
     {type, constraints} = action_to_type_spec(resource, action)
     {select, load, template} = select_fields(type, constraints, requested_fields, [], config)
@@ -123,6 +130,7 @@ defmodule AshIntrospection.Rpc.FieldProcessing.FieldSelector do
   """
   @spec select_fields(atom() | tuple(), keyword(), list(), list(), config()) :: select_result()
   def select_fields(type, constraints, requested_fields, path, config) do
+    config = normalize_load_restrictions(config)
     field_names_callback = Map.get(config, :field_names_callback, :interop_field_names)
 
     {unwrapped_type, full_constraints} =
@@ -269,6 +277,7 @@ defmodule AshIntrospection.Rpc.FieldProcessing.FieldSelector do
         throw({:requires_field_selection, :relationship, internal_name, path})
 
       cat when cat in [:calculation, :aggregate] ->
+        check_load_allowed!(path, internal_name, config)
         {select, load ++ [internal_name], template ++ [internal_name]}
     end
   end
@@ -332,6 +341,13 @@ defmodule AshIntrospection.Rpc.FieldProcessing.FieldSelector do
            ] ->
         new_load =
           if nested_load != [] do
+            # No test reaches a refusal here, and none can: a non-empty
+            # nested_load means a deeper path already passed check!/2, and a
+            # passing child implies a passing parent under both :allow and
+            # :deny. The guard stays because the invariant it rests on belongs
+            # to the whole descent, not to this clause - it is the one thing
+            # that would still hold if a future append site forgot its check.
+            check_load_allowed!(path, internal_name, config)
             load ++ [{internal_name, nested_load}]
           else
             load
@@ -347,10 +363,12 @@ defmodule AshIntrospection.Rpc.FieldProcessing.FieldSelector do
           throw({:unknown_field, internal_name, resource, path})
         end
 
+        check_load_allowed!(path, internal_name, config)
         load_spec = build_load_spec(internal_name, nested_select, nested_load)
         {select, load ++ [load_spec], template ++ [{internal_name, nested_template}]}
 
       cat when cat in [:calculation, :calculation_complex] ->
+        check_load_allowed!(path, internal_name, config)
         load_spec = build_load_spec(internal_name, nested_select, nested_load)
         {select, load ++ [load_spec], template ++ [{internal_name, nested_template}]}
 
@@ -442,6 +460,8 @@ defmodule AshIntrospection.Rpc.FieldProcessing.FieldSelector do
       else
         {internal_name, nested_template}
       end
+
+    check_load_allowed!(path, internal_name, config)
 
     {select, load ++ [load_spec], template ++ [template_item]}
   end
@@ -886,6 +906,10 @@ defmodule AshIntrospection.Rpc.FieldProcessing.FieldSelector do
       )
 
     if nested_load != [] do
+      # Unobservable for the same reason as the embedded branch of
+      # process_nested_resource_field/6; see the note there.
+      check_load_allowed!(path, internal_name, config)
+
       {load_acc ++ [{internal_name, nested_load}],
        template_acc ++ [{member_name, nested_template}]}
     else
@@ -1162,6 +1186,24 @@ defmodule AshIntrospection.Rpc.FieldProcessing.FieldSelector do
   defp has_field_names_callback?(module, config) do
     callback = Map.get(config, :field_names_callback, :interop_field_names)
     Introspection.has_field_names_callback?(module, callback)
+  end
+
+  # Called wherever this module appends to the Ash load statement, which is the
+  # only way a load can reach it: a restriction therefore cannot be sidestepped
+  # by a load shape the check does not know about. Attributes are selected
+  # rather than loaded and are deliberately not checked here.
+  defp check_load_allowed!(path, internal_name, config) do
+    LoadRestrictions.check!(path ++ [internal_name], Map.get(config, :load_restrictions, :none))
+  end
+
+  # `LoadRestrictions.check!/2` takes pre-normalized paths, so the spec a caller
+  # supplies is expanded once on the way in. `normalize/1` is idempotent, so the
+  # recursive descent may re-run it without changing the answer.
+  defp normalize_load_restrictions(config) do
+    case Map.get(config, :load_restrictions) do
+      nil -> config
+      spec -> Map.put(config, :load_restrictions, LoadRestrictions.normalize(spec))
+    end
   end
 
   defp is_interop_resource?(resource, config) do
