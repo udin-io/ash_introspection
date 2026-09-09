@@ -6,6 +6,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- A failing bulk action reaches the client as one error per failed field
+  ([#16](https://github.com/udin-io/ash_introspection/issues/16)).
+  `Ash.bulk_create/update/destroy` return `%Ash.BulkResult{errors: [...]}` and
+  the pipeline forwards that list. A list matched neither `is_exception` nor
+  `is_map` in `build_error_response/1`, so every per-record validation error
+  collapsed into one "An unexpected error occurred".
+- A Reactor-backed action reports the error its step produced, not the
+  wrapper ([#17](https://github.com/udin-io/ash_introspection/issues/17)).
+  `%Reactor.Error.Invalid.RunStepError{}` is itself an exception, so it matched
+  the generic Ash clause and the client got a step-execution notice naming a
+  step it has never heard of.
+- `Ash.Type.Vector` values serialize as a list of numbers
+  ([#17](https://github.com/udin-io/ash_introspection/issues/17)).
+  `%Ash.Vector{}` keeps its floats in a packed binary that `Jason` refuses to
+  encode, so selecting a vector field either crashed the encoder or put
+  `%{data: <<...>>, dimensions: n}` on the wire.
+
 ## [0.3.0] - 2026-09-09
 
 Two breaking changes to the RPC error payload. Run the codemod that ships with
