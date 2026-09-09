@@ -24,6 +24,11 @@ defmodule AshIntrospection.Rpc.FieldProcessing.Validation do
   Normalizes field names using the input formatter before checking for duplicates.
   Throws `{:duplicate_field, field_name, path}` if duplicates are found.
 
+  This runs before any field-existence check, so it sees every name a client
+  sent, valid or not. A name that matches no existing atom stays a string here
+  and is reported as such; the caller rejects it as an unknown field moments
+  later.
+
   ## Parameters
 
   - `fields` - List of field selections
@@ -110,22 +115,39 @@ defmodule AshIntrospection.Rpc.FieldProcessing.Validation do
   - `path` - Current path for error reporting
   - `error_type` - Error type string for error messages
   """
-  @spec validate_field_exists!(atom(), keyword(), list(), String.t()) :: :ok
+  @spec validate_field_exists!(atom() | String.t(), keyword(), list(), String.t()) :: :ok
   def validate_field_exists!(
         field_name,
         field_specs,
         path,
         error_type \\ "field_constrained_type"
       ) do
-    unless Keyword.has_key?(field_specs, field_name) do
+    unless field_exists?(field_specs, field_name) do
       throw({:unknown_field, field_name, error_type, path})
     end
 
     :ok
   end
 
-  # Normalizes a string field name to an atom using the formatter
+  @doc """
+  Checks whether `field_specs` declares `field_name`.
+
+  Accepts a string name, which `Keyword.has_key?/2` rejects outright. A client
+  name that resolved to no existing atom stays a string, and no field spec can
+  be keyed by one, so the answer is always false — the caller then reports it as
+  an unknown field.
+  """
+  @spec field_exists?(keyword(), term()) :: boolean()
+  def field_exists?(field_specs, field_name) when is_atom(field_name) do
+    Keyword.has_key?(field_specs, field_name)
+  end
+
+  def field_exists?(_field_specs, _field_name), do: false
+
+  # Normalizes a string field name using the formatter, resolving it to an
+  # existing atom where one exists. Never mints an atom: this runs on raw client
+  # input before anything has checked the name against a real field.
   defp normalize_field_name(field_name, formatter) when is_binary(field_name) do
-    FieldFormatter.convert_to_field_atom(field_name, formatter)
+    FieldFormatter.resolve_field_name(field_name, formatter)
   end
 end

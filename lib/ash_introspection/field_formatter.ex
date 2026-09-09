@@ -186,30 +186,35 @@ defmodule AshIntrospection.FieldFormatter do
   end
 
   @doc """
-  Converts a field name to an atom, using the formatter to parse the name first.
+  Resolves a field name to the atom that already names that field.
 
-  This is useful when you need to ensure the field name is an atom for
-  use as a map key or keyword list key.
+  Atoms pass through unchanged. A string is parsed into internal form by the
+  formatter and resolved against the existing atom table; when no such atom
+  exists the parsed string is returned unchanged.
+
+  Every field a resource or type declares gets its atom at compile time, so a
+  valid name always resolves. An unresolved name is one no field has, and
+  callers compare the result against the declared field atoms — a string never
+  matches one, so it fails as an unknown field.
+
+  This deliberately never calls `String.to_atom/1`. Field names come from
+  clients and the atom table is never garbage collected, so minting one atom per
+  name lets an unauthenticated caller exhaust it and take the node down.
 
   ## Examples
 
-      iex> AshIntrospection.FieldFormatter.convert_to_field_atom("userName", :camel_case)
+      iex> AshIntrospection.FieldFormatter.resolve_field_name("userName", :camel_case)
       :user_name
 
-      iex> AshIntrospection.FieldFormatter.convert_to_field_atom(:user_name, :snake_case)
+      iex> AshIntrospection.FieldFormatter.resolve_field_name(:user_name, :snake_case)
       :user_name
   """
-  def convert_to_field_atom(field_name, _formatter) when is_atom(field_name) do
+  def resolve_field_name(field_name, _formatter) when is_atom(field_name) do
     field_name
   end
 
-  def convert_to_field_atom(field_name, formatter) when is_binary(field_name) do
-    parsed = parse_input_field(field_name, formatter)
-
-    case parsed do
-      atom when is_atom(atom) -> atom
-      string when is_binary(string) -> String.to_atom(string)
-    end
+  def resolve_field_name(field_name, formatter) when is_binary(field_name) do
+    parse_input_field(field_name, formatter)
   end
 
   # Private helper for parsing field names from client format to internal format
