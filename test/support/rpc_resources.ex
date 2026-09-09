@@ -22,6 +22,10 @@ defmodule AshIntrospection.Test.Account do
   `:active` is a boolean identity key (`:unique_name_active`) because an
   identity value of `false` is the case a `Map.get/2 || Map.get/2` lookup
   silently turns into `nil`, resolving the filter against the wrong record.
+
+  `:embedding` is an `Ash.Type.Vector`, whose `%Ash.Vector{}` keeps its floats
+  in a packed binary that JSON cannot encode. It is here so the output path can
+  be driven end to end against a real vector attribute.
   """
   use Ash.Resource,
     domain: AshIntrospection.Test.RpcDomain,
@@ -32,6 +36,7 @@ defmodule AshIntrospection.Test.Account do
     attribute(:name, :string, allow_nil?: false, public?: true)
     attribute(:email, :string, allow_nil?: false, public?: true)
     attribute(:active, :boolean, public?: true)
+    attribute(:embedding, :vector, public?: true, constraints: [dimensions: 3])
   end
 
   identities do

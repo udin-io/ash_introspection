@@ -105,6 +105,9 @@ defmodule AshIntrospection.Rpc.ValueFormatter do
       unwrapped_type == Ash.Type.Union ->
         format_union(value, full_constraints, direction, config)
 
+      unwrapped_type == Ash.Type.Vector ->
+        format_vector(value)
+
       is_custom_type_with_map_storage?(unwrapped_type) && is_map(value) && not is_struct(value) ->
         format_map_keys_only(value, direction, config)
 
@@ -188,6 +191,25 @@ defmodule AshIntrospection.Rpc.ValueFormatter do
   end
 
   defp format_map_keys_only(value, _direction, _config), do: value
+
+  # ---------------------------------------------------------------------------
+  # Vector Handler
+  # ---------------------------------------------------------------------------
+
+  # `%Ash.Vector{}` keeps its floats in a packed binary
+  # (`deps/ash/lib/ash/vector.ex`), which `Jason` refuses to encode, so the wire
+  # format has to be a plain list of numbers. `ResultProcessor.normalize_primitive/1`
+  # has already run `Map.from_struct/1` by the time formatting happens, hence the
+  # second clause; `Ash.Vector.from_binary/1` recovers the dimensions from the
+  # binary's header. Inbound values arrive as lists and fall through the third
+  # clause untouched, since `Ash.Type.Vector.cast_input/2` accepts a list.
+  defp format_vector(%Ash.Vector{} = vector), do: Ash.Vector.to_list(vector)
+
+  defp format_vector(%{data: data}) when is_binary(data) do
+    data |> Ash.Vector.from_binary() |> Ash.Vector.to_list()
+  end
+
+  defp format_vector(other), do: other
 
   # ---------------------------------------------------------------------------
   # Resource Handler
