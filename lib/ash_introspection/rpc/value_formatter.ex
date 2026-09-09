@@ -71,7 +71,9 @@ defmodule AshIntrospection.Rpc.ValueFormatter do
 
   def format(value, type, constraints, direction, config) do
     field_names_callback = Map.get(config, :field_names_callback, :interop_field_names)
-    {unwrapped_type, full_constraints} = Introspection.unwrap_new_type(type, constraints, field_names_callback)
+
+    {unwrapped_type, full_constraints} =
+      Introspection.unwrap_new_type(type, constraints, field_names_callback)
 
     cond do
       match?({:array, _}, type) ->

@@ -182,9 +182,7 @@ defmodule AshIntrospection.TypeSystem.IntrospectionTest do
 
   describe "is_resource_instance_of?/1" do
     test "returns true when instance_of is a resource" do
-      assert Introspection.is_resource_instance_of?(
-               instance_of: AshIntrospection.Test.User
-             )
+      assert Introspection.is_resource_instance_of?(instance_of: AshIntrospection.Test.User)
     end
 
     test "returns false when no instance_of" do
@@ -259,7 +257,7 @@ defmodule AshIntrospection.TypeSystem.IntrospectionTest do
     end
 
     test "returns type unchanged for non-NewType" do
-      {type, constraints} = Introspection.unwrap_new_type(Ash.Type.String, [max_length: 50])
+      {type, constraints} = Introspection.unwrap_new_type(Ash.Type.String, max_length: 50)
 
       assert Ash.Type.String == type
       assert [max_length: 50] == constraints

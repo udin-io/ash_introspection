@@ -635,7 +635,12 @@ defmodule AshIntrospection.Rpc.Pipeline do
     end
   end
 
-  defp format_output_data(%{success: true, data: result_data} = result, formatter, request, config) do
+  defp format_output_data(
+         %{success: true, data: result_data} = result,
+         formatter,
+         request,
+         config
+       ) do
     {actual_data, metadata} =
       if is_map(result_data) and Map.has_key?(result_data, :data) and
            Map.has_key?(result_data, :metadata) do

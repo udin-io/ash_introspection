@@ -52,7 +52,8 @@ defmodule AshIntrospection.Rpc.FieldProcessing.Atomizer do
   @spec atomize_requested_fields(list(), module() | nil, config()) :: list()
   def atomize_requested_fields(requested_fields, resource \\ nil, config \\ %{})
 
-  def atomize_requested_fields(requested_fields, resource, config) when is_list(requested_fields) do
+  def atomize_requested_fields(requested_fields, resource, config)
+      when is_list(requested_fields) do
     formatter = Map.get(config, :input_field_formatter, :camel_case)
     Enum.map(requested_fields, &process_field(&1, formatter, resource, config))
   end
@@ -187,9 +188,16 @@ defmodule AshIntrospection.Rpc.FieldProcessing.Atomizer do
   For field selection lists, preserves strings for type-aware reverse mapping.
   """
   @spec process_field_value(term(), atom(), module() | nil, config(), boolean()) :: term()
-  def process_field_value(value, formatter, resource \\ nil, config \\ %{}, atomize_strings \\ true)
+  def process_field_value(
+        value,
+        formatter,
+        resource \\ nil,
+        config \\ %{},
+        atomize_strings \\ true
+      )
 
-  def process_field_value(list, formatter, resource, config, atomize_strings) when is_list(list) do
+  def process_field_value(list, formatter, resource, config, atomize_strings)
+      when is_list(list) do
     Enum.map(list, fn
       field_name when is_binary(field_name) ->
         if atomize_strings do

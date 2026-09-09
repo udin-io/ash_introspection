@@ -114,7 +114,8 @@ defmodule AshIntrospection.Rpc.ResultProcessor do
   ## Returns
   `{type, constraints}` or `{nil, []}` if not found.
   """
-  @spec get_field_type_info(module() | nil, atom(), config()) :: {atom() | tuple() | nil, keyword()}
+  @spec get_field_type_info(module() | nil, atom(), config()) ::
+          {atom() | tuple() | nil, keyword()}
   def get_field_type_info(nil, _field_name, _config), do: {nil, []}
 
   def get_field_type_info(resource, field_name, config) when is_atom(resource) do
@@ -286,7 +287,8 @@ defmodule AshIntrospection.Rpc.ResultProcessor do
     end
   end
 
-  defp extract_resource_value(value, _resource, _template, _config), do: normalize_primitive(value)
+  defp extract_resource_value(value, _resource, _template, _config),
+    do: normalize_primitive(value)
 
   defp extract_resource_field(data, resource, field_atom, acc, config) do
     case Map.get(data, field_atom) do
@@ -342,7 +344,10 @@ defmodule AshIntrospection.Rpc.ResultProcessor do
         member_spec ->
           member_type = Keyword.get(member_spec, :type)
           member_constraints = Keyword.get(member_spec, :constraints, [])
-          extracted = extract_value(union_value, member_type, member_constraints, member_template, config)
+
+          extracted =
+            extract_value(union_value, member_type, member_constraints, member_template, config)
+
           %{active_type => extracted}
       end
     else
@@ -350,7 +355,8 @@ defmodule AshIntrospection.Rpc.ResultProcessor do
     end
   end
 
-  defp extract_union_value(value, _constraints, _template, _config), do: normalize_primitive(value)
+  defp extract_union_value(value, _constraints, _template, _config),
+    do: normalize_primitive(value)
 
   defp member_in_template?(template, member_name) do
     Enum.any?(template, fn
@@ -408,7 +414,9 @@ defmodule AshIntrospection.Rpc.ResultProcessor do
           {field_type, field_constraints} =
             Introspection.get_field_spec_type(field_specs, field_atom)
 
-          extracted = extract_value(field_value, field_type, field_constraints, nested_template, config)
+          extracted =
+            extract_value(field_value, field_type, field_constraints, nested_template, config)
+
           Map.put(acc, field_atom, extracted)
 
         _ ->

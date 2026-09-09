@@ -206,7 +206,9 @@ defmodule AshIntrospection.Codegen.ActionIntrospectionTest do
 
     test "returns resource type for single resource return" do
       assert {:ok, :resource, Post} =
-               ActionIntrospection.action_returns_field_selectable_type?(get_action(:get_featured))
+               ActionIntrospection.action_returns_field_selectable_type?(
+                 get_action(:get_featured)
+               )
     end
 
     test "returns array_of_resource for array of resources" do
@@ -224,7 +226,9 @@ defmodule AshIntrospection.Codegen.ActionIntrospectionTest do
 
     test "returns unconstrained_map for map without field constraints" do
       assert {:ok, :unconstrained_map, nil} =
-               ActionIntrospection.action_returns_field_selectable_type?(get_action(:get_metadata))
+               ActionIntrospection.action_returns_field_selectable_type?(
+                 get_action(:get_metadata)
+               )
     end
 
     test "returns error for primitive return types" do

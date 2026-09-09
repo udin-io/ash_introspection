@@ -258,8 +258,8 @@ defmodule AshIntrospection.Codegen.ActionIntrospection do
 
       %Ash.Resource.Attribute{} = input ->
         input.name not in Map.get(action, :allow_nil_input, []) and
-            (input.name in Map.get(action, :require_attributes, []) ||
-               (not input.allow_nil? and is_nil(input.default)))
+          (input.name in Map.get(action, :require_attributes, []) ||
+             (not input.allow_nil? and is_nil(input.default)))
     end)
     |> Enum.map(& &1.name)
   end
@@ -287,8 +287,8 @@ defmodule AshIntrospection.Codegen.ActionIntrospection do
 
       %Ash.Resource.Attribute{} = input ->
         input.name not in Map.get(action, :allow_nil_input, []) and
-            (input.name in Map.get(action, :require_attributes, []) ||
-               (not input.allow_nil? and is_nil(input.default)))
+          (input.name in Map.get(action, :require_attributes, []) ||
+             (not input.allow_nil? and is_nil(input.default)))
     end)
     |> Enum.map(& &1.name)
   end

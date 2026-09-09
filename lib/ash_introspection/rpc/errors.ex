@@ -47,7 +47,14 @@ defmodule AshIntrospection.Rpc.Errors do
   """
   @spec to_errors(term(), module() | nil, module() | nil, atom() | nil, map(), config()) ::
           list(map())
-  def to_errors(errors, domain \\ nil, resource \\ nil, action \\ nil, context \\ %{}, config \\ %{})
+  def to_errors(
+        errors,
+        domain \\ nil,
+        resource \\ nil,
+        action \\ nil,
+        context \\ %{},
+        config \\ %{}
+      )
 
   def to_errors(errors, domain, resource, action, context, config) do
     ash_error = Ash.Error.to_error_class(errors)
@@ -288,7 +295,9 @@ defmodule AshIntrospection.Rpc.Errors do
   # Serializes the result so the payload is JSON-encodable - see serialize_error/1.
   defp format_error_field_names(error, resource, config) when is_map(error) do
     formatter = Map.get(config, :output_field_formatter, :camel_case)
-    field_formatter_module = Map.get(config, :field_formatter_module, AshIntrospection.FieldFormatter)
+
+    field_formatter_module =
+      Map.get(config, :field_formatter_module, AshIntrospection.FieldFormatter)
 
     error
     |> format_fields_array(resource, formatter, field_formatter_module, config)
@@ -299,7 +308,13 @@ defmodule AshIntrospection.Rpc.Errors do
 
   defp format_error_field_names(error, _resource, _config), do: error
 
-  defp format_fields_array(%{fields: fields} = error, resource, formatter, field_formatter_module, config)
+  defp format_fields_array(
+         %{fields: fields} = error,
+         resource,
+         formatter,
+         field_formatter_module,
+         config
+       )
        when is_list(fields) do
     format_field_for_client = Map.get(config, :format_field_for_client)
 
@@ -315,9 +330,11 @@ defmodule AshIntrospection.Rpc.Errors do
     %{error | fields: formatted_fields}
   end
 
-  defp format_fields_array(error, _resource, _formatter, _field_formatter_module, _config), do: error
+  defp format_fields_array(error, _resource, _formatter, _field_formatter_module, _config),
+    do: error
 
-  defp format_path_array(%{path: path} = error, formatter, field_formatter_module) when is_list(path) do
+  defp format_path_array(%{path: path} = error, formatter, field_formatter_module)
+       when is_list(path) do
     # Path segments use simple formatting (no resource-level mappings)
     formatted_path =
       Enum.map(path, fn
@@ -336,7 +353,13 @@ defmodule AshIntrospection.Rpc.Errors do
 
   defp format_path_array(error, _formatter, _field_formatter_module), do: error
 
-  defp format_vars_field(%{vars: vars} = error, resource, formatter, field_formatter_module, config)
+  defp format_vars_field(
+         %{vars: vars} = error,
+         resource,
+         formatter,
+         field_formatter_module,
+         config
+       )
        when is_map(vars) do
     format_field_for_client = Map.get(config, :format_field_for_client)
 
@@ -359,7 +382,8 @@ defmodule AshIntrospection.Rpc.Errors do
     %{error | vars: formatted_vars}
   end
 
-  defp format_vars_field(error, _resource, _formatter, _field_formatter_module, _config), do: error
+  defp format_vars_field(error, _resource, _formatter, _field_formatter_module, _config),
+    do: error
 
   # An error's `vars` and `path` hold whatever the code that raised it put there,
   # so any Erlang term can reach here. The payload is handed to a JSON encoder,

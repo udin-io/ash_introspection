@@ -537,7 +537,8 @@ defmodule AshIntrospection.TypeSystem.Introspection do
     Code.ensure_loaded?(module) && function_exported?(module, callback, 0)
   end
 
-  def has_field_names_callback?(module, callback) when is_atom(module) and is_function(callback, 1) do
+  def has_field_names_callback?(module, callback)
+      when is_atom(module) and is_function(callback, 1) do
     callback.(module)
   end
 
