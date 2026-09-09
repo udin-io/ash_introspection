@@ -19,6 +19,7 @@ defmodule AshIntrospection.Rpc.LoadRestrictionsTest do
   """
   use ExUnit.Case, async: true
 
+  alias AshIntrospection.Rpc.ErrorBuilder
   alias AshIntrospection.Rpc.FieldProcessing.FieldSelector
   alias AshIntrospection.Rpc.LoadRestrictions
   alias AshIntrospection.Test.LoadRestrictions.Article
@@ -259,6 +260,23 @@ defmodule AshIntrospection.Rpc.LoadRestrictionsTest do
 
       assert catch_throw(LoadRestrictions.check!([:author], restrictions)) ==
                {:load_not_allowed, ["author"]}
+    end
+  end
+
+  describe "the error payload" do
+    test "names the refused path so a client can fix the request" do
+      {:error, error} =
+        process(["id", %{"comments" => ["id", "score"]}], deny(comments: [:score]))
+
+      assert %{type: "load_denied", fields: ["comments.score"], vars: %{fields: "comments.score"}} =
+               ErrorBuilder.build_error_response(error)
+    end
+
+    test "distinguishes a load that is not allowed from one that is denied" do
+      {:error, error} = process(["id", "slug"], allow([:comments]))
+
+      assert %{type: "load_not_allowed", fields: ["slug"]} =
+               ErrorBuilder.build_error_response(error)
     end
   end
 end
