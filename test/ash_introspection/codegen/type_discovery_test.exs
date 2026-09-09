@@ -15,7 +15,10 @@ defmodule AshIntrospection.Codegen.TypeDiscoveryTest do
   alias AshIntrospection.Test.{
     Document,
     EmbeddedAttachment,
+    EmbeddedAudit,
+    EmbeddedFilter,
     EmbeddedNote,
+    EmbeddedRendered,
     User,
     WrappedContent
   }
@@ -45,6 +48,28 @@ defmodule AshIntrospection.Codegen.TypeDiscoveryTest do
 
     test "find_struct_argument_resources/1 unwraps a NewType over a struct" do
       assert User in TypeDiscovery.find_struct_argument_resources([action(:attach)])
+    end
+  end
+
+  describe "types reachable only through an action or a calculation argument" do
+    setup do
+      %{discovered: TypeDiscovery.find_embedded_resources(:ash_introspection, config())}
+    end
+
+    test "finds the type of a calculation argument", %{discovered: discovered} do
+      assert EmbeddedFilter in discovered
+    end
+
+    test "finds the type of a generic action argument", %{discovered: discovered} do
+      assert EmbeddedAttachment in discovered
+    end
+
+    test "finds a generic action's return type", %{discovered: discovered} do
+      assert EmbeddedRendered in discovered
+    end
+
+    test "finds the type of a read action's metadata", %{discovered: discovered} do
+      assert EmbeddedAudit in discovered
     end
   end
 end

@@ -49,6 +49,10 @@ defmodule AshIntrospection.Codegen.TypeDiscovery do
   - `{:union_member, :type_name}` - Union member
   - `{:array_items}` - Array items
   - `{:map_field, :field_name}` - Map field
+  - `{:action, :action_name}` - Action
+  - `{:argument, :argument_name}` - Action or calculation argument
+  - `{:metadata, :metadata_name}` - Action metadata
+  - `:returns` - Generic action return type
   """
 
   alias AshIntrospection.TypeSystem.Introspection
@@ -138,6 +142,11 @@ defmodule AshIntrospection.Codegen.TypeDiscovery do
   @doc """
   Scans a single resource to find all referenced resources.
 
+  Covers the resource's public attributes, calculations (including their
+  arguments) and aggregates, plus every public action's arguments, `:returns`
+  type and metadata. An action is part of a resource's public surface, so a
+  type it names is a type the client has to be able to build or read.
+
   ## Parameters
 
     * `resource` - An Ash resource module
@@ -150,8 +159,100 @@ defmodule AshIntrospection.Codegen.TypeDiscovery do
     * `updated_visited` - Updated MapSet of visited resources
   """
   def scan_rpc_resource(resource, visited \\ MapSet.new()) do
+    scan_entrypoint(resource, :all_actions, visited)
+  end
+
+  defp scan_entrypoint(resource, action_scope, visited) do
     path = [{:root, resource}]
-    find_referenced_resources_with_visited(resource, path, visited)
+    actions = entrypoint_actions(resource, action_scope)
+
+    {field_resources, visited} =
+      if scan_resource_fields?(action_scope, actions) do
+        find_referenced_resources_with_visited(resource, path, visited)
+      else
+        {[], visited}
+      end
+
+    {action_resources, visited} = traverse_actions(actions, path, visited)
+
+    {field_resources ++ action_resources, visited}
+  end
+
+  defp entrypoint_actions(resource, :all_actions) do
+    resource
+    |> Ash.Resource.Info.actions()
+    |> Enum.filter(&Map.get(&1, :public?, true))
+  end
+
+  defp entrypoint_actions(resource, action_names) when is_list(action_names) do
+    action_names
+    |> Enum.map(&Ash.Resource.Info.action(resource, &1))
+    |> Enum.reject(&is_nil/1)
+  end
+
+  # A read, create, update or destroy action hands back the resource itself, so
+  # its attributes, calculations and aggregates are all reachable. A generic
+  # action reaches only what it names.
+  defp scan_resource_fields?(:all_actions, _actions), do: true
+
+  defp scan_resource_fields?(action_names, actions) when is_list(action_names) do
+    Enum.any?(actions, &(&1.type != :action))
+  end
+
+  defp traverse_actions(actions, current_path, visited) do
+    Enum.reduce(actions, {[], visited}, fn action, {acc, visited} ->
+      {found, visited} = traverse_action(action, current_path, visited)
+      {acc ++ found, visited}
+    end)
+  end
+
+  defp traverse_action(action, current_path, visited) do
+    action_path = current_path ++ [{:action, action.name}]
+
+    {argument_resources, visited} =
+      action.arguments
+      |> Enum.filter(&Map.get(&1, :public?, true))
+      |> Enum.reduce({[], visited}, fn argument, {acc, visited} ->
+        {found, visited} =
+          traverse_type_with_visited(
+            argument.type,
+            argument.constraints || [],
+            action_path ++ [{:argument, argument.name}],
+            visited
+          )
+
+        {acc ++ found, visited}
+      end)
+
+    {return_resources, visited} =
+      case Map.get(action, :returns) do
+        nil ->
+          {[], visited}
+
+        returns ->
+          traverse_type_with_visited(
+            returns,
+            Map.get(action, :constraints) || [],
+            action_path ++ [:returns],
+            visited
+          )
+      end
+
+    {metadata_resources, visited} =
+      (Map.get(action, :metadata) || [])
+      |> Enum.reduce({[], visited}, fn metadata, {acc, visited} ->
+        {found, visited} =
+          traverse_type_with_visited(
+            metadata.type,
+            metadata.constraints || [],
+            action_path ++ [{:metadata, metadata.name}],
+            visited
+          )
+
+        {acc ++ found, visited}
+      end)
+
+    {argument_resources ++ return_resources ++ metadata_resources, visited}
   end
 
   @doc """
@@ -442,6 +543,10 @@ defmodule AshIntrospection.Codegen.TypeDiscovery do
   defp format_path_segment({:union_member, name}), do: "(union member: #{name})"
   defp format_path_segment(:array_items), do: "[]"
   defp format_path_segment({:map_field, name}), do: to_string(name)
+  defp format_path_segment({:action, name}), do: "(action: #{name})"
+  defp format_path_segment({:argument, name}), do: "(argument: #{name})"
+  defp format_path_segment({:metadata, name}), do: "(metadata: #{name})"
+  defp format_path_segment(:returns), do: "(returns)"
 
   defp format_path_segment({:relationship_path, names}) do
     "(via relationships: #{Enum.join(names, " -> ")})"
@@ -596,10 +701,26 @@ defmodule AshIntrospection.Codegen.TypeDiscovery do
         Enum.reduce(calculations, {[], visited}, fn calc, {acc, visited} ->
           calc_path = current_path ++ [{:calculation, calc.name}]
 
-          {found, new_visited} =
+          {found, visited} =
             traverse_type_with_visited(calc.type, calc.constraints || [], calc_path, visited)
 
-          {acc ++ found, new_visited}
+          # A calculation argument is client-supplied, so its type needs
+          # generating even when nothing else in the resource mentions it.
+          {argument_found, visited} =
+            (Map.get(calc, :arguments) || [])
+            |> Enum.reduce({[], visited}, fn argument, {arg_acc, visited} ->
+              {found, visited} =
+                traverse_type_with_visited(
+                  argument.type,
+                  argument.constraints || [],
+                  calc_path ++ [{:argument, argument.name}],
+                  visited
+                )
+
+              {arg_acc ++ found, visited}
+            end)
+
+          {acc ++ found ++ argument_found, visited}
         end)
 
       {aggregate_resources, visited} =

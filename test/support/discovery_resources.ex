@@ -45,6 +45,39 @@ defmodule AshIntrospection.Test.EmbeddedAttachment do
   end
 end
 
+defmodule AshIntrospection.Test.EmbeddedFilter do
+  @moduledoc """
+  Embedded resource reachable only as the type of a calculation argument.
+  """
+  use Ash.Resource, data_layer: :embedded
+
+  attributes do
+    attribute(:term, :string, public?: true)
+  end
+end
+
+defmodule AshIntrospection.Test.EmbeddedAudit do
+  @moduledoc """
+  Embedded resource reachable only as the type of a read action's metadata.
+  """
+  use Ash.Resource, data_layer: :embedded
+
+  attributes do
+    attribute(:actor_label, :string, public?: true)
+  end
+end
+
+defmodule AshIntrospection.Test.EmbeddedRendered do
+  @moduledoc """
+  Embedded resource reachable only as a generic action's `:returns` type.
+  """
+  use Ash.Resource, data_layer: :embedded
+
+  attributes do
+    attribute(:html, :string, public?: true)
+  end
+end
+
 defmodule AshIntrospection.Test.WrappedUser do
   @moduledoc """
   A NewType over `Ash.Type.Struct`. Its `:instance_of` constraint is invisible
@@ -82,14 +115,29 @@ defmodule AshIntrospection.Test.Document do
     attribute(:content, AshIntrospection.Test.WrappedContent, public?: true)
   end
 
+  calculations do
+    calculate :summary, :string, expr(title) do
+      public?(true)
+      argument(:filter, AshIntrospection.Test.EmbeddedFilter)
+    end
+  end
+
   actions do
     defaults([:read, :destroy, create: :*, update: :*])
+
+    read :audited do
+      metadata(:audit, AshIntrospection.Test.EmbeddedAudit)
+    end
 
     action :attach, :boolean do
       argument(:attachment, AshIntrospection.Test.EmbeddedAttachment)
       argument(:author, AshIntrospection.Test.WrappedUser)
 
       run(fn _input, _context -> {:ok, true} end)
+    end
+
+    action :render, AshIntrospection.Test.EmbeddedRendered do
+      run(fn _input, _context -> {:ok, nil} end)
     end
   end
 end
