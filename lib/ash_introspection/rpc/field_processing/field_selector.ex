@@ -124,7 +124,9 @@ defmodule AshIntrospection.Rpc.FieldProcessing.FieldSelector do
   @spec select_fields(atom() | tuple(), keyword(), list(), list(), config()) :: select_result()
   def select_fields(type, constraints, requested_fields, path, config) do
     field_names_callback = Map.get(config, :field_names_callback, :interop_field_names)
-    {unwrapped_type, full_constraints} = Introspection.unwrap_new_type(type, constraints, field_names_callback)
+
+    {unwrapped_type, full_constraints} =
+      Introspection.unwrap_new_type(type, constraints, field_names_callback)
 
     cond do
       match?({:array, _}, type) ->
@@ -199,19 +201,48 @@ defmodule AshIntrospection.Rpc.FieldProcessing.FieldSelector do
           Enum.reduce(entries, acc, fn {field_name, nested_fields}, inner_acc ->
             cond do
               is_list(nested_fields) ->
-                process_nested_resource_field(resource, field_name, nested_fields, path, inner_acc, config)
+                process_nested_resource_field(
+                  resource,
+                  field_name,
+                  nested_fields,
+                  path,
+                  inner_acc,
+                  config
+                )
 
               is_map(nested_fields) ->
                 case get_args_and_fields(nested_fields) do
                   {:ok, args, fields} ->
-                    process_calculation_with_args(resource, field_name, args, fields, path, inner_acc, config)
+                    process_calculation_with_args(
+                      resource,
+                      field_name,
+                      args,
+                      fields,
+                      path,
+                      inner_acc,
+                      config
+                    )
 
                   :not_args_structure ->
-                    process_nested_resource_field(resource, field_name, nested_fields, path, inner_acc, config)
+                    process_nested_resource_field(
+                      resource,
+                      field_name,
+                      nested_fields,
+                      path,
+                      inner_acc,
+                      config
+                    )
                 end
 
               true ->
-                process_nested_resource_field(resource, field_name, nested_fields, path, inner_acc, config)
+                process_nested_resource_field(
+                  resource,
+                  field_name,
+                  nested_fields,
+                  path,
+                  inner_acc,
+                  config
+                )
             end
           end)
       end
@@ -242,9 +273,18 @@ defmodule AshIntrospection.Rpc.FieldProcessing.FieldSelector do
     end
   end
 
-  defp process_nested_resource_field(resource, field_name, nested_fields, path, {select, load, template}, config) do
+  defp process_nested_resource_field(
+         resource,
+         field_name,
+         nested_fields,
+         path,
+         {select, load, template},
+         config
+       ) do
     internal_name = resolve_resource_field_name(resource, field_name, config)
-    {field_type, field_constraints, category} = get_resource_field_info(resource, internal_name, path)
+
+    {field_type, field_constraints, category} =
+      get_resource_field_info(resource, internal_name, path)
 
     if category == :calculation_with_args do
       throw({:invalid_calculation_args, internal_name, path})
@@ -258,11 +298,13 @@ defmodule AshIntrospection.Rpc.FieldProcessing.FieldSelector do
       throw({:invalid_calculation_args, internal_name, path})
     end
 
-    if category == :calculation && !requires_nested_selection?(field_type, field_constraints, config) do
+    if category == :calculation &&
+         !requires_nested_selection?(field_type, field_constraints, config) do
       throw({:field_does_not_support_nesting, internal_name, path})
     end
 
-    if category == :attribute && !requires_nested_selection?(field_type, field_constraints, config) do
+    if category == :attribute &&
+         !requires_nested_selection?(field_type, field_constraints, config) do
       throw({:field_does_not_support_nesting, internal_name, path})
     end
 
@@ -280,7 +322,14 @@ defmodule AshIntrospection.Rpc.FieldProcessing.FieldSelector do
       select_fields(field_type, field_constraints, nested_fields, new_path, config)
 
     case category do
-      cat when cat in [:attribute, :embedded_resource, :tuple, :field_constrained_type, :union_attribute] ->
+      cat
+      when cat in [
+             :attribute,
+             :embedded_resource,
+             :tuple,
+             :field_constrained_type,
+             :union_attribute
+           ] ->
         new_load =
           if nested_load != [] do
             load ++ [{internal_name, nested_load}]
@@ -310,7 +359,15 @@ defmodule AshIntrospection.Rpc.FieldProcessing.FieldSelector do
     end
   end
 
-  defp process_calculation_with_args(resource, calc_name, args, fields, path, {select, load, template}, config) do
+  defp process_calculation_with_args(
+         resource,
+         calc_name,
+         args,
+         fields,
+         path,
+         {select, load, template},
+         config
+       ) do
     internal_name = resolve_resource_field_name(resource, calc_name, config)
     calc = Ash.Resource.Info.calculation(resource, internal_name)
 
@@ -446,7 +503,8 @@ defmodule AshIntrospection.Rpc.FieldProcessing.FieldSelector do
       unwrapped_type == Ash.Type.Union ->
         :union_attribute
 
-      Keyword.has_key?(unwrapped_constraints, :fields) && Keyword.get(unwrapped_constraints, :fields) != [] ->
+      Keyword.has_key?(unwrapped_constraints, :fields) &&
+          Keyword.get(unwrapped_constraints, :fields) != [] ->
         :field_constrained_type
 
       true ->
@@ -541,7 +599,13 @@ defmodule AshIntrospection.Rpc.FieldProcessing.FieldSelector do
   @doc """
   Selects fields from a typed map (Ash.Type.Map/Keyword with field constraints).
   """
-  def select_typed_map_fields(constraints, requested_fields, path, config, error_type \\ "field_constrained_type") do
+  def select_typed_map_fields(
+        constraints,
+        requested_fields,
+        path,
+        config,
+        error_type \\ "field_constrained_type"
+      ) do
     field_specs = get_field_specs(constraints)
 
     if field_specs == [] do
@@ -655,7 +719,8 @@ defmodule AshIntrospection.Rpc.FieldProcessing.FieldSelector do
             end
 
           {:multi_nested, entries} ->
-            Enum.reduce(entries, {select, load, template}, fn {field_name, nested_fields}, {s, l, t} ->
+            Enum.reduce(entries, {select, load, template}, fn {field_name, nested_fields},
+                                                              {s, l, t} ->
               field_atom = resolve_field_name(field_name, config)
 
               unless Validation.field_exists?(field_specs, field_atom) do
@@ -704,14 +769,41 @@ defmodule AshIntrospection.Rpc.FieldProcessing.FieldSelector do
       Enum.reduce(normalized_fields, {[], []}, fn field, {load_acc, template_acc} ->
         case parse_field_request(field) do
           {:simple, member_name} ->
-            process_simple_union_member(member_name, union_types, path, error_type, load_acc, template_acc, config)
+            process_simple_union_member(
+              member_name,
+              union_types,
+              path,
+              error_type,
+              load_acc,
+              template_acc,
+              config
+            )
 
           {:nested, member_name, nested_fields} ->
-            process_nested_union_member(member_name, nested_fields, union_types, path, error_type, load_acc, template_acc, config)
+            process_nested_union_member(
+              member_name,
+              nested_fields,
+              union_types,
+              path,
+              error_type,
+              load_acc,
+              template_acc,
+              config
+            )
 
           {:multi_nested, entries} ->
-            Enum.reduce(entries, {load_acc, template_acc}, fn {member_name, nested_fields}, {l_acc, t_acc} ->
-              process_nested_union_member(member_name, nested_fields, union_types, path, error_type, l_acc, t_acc, config)
+            Enum.reduce(entries, {load_acc, template_acc}, fn {member_name, nested_fields},
+                                                              {l_acc, t_acc} ->
+              process_nested_union_member(
+                member_name,
+                nested_fields,
+                union_types,
+                path,
+                error_type,
+                l_acc,
+                t_acc,
+                config
+              )
             end)
 
           {:with_args, _calc_name, _args, _fields} ->
@@ -722,7 +814,15 @@ defmodule AshIntrospection.Rpc.FieldProcessing.FieldSelector do
     {[], load_items, template_items}
   end
 
-  defp process_simple_union_member(member_name, union_types, path, error_type, load_acc, template_acc, config) do
+  defp process_simple_union_member(
+         member_name,
+         union_types,
+         path,
+         error_type,
+         load_acc,
+         template_acc,
+         config
+       ) do
     internal_name = convert_union_member_name(member_name, config)
 
     unless Keyword.has_key?(union_types, internal_name) do
@@ -745,7 +845,8 @@ defmodule AshIntrospection.Rpc.FieldProcessing.FieldSelector do
       is_atom(member_type) && Introspection.is_embedded_resource?(member_type) ->
         true
 
-      Keyword.has_key?(member_constraints, :fields) && Keyword.get(member_constraints, :fields) != [] ->
+      Keyword.has_key?(member_constraints, :fields) &&
+          Keyword.get(member_constraints, :fields) != [] ->
         true
 
       true ->
@@ -753,7 +854,16 @@ defmodule AshIntrospection.Rpc.FieldProcessing.FieldSelector do
     end
   end
 
-  defp process_nested_union_member(member_name, nested_fields, union_types, path, error_type, load_acc, template_acc, config) do
+  defp process_nested_union_member(
+         member_name,
+         nested_fields,
+         union_types,
+         path,
+         error_type,
+         load_acc,
+         template_acc,
+         config
+       ) do
     internal_name = convert_union_member_name(member_name, config)
 
     unless Keyword.has_key?(union_types, internal_name) do
@@ -776,7 +886,8 @@ defmodule AshIntrospection.Rpc.FieldProcessing.FieldSelector do
       )
 
     if nested_load != [] do
-      {load_acc ++ [{internal_name, nested_load}], template_acc ++ [{member_name, nested_template}]}
+      {load_acc ++ [{internal_name, nested_load}],
+       template_acc ++ [{member_name, nested_template}]}
     else
       {load_acc, template_acc ++ [{member_name, nested_template}]}
     end
@@ -903,7 +1014,10 @@ defmodule AshIntrospection.Rpc.FieldProcessing.FieldSelector do
   defp atomize_nested_value(%{"args" => _} = value, _resource, _config), do: value
   defp atomize_nested_value(%{fields: _} = value, _resource, _config), do: value
   defp atomize_nested_value(%{"fields" => _} = value, _resource, _config), do: value
-  defp atomize_nested_value(%{} = value, resource, config), do: atomize_field_name(value, resource, config)
+
+  defp atomize_nested_value(%{} = value, resource, config),
+    do: atomize_field_name(value, resource, config)
+
   defp atomize_nested_value(value, _resource, _config), do: value
 
   defp get_args_and_fields(map) when is_map(map) do
@@ -959,7 +1073,11 @@ defmodule AshIntrospection.Rpc.FieldProcessing.FieldSelector do
     {unwrapped_type, constraints} =
       case type do
         {:array, inner} ->
-          Introspection.unwrap_new_type(inner, Keyword.get(type_constraints, :items, []), field_names_callback)
+          Introspection.unwrap_new_type(
+            inner,
+            Keyword.get(type_constraints, :items, []),
+            field_names_callback
+          )
 
         t when is_atom(t) ->
           Introspection.unwrap_new_type(t, type_constraints, field_names_callback)
@@ -1048,7 +1166,9 @@ defmodule AshIntrospection.Rpc.FieldProcessing.FieldSelector do
 
   defp is_interop_resource?(resource, config) do
     case Map.get(config, :is_interop_resource?) do
-      fun when is_function(fun, 1) -> fun.(resource)
+      fun when is_function(fun, 1) ->
+        fun.(resource)
+
       _ ->
         resource_info_module = Map.get(config, :resource_info_module)
 
@@ -1069,7 +1189,8 @@ defmodule AshIntrospection.Rpc.FieldProcessing.FieldSelector do
       _ ->
         resource_info_module = Map.get(config, :resource_info_module)
 
-        if resource_info_module && function_exported?(resource_info_module, :get_original_field_name, 2) do
+        if resource_info_module &&
+             function_exported?(resource_info_module, :get_original_field_name, 2) do
           apply(resource_info_module, :get_original_field_name, [resource, field_name])
         else
           # Default: return field as-is if atom, or convert if string

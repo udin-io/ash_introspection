@@ -145,7 +145,9 @@ defmodule AshIntrospection.Codegen.ValidationErrorTypes do
 
         # Union types
         unwrapped_type == Ash.Type.Union ->
-          union_types = Introspection.get_union_types_from_constraints(unwrapped_type, full_constraints)
+          union_types =
+            Introspection.get_union_types_from_constraints(unwrapped_type, full_constraints)
+
           member_classifications = classify_union_members(union_types)
           {:union_errors, member_classifications}
 

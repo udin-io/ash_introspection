@@ -44,7 +44,9 @@ defmodule AshIntrospection.Rpc.ErrorBuilder do
 
   def build_error_response(error, config) do
     formatter = Map.get(config, :output_field_formatter, :camel_case)
-    field_formatter_module = Map.get(config, :field_formatter_module, AshIntrospection.FieldFormatter)
+
+    field_formatter_module =
+      Map.get(config, :field_formatter_module, AshIntrospection.FieldFormatter)
 
     do_build_error_response(error, formatter, field_formatter_module, config)
   end
@@ -88,7 +90,9 @@ defmodule AshIntrospection.Rpc.ErrorBuilder do
       # === FIELD VALIDATION ERRORS WITH FIELD PATHS ===
 
       {:unknown_field, field_atom, "map", path} when is_list(path) ->
-        full_field_path = build_complete_field_path(path, field_atom, formatter, field_formatter_module)
+        full_field_path =
+          build_complete_field_path(path, field_atom, formatter, field_formatter_module)
+
         formatted_path = format_path(path, formatter, field_formatter_module)
 
         %{
@@ -105,7 +109,9 @@ defmodule AshIntrospection.Rpc.ErrorBuilder do
         }
 
       {:unknown_field, field_atom, "union_attribute", path} when is_list(path) ->
-        full_field_path = build_complete_field_path(path, field_atom, formatter, field_formatter_module)
+        full_field_path =
+          build_complete_field_path(path, field_atom, formatter, field_formatter_module)
+
         formatted_path = format_path(path, formatter, field_formatter_module)
 
         %{
@@ -123,7 +129,9 @@ defmodule AshIntrospection.Rpc.ErrorBuilder do
         }
 
       {:unknown_field, field_atom, resource, path} when is_list(path) ->
-        full_field_path = build_complete_field_path(path, field_atom, formatter, field_formatter_module)
+        full_field_path =
+          build_complete_field_path(path, field_atom, formatter, field_formatter_module)
+
         formatted_path = format_path(path, formatter, field_formatter_module)
 
         %{
@@ -141,7 +149,9 @@ defmodule AshIntrospection.Rpc.ErrorBuilder do
         }
 
       {:calculation_requires_args, field_atom, path} when is_list(path) ->
-        full_field_path = build_complete_field_path(path, field_atom, formatter, field_formatter_module)
+        full_field_path =
+          build_complete_field_path(path, field_atom, formatter, field_formatter_module)
+
         formatted_path = format_path(path, formatter, field_formatter_module)
 
         %{
@@ -158,7 +168,9 @@ defmodule AshIntrospection.Rpc.ErrorBuilder do
         }
 
       {:invalid_calculation_args, field_atom, path} when is_list(path) ->
-        full_field_path = build_complete_field_path(path, field_atom, formatter, field_formatter_module)
+        full_field_path =
+          build_complete_field_path(path, field_atom, formatter, field_formatter_module)
+
         formatted_path = format_path(path, formatter, field_formatter_module)
 
         %{
@@ -176,7 +188,9 @@ defmodule AshIntrospection.Rpc.ErrorBuilder do
 
       {:requires_field_selection, field_type, field_name, path}
       when is_list(path) and is_atom(field_name) ->
-        full_field_path = build_complete_field_path(path, field_name, formatter, field_formatter_module)
+        full_field_path =
+          build_complete_field_path(path, field_name, formatter, field_formatter_module)
+
         formatted_path = format_path(path, formatter, field_formatter_module)
 
         %{
@@ -213,7 +227,10 @@ defmodule AshIntrospection.Rpc.ErrorBuilder do
 
       {:invalid_field_selection, field_atom, field_type, path} when is_list(path) ->
         field_type_string = format_field_type(field_type)
-        full_field_path = build_complete_field_path(path, field_atom, formatter, field_formatter_module)
+
+        full_field_path =
+          build_complete_field_path(path, field_atom, formatter, field_formatter_module)
+
         formatted_path = format_path(path, formatter, field_formatter_module)
 
         %{
@@ -264,7 +281,9 @@ defmodule AshIntrospection.Rpc.ErrorBuilder do
         }
 
       {:field_does_not_support_nesting, field_name, path} when is_list(path) ->
-        full_field_path = build_complete_field_path(path, field_name, formatter, field_formatter_module)
+        full_field_path =
+          build_complete_field_path(path, field_name, formatter, field_formatter_module)
+
         formatted_path = format_path(path, formatter, field_formatter_module)
 
         %{
@@ -281,7 +300,9 @@ defmodule AshIntrospection.Rpc.ErrorBuilder do
         }
 
       {:duplicate_field, field_atom, path} when is_list(path) ->
-        full_field_path = build_complete_field_path(path, field_atom, formatter, field_formatter_module)
+        full_field_path =
+          build_complete_field_path(path, field_atom, formatter, field_formatter_module)
+
         formatted_path = format_path(path, formatter, field_formatter_module)
 
         %{
@@ -299,7 +320,9 @@ defmodule AshIntrospection.Rpc.ErrorBuilder do
 
       {:unsupported_field_combination, field_type, field_atom, field_spec, path}
       when is_list(path) ->
-        full_field_path = build_complete_field_path(path, field_atom, formatter, field_formatter_module)
+        full_field_path =
+          build_complete_field_path(path, field_atom, formatter, field_formatter_module)
+
         formatted_path = format_path(path, formatter, field_formatter_module)
 
         %{
@@ -563,7 +586,10 @@ defmodule AshIntrospection.Rpc.ErrorBuilder do
 
       {:invalid_field_type, field_name, path} ->
         formatted_path = format_path(path, formatter, field_formatter_module)
-        formatted_field = apply(field_formatter_module, :format_field_name, [to_string(field_name), formatter])
+
+        formatted_field =
+          apply(field_formatter_module, :format_field_name, [to_string(field_name), formatter])
+
         field_path = Enum.join(formatted_path ++ [formatted_field], ".")
 
         %{
@@ -619,15 +645,18 @@ defmodule AshIntrospection.Rpc.ErrorBuilder do
     end)
   end
 
-  defp format_field_name(field_name, formatter, field_formatter_module) when is_atom(field_name) do
+  defp format_field_name(field_name, formatter, field_formatter_module)
+       when is_atom(field_name) do
     format_field_name(to_string(field_name), formatter, field_formatter_module)
   end
 
-  defp format_field_name(field_name, formatter, field_formatter_module) when is_binary(field_name) do
+  defp format_field_name(field_name, formatter, field_formatter_module)
+       when is_binary(field_name) do
     apply(field_formatter_module, :format_field_name, [field_name, formatter])
   end
 
-  defp build_complete_field_path(path, field_name, formatter, field_formatter_module) when is_list(path) do
+  defp build_complete_field_path(path, field_name, formatter, field_formatter_module)
+       when is_list(path) do
     formatted_path = format_path(path, formatter, field_formatter_module)
     formatted_field = format_field_name(field_name, formatter, field_formatter_module)
 
