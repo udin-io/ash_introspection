@@ -175,6 +175,37 @@ empty:
 grep -rn 'constraints == \[\]\|constraints == nil\|Enum.empty?(constraints' lib
 ```
 
+**An array is a separate shape, not a variation of one.** #64 was the same
+data loss one type over: `{:array, :map}` normalises to
+`{:array, Ash.Type.Map}` and puts the element's constraints under `:items`, so
+a guard that reads the top-level list finds nothing and the whole array takes
+the typed path. Whenever you write a condition on `action.returns`, write the
+`{:array, _}` clause at the same time and read `constraints[:items]` in it.
+
+### A fixture that reads one record cannot see a list bug — #57
+
+**Symptom.** The suite is green, the consumer is not. Key casing, field
+selection and metadata all pass here, and an unpaginated read in
+`ash_kotlin_multiplatform` comes back with internal atom keys.
+
+**Why.** Stage 4 dispatches on the *type* it is handed, and a resource module
+carries no cardinality: `ValueFormatter.format/5` unwraps a collection only
+for `{:array, _}`, and `format_resource/4` guards on
+`is_map(value) and not is_struct(value)`. A list matched neither, so it was
+returned untouched. Every RPC fixture in this repo read a single record
+through a `get?` action — the one shape that already worked — so 348 tests
+passed against the bug. The paginated read failed a third way: the page is a
+map, so the envelope formatted, but `:results` is not a field on the resource,
+`ResourceFields.get_field_type_info/2` answered `{nil, []}`, and the records
+inside came back raw.
+
+**What we do.** A read has three result shapes and a fixture has to carry all
+three. `test/support/list_output_resources.ex` declares them on
+`AshIntrospection.Test.LedgerEntry`: `:list_entries` (bare list),
+`:paged_entries` (offset pagination), `:get_entry` (`get?`). Use it, and assert
+the *values* on **every** element — a list whose first record is right and
+whose second is not is invisible to a `List.first/1` assertion.
+
 ### Never call `Ash.DataLayer.Ets.stop/1` in a test — fixed in #55
 
 **Symptom, before the fix.** Roughly one `mix test` run in forty failed on
@@ -368,7 +399,8 @@ at the top of every `.ex`, `.exs` and `.md` file. Markdown uses an HTML comment.
 
 **Why.** `ash_kotlin_multiplatform` calls `AshIntrospection` at 35 sites across
 21 files (measured 2026-09-09) and there is no contract test between the two
-repos. Its `mix.exs` still asks for `~> 0.2.0`, which does not admit 0.3.0.
+repos. Its `mix.exs` asks for `~> 0.3` (line 102, checked 2026-09-10), so it
+takes every 0.3.x release here unreviewed.
 
 **What we do.** Before changing a public function on `Rpc.Pipeline`,
 `Rpc.Request`, `FieldFormatter`, `Helpers`, `TypeSystem.Introspection` or
@@ -390,10 +422,10 @@ mix hex.audit
 mix deps.audit
 ```
 
-`main` is at **348 tests + 1 doctest, 0 failures** (measured 2026-09-10 on the
-#62 branch). A pull request that changes that number
-downward, or that leaves a compiler warning, is not finished. Never suppress a
-warning — fix the cause.
+`main` is at **366 tests + 1 doctest, 0 failures** (measured 2026-09-10 on the
+#57 / #64 branch). A pull request that changes that number downward, or that
+leaves a compiler warning, is not finished. Never suppress a warning — fix the
+cause.
 
 ## Markdown in this repo
 

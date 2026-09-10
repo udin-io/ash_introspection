@@ -17,6 +17,37 @@ which come first. Numbers in parentheses are GitHub issues on
 
 ### Unreleased
 
+- **Format every record of a multi-record read** (#57).
+  `format_output_with_request/3` formatted nothing when the result was a plain
+  list, so an unpaginated read handed the client internal atom keys.
+  `ValueFormatter.format/5` unwraps a collection only when the *type* says
+  `{:array, _}`, and `format_action_output/5` passed the bare resource module,
+  which carries no cardinality. The paginated read was the same fault one level
+  down and had only ever been read off the code: measured on `main` at
+  `51a9c27`, an `%Ash.Page.Offset{}` reaches stage 4 as a map, so the envelope
+  camelized to `hasMore` correctly while every record inside `:results` kept
+  its atom keys, because `:results` is not a field on the resource and
+  `ResourceFields.get_field_type_info/2` answers `{nil, []}`. Both shapes now
+  format; the page's `:results` are formatted first and the envelope after, so
+  nothing is formatted twice. Single-record `get?` reads were always correct,
+  which is why 348 tests stayed green — every RPC fixture read one record.
+  `test/support/list_output_resources.ex` adds the three read shapes.
+  Blocked `ash_kotlin_multiplatform#48`.
+- **Stop nilling the values of a generic action that returns an unconstrained
+  `{:array, :map}`** (#64). The sibling of #62 one type shape over.
+  `unconstrained_map_action?/1` named `Ash.Type.Map` only, so an action
+  returning `{:array, :map}` — which Ash normalises to
+  `{:array, Ash.Type.Map}` with
+  `[items: [preserve_nil_values?: false]]` — fell through to the typed
+  path, which has no field definitions to select against and writes `nil` for
+  every requested name the caller's maps do not use. Measured on `main` at
+  `51a9c27` with a template of `[:id, :name]`,
+  `[%{"_id" => "a-1", "name" => "KSR"}]` reached the client as
+  `[%{id: nil, name: "KSR"}]`. An array's meaningful constraints live under
+  `:items`, so the guard unwraps the tuple and asks
+  `Introspection.has_field_constraints?/1` about the inner keyword list —
+  reading the key rather than comparing the whole list against a literal, as
+  #62 established. Blocked `ash_kotlin_multiplatform#48`.
 - **Stop nilling the payload of a generic action that returns an unconstrained
   `:map`** (#62). `unconstrained_map_action?/1` skips field selection when
   there are no field definitions to select against, and it asked for
@@ -149,8 +180,9 @@ dozen other items.
    the field-name cache declined in #26 would arrive for free, as upstream's
    `Manifest.Custom.formatted_field_names`. It also
    carries the remainder of #21: entrypoint scoping here branches on the action
-   kind, where upstream's `Reachability` walks the accepted attributes, loads
-   and relationship depth of each declared action.
+   kind, where upstream's `Reachability` walks each declared action's accepted
+   attributes and follows its relationships to their destinations. It does not
+   walk `load` statements — see T1 in [risks.md](risks.md) for the grep.
 2. **Correctness fixes that need no manifest**: #40 (second `rescue` in
    `process_single_error` has no `catch` clause), #35 (tuple nested selection
    keys its template from the raw wire name), #16 (a list of errors in

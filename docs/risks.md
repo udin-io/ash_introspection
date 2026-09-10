@@ -42,17 +42,28 @@ upstream `437901f` by hand, because upstream's own version of that commit calls
 Discovery scopes to declared entrypoints by action kind: a read, create, update
 or destroy entrypoint keeps the whole resource in scope, a generic action keeps
 only what it names. Upstream is finer — it walks each action's accepted
-attributes, loads and relationship depth — so this repo still over-discovers
-for a resource whose read action exposes fields no client asks for. A partial
-port reads as a closed issue in the log and is not one; #23 carries the rest.
+attributes and follows relationships to their destinations — so this repo
+still over-discovers for a resource whose read action exposes fields no client
+asks for. A partial port reads as a closed issue in the log and is not one; #23
+carries the rest.
+
+`Reachability` does **not** walk `load` statements, whatever an earlier version
+of this page said. `grep load
+deps/ash/lib/ash/info/manifest/generator/reachability.ex` returns two
+`Code.ensure_loaded?/1` calls and nothing else (ash 3.33.1, checked
+2026-09-10). The accepted-attribute walk is real —
+`traverse_action_accepted_attributes/6` at line 208 — and so is the
+relationship traversal at line 116. Do not size #23's port against a
+capability upstream does not have.
 
 ### T2 — One consumer, no contract test
 
-**The risk.** `ash_kotlin_multiplatform` depends on `ash_introspection ~> 0.2.0`
-and calls it at 35 sites across 21 files (measured 2026-09-09). Nothing in
-either repo fails when the shared surface changes shape. The `~> 0.2.0`
-requirement does not even admit the current 0.3.0, so the consumer is pinned
-behind a release that changed the error payload.
+**The risk.** `ash_kotlin_multiplatform` depends on `ash_introspection ~> 0.3`
+(`mix.exs:102`, checked 2026-09-10) and calls it at 35 sites across 21 files
+(measured 2026-09-09). Nothing in either repo fails when the shared surface
+changes shape. The requirement admits every 0.3.x, so the consumer takes each
+release here without review — the opposite exposure to the `~> 0.2.0` pin an
+earlier version of this page described.
 
 **Why it bites.** The 0.3.0 rename of `code` to `type` is exactly the class of
 change a contract test catches and a version constraint does not. It shipped
@@ -82,7 +93,7 @@ yet and is not on the board.
 **The risk.** `lib/ash_introspection/rpc/` had **zero** test coverage until the
 week of 2026-09-09 (#18). Coverage arrived as regression tests attached to the
 seven fixes shipped in 0.3.0 — one test per fixed bug, not a suite that
-describes the pipeline. `main` is at 348 tests, and whole modules
+describes the pipeline. `main` is at 366 tests, and whole modules
 (`value_formatter.ex`, `field_extractor.ex`, `atomizer.ex`) are still exercised
 only incidentally.
 
