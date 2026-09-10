@@ -45,55 +45,6 @@ defmodule AshIntrospection.TypeSystem.IntrospectionTest do
     end
   end
 
-  describe "classify_ash_type/3" do
-    test "returns :union_attribute for union types" do
-      assert :union_attribute == Introspection.classify_ash_type(Ash.Type.Union, %{}, false)
-    end
-
-    test "returns :embedded_resource for embedded resources" do
-      assert :embedded_resource ==
-               Introspection.classify_ash_type(
-                 AshIntrospection.Test.EmbeddedAddress,
-                 %{},
-                 false
-               )
-    end
-
-    test "returns :embedded_resource_array for embedded resources in arrays" do
-      assert :embedded_resource_array ==
-               Introspection.classify_ash_type(
-                 AshIntrospection.Test.EmbeddedAddress,
-                 %{},
-                 true
-               )
-    end
-
-    test "returns :tuple for tuple types" do
-      assert :tuple == Introspection.classify_ash_type(Ash.Type.Tuple, %{}, false)
-    end
-
-    test "returns :attribute for other types" do
-      assert :attribute == Introspection.classify_ash_type(Ash.Type.String, %{}, false)
-    end
-  end
-
-  describe "get_union_types/1" do
-    test "extracts types from union attribute" do
-      attribute = %{
-        type: Ash.Type.Union,
-        constraints: [types: [note: [type: :string], url: [type: :string]]]
-      }
-
-      union_types = Introspection.get_union_types(attribute)
-      assert [note: [type: :string], url: [type: :string]] == union_types
-    end
-
-    test "returns empty list for non-union types" do
-      attribute = %{type: Ash.Type.String, constraints: []}
-      assert [] == Introspection.get_union_types(attribute)
-    end
-  end
-
   describe "get_inner_type/1" do
     test "extracts inner type from array" do
       assert Ash.Type.String == Introspection.get_inner_type({:array, Ash.Type.String})
