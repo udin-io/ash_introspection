@@ -17,6 +17,20 @@ which come first. Numbers in parentheses are GitHub issues on
 
 ### Unreleased
 
+- **Remove dead code and fix the pipeline moduledoc** (#27). Deleted five
+  public functions with zero callers, confirmed by grepping this repo and
+  `ash_kotlin_multiplatform`: the TypeScript-named leftovers
+  `has_typescript_field_names?/1`, `get_typescript_field_names_map/1` and
+  `is_custom_typescript_type?/1`; `classify_ash_type/3` and
+  `get_union_types/1`, which upstream had already dropped in `b6ddffd`; and
+  the `normalize_value_for_json/1` alias in `ResultProcessor`.
+  `get_union_types_from_constraints/2` stays — it backs `TypeDiscovery`,
+  `ValidationErrorTypes` and three `ash_kotlin_multiplatform` call sites.
+  `get_action_return_type_info/1` in `Rpc.Pipeline` collapsed into its one
+  caller, `get_field_mapping_module/3`, which only ever used two of its six
+  classification tags. `Rpc.Pipeline`'s moduledoc no longer claims a
+  `parse_request/3` this repo does not implement, and no longer lists
+  `discover_action` in its example config, which nothing here reads.
 - **Format every record of a multi-record read** (#57).
   `format_output_with_request/3` formatted nothing when the result was a plain
   list, so an unpaginated read handed the client internal atom keys.
@@ -195,10 +209,9 @@ dozen other items.
    `FieldSelector` clauses #19 just guarded: a relationship loaded through an
    `%Ash.Query{}` envelope is a seventh append site and needs its own
    `check_load_allowed!/3`.
-5. **Housekeeping**: #27 (dead code and a wrong pipeline moduledoc), #45 (the
-   remaining `||` key-lookup pattern in `field_selector`), #39 (README wrapping
-   — half of it, the test-domain warning, is already fixed in
-   `config/test.exs`).
+5. **Housekeeping**: #45 (the remaining `||` key-lookup pattern in
+   `field_selector`), #39 (README wrapping — half of it, the test-domain
+   warning, is already fixed in `config/test.exs`).
 
 ## Decided against
 

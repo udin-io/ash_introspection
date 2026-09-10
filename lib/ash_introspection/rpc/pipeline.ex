@@ -4,13 +4,19 @@
 
 defmodule AshIntrospection.Rpc.Pipeline do
   @moduledoc """
-  Language-agnostic four-stage RPC pipeline for Ash actions.
+  Language-agnostic RPC pipeline for Ash actions.
 
-  Implements the core pipeline stages:
-  1. parse_request/3 - Parse and validate input with fail-fast
+  This module implements stages 2 through 4 of the four-stage pipeline:
   2. execute_ash_action/2 - Execute Ash operations
   3. process_result/3 - Apply field selection
   4. format_output/3 - Format for client consumption
+
+  Stage 1, parsing and validating client input, is not implemented here and
+  there is no `parse_request/3` in this module. It is language-specific and is
+  a consumer's responsibility: build the `%Request{}` this pipeline expects
+  (and the load/select statement, via `Rpc.FieldProcessing.FieldSelector`)
+  before calling into it. See "Action metadata" below for what that leaves
+  unenforced when a wrapper skips its own parse stage.
 
   ## Configuration
 
@@ -24,7 +30,6 @@ defmodule AshIntrospection.Rpc.Pipeline do
     field_names_callback: :interop_field_names,
     get_original_field_name: fn resource, client_key -> ... end,
     format_field_for_client: fn field_name, resource, formatter -> ... end,
-    discover_action: fn otp_app, params -> ... end,
     not_found_error?: true
   }
   ```
@@ -875,17 +880,27 @@ defmodule AshIntrospection.Rpc.Pipeline do
     end
   end
 
+  # Only two return shapes change the mapping module; everything else falls
+  # back to `default_resource`. This used to route through
+  # `get_action_return_type_info/1`, a six-tag classifier
+  # (`:none`/`:resource`/`:array`/`:array_of_resource`/`:typed_struct`/
+  # `:typed_map`/`:other`) whose five other tags all took the same fallback
+  # branch here — collapsed in #27 to the two conditions that actually matter.
   defp get_field_mapping_module(action, default_resource, config) do
     if action.type != :action do
       default_resource
     else
-      field_names_callback = Map.get(config, :field_names_callback, :interop_field_names)
+      return_type = action.returns
+      constraints = action.constraints || []
 
-      case get_action_return_type_info(action) do
-        {:resource, resource_module} ->
-          resource_module
+      cond do
+        is_atom(return_type) && Ash.Resource.Info.resource?(return_type) ->
+          return_type
 
-        {:typed_struct, module} ->
+        return_type == Ash.Type.Struct && Keyword.has_key?(constraints, :instance_of) ->
+          module = Keyword.get(constraints, :instance_of)
+          field_names_callback = Map.get(config, :field_names_callback, :interop_field_names)
+
           # `Code.ensure_loaded?/1` first: Elixir loads modules lazily, so
           # `function_exported?/3` answers `false` for a consumer's struct
           # module nothing has touched in this process, and the mapping module
@@ -895,41 +910,9 @@ defmodule AshIntrospection.Rpc.Pipeline do
             do: module,
             else: nil
 
-        _ ->
+        true ->
           default_resource
       end
-    end
-  end
-
-  defp get_action_return_type_info(action) do
-    return_type = action.returns
-    constraints = action.constraints || []
-
-    cond do
-      is_nil(return_type) ->
-        {:none, nil}
-
-      is_atom(return_type) && Ash.Resource.Info.resource?(return_type) ->
-        {:resource, return_type}
-
-      match?({:array, type} when is_atom(type), return_type) ->
-        {:array, inner_type} = return_type
-
-        if Ash.Resource.Info.resource?(inner_type) do
-          {:array_of_resource, inner_type}
-        else
-          {:array, inner_type}
-        end
-
-      return_type == Ash.Type.Struct && Keyword.has_key?(constraints, :instance_of) ->
-        {:typed_struct, Keyword.get(constraints, :instance_of)}
-
-      return_type in [Ash.Type.Map, Ash.Type.Struct] &&
-          Introspection.has_field_constraints?(constraints) ->
-        {:typed_map, constraints}
-
-      true ->
-        {:other, return_type}
     end
   end
 

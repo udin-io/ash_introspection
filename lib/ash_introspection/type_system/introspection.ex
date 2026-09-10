@@ -65,58 +65,6 @@ defmodule AshIntrospection.TypeSystem.Introspection do
   end
 
   @doc """
-  Classifies an Ash type into a category for processing purposes.
-
-  Returns one of:
-  - `:union_attribute` - Union type
-  - `:embedded_resource` - Single embedded resource
-  - `:embedded_resource_array` - Array of embedded resources
-  - `:tuple` - Tuple type
-  - `:attribute` - Simple attribute (default)
-
-  ## Parameters
-  - `type_module` - The Ash type module (e.g., Ash.Type.String, Ash.Type.Union)
-  - `attribute` - The attribute struct containing type and constraints
-  - `is_array` - Whether this is inside an array type
-
-  ## Examples
-
-      iex> attr = %{type: MyApp.Address, constraints: []}
-      iex> AshIntrospection.TypeSystem.Introspection.classify_ash_type(MyApp.Address, attr, false)
-      :embedded_resource
-  """
-  def classify_ash_type(type_module, _attribute, is_array) do
-    cond do
-      type_module == Ash.Type.Union ->
-        :union_attribute
-
-      is_embedded_resource?(type_module) ->
-        if is_array, do: :embedded_resource_array, else: :embedded_resource
-
-      type_module == Ash.Type.Tuple ->
-        :tuple
-
-      true ->
-        :attribute
-    end
-  end
-
-  @doc """
-  Extracts union types from an attribute's constraints.
-
-  Handles both direct union types and array union types.
-
-  ## Examples
-
-      iex> attr = %{type: Ash.Type.Union, constraints: [types: [note: [...], url: [...]]]}
-      iex> AshIntrospection.TypeSystem.Introspection.get_union_types(attr)
-      [note: [...], url: [...]]
-  """
-  def get_union_types(attribute) do
-    get_union_types_from_constraints(attribute.type, attribute.constraints)
-  end
-
-  @doc """
   Extracts union types from type and constraints directly.
 
   Useful when you have constraints but not the full attribute struct.
@@ -441,78 +389,6 @@ defmodule AshIntrospection.TypeSystem.Introspection do
   end
 
   def get_field_spec_type(_, _), do: {nil, []}
-
-  # ---------------------------------------------------------------------------
-  # TypeScript-Specific Helpers (For Backward Compatibility)
-  # ---------------------------------------------------------------------------
-
-  @doc """
-  Checks if a module has a typescript_field_names/0 callback.
-
-  This is TypeScript-specific but included here for compatibility with
-  modules that use the TypeScript-specific callback instead of the
-  generalized interop_field_names callback.
-
-  ## Examples
-
-      iex> AshIntrospection.TypeSystem.Introspection.has_typescript_field_names?(MyApp.TaskStats)
-      true
-
-      iex> AshIntrospection.TypeSystem.Introspection.has_typescript_field_names?(Ash.Type.String)
-      false
-  """
-  def has_typescript_field_names?(nil), do: false
-
-  def has_typescript_field_names?(module) when is_atom(module) do
-    Code.ensure_loaded?(module) && function_exported?(module, :typescript_field_names, 0)
-  end
-
-  def has_typescript_field_names?(_), do: false
-
-  @doc """
-  Gets the typescript_field_names as a map, or empty map if not available.
-
-  Falls back to interop_field_names if typescript_field_names is not available.
-
-  ## Examples
-
-      iex> AshIntrospection.TypeSystem.Introspection.get_typescript_field_names_map(MyApp.TaskStats)
-      %{is_active?: "isActive", meta_1: "meta1"}
-  """
-  def get_typescript_field_names_map(nil), do: %{}
-
-  def get_typescript_field_names_map(module) when is_atom(module) do
-    cond do
-      has_typescript_field_names?(module) ->
-        module.typescript_field_names() |> Map.new()
-
-      has_interop_field_names?(module) ->
-        get_interop_field_names_map(module)
-
-      true ->
-        %{}
-    end
-  end
-
-  def get_typescript_field_names_map(_), do: %{}
-
-  @doc """
-  Checks if a type is a custom Ash type with a typescript_type_name callback.
-
-  This is TypeScript-specific but included for compatibility.
-
-  ## Examples
-
-      iex> AshIntrospection.TypeSystem.Introspection.is_custom_typescript_type?(MyApp.MyCustomType)
-      true
-  """
-  def is_custom_typescript_type?(type) when is_atom(type) and not is_nil(type) do
-    Code.ensure_loaded?(type) and
-      function_exported?(type, :typescript_type_name, 0) and
-      Spark.implements_behaviour?(type, Ash.Type)
-  end
-
-  def is_custom_typescript_type?(_), do: false
 
   # ---------------------------------------------------------------------------
   # Field Names Callback Detection (Generic)

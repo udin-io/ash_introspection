@@ -540,12 +540,6 @@ defmodule AshIntrospection.Rpc.ResultProcessor do
   # ─────────────────────────────────────────────────────────────────────────────
 
   @doc """
-  Alias for normalize_primitive/1 for backwards compatibility.
-  Normalizes a value for JSON serialization.
-  """
-  def normalize_value_for_json(value), do: normalize_primitive(value)
-
-  @doc """
   Normalizes a value for JSON serialization.
 
   Handles DateTime, Date, Time, Decimal, CiString, atoms, keyword lists, nested maps,
