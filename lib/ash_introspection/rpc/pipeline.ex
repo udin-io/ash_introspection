@@ -757,8 +757,47 @@ defmodule AshIntrospection.Rpc.Pipeline do
     end
   end
 
+  # A read hands stage 4 one of three shapes and only one of them used to
+  # format. `ValueFormatter.format/5` unwraps a collection when the *type* says
+  # `{:array, _}`, and this is the only caller that knows the data is a
+  # collection of `resource`, because a resource module carries no cardinality.
+  # #57: passing the bare module for a list left every record with internal
+  # atom keys, and the paginated page — a map with `:results` — formatted its
+  # own envelope and nothing inside it, since `:results` is not a field on the
+  # resource so `ResourceFields.get_field_type_info/2` answers `{nil, []}`.
+  # Both measured on `main` at `51a9c27`.
+  #
+  # The page clause formats `:results` first and then runs the page through the
+  # resource path for its envelope names. That is not a double pass: the
+  # already-formatted list sits under a key the resource does not define, and
+  # `format/5` returns any value whose type is `nil` untouched.
+  #
+  # It matches on `:has_more` as well as `:results` because a single record is
+  # also a map here, keyed by the extraction template, and a resource is free
+  # to name an attribute `results`. Both keys come from `ResultProcessor.process/4`,
+  # which sets them on the offset page and the keyset page alike.
+  defp format_resource_output(data, resource, formatter, config) when is_list(data) do
+    format_value(data, {:array, resource}, formatter, config)
+  end
+
+  defp format_resource_output(
+         %{results: results, has_more: _} = page,
+         resource,
+         formatter,
+         config
+       )
+       when is_list(results) do
+    page
+    |> Map.put(:results, format_value(results, {:array, resource}, formatter, config))
+    |> format_value(resource, formatter, config)
+  end
+
   defp format_resource_output(data, resource, formatter, config) do
-    ValueFormatter.format(data, resource, [], :output, value_formatter_config(formatter, config))
+    format_value(data, resource, formatter, config)
+  end
+
+  defp format_value(data, type, formatter, config) do
+    ValueFormatter.format(data, type, [], :output, value_formatter_config(formatter, config))
   end
 
   defp format_generic_action_output(data, action, formatter, config) do
@@ -799,10 +838,26 @@ defmodule AshIntrospection.Rpc.Pipeline do
   # came back as `nil` per requested field. Ask about `:fields` — the thing the
   # typed path actually needs — and a future ash release adding another default
   # cannot kill the check again.
+  #
+  # #64 is the same silent data loss one type shape over. `{:array, :map}`
+  # normalises to `{:array, Ash.Type.Map}` and puts the element's constraints
+  # under `:items`, so the tuple has to be unwrapped and the inner keyword list
+  # asked the same question. Read `:items` with a `[]` default for the reason
+  # `has_field_constraints?/1` exists: the constraint key is the question, never
+  # the shape of the whole list.
   defp unconstrained_map_action?(action) do
-    action.type == :action && action.returns == Ash.Type.Map &&
-      not Introspection.has_field_constraints?(action.constraints || [])
+    action.type == :action && untyped_map_return?(action.returns, action.constraints || [])
   end
+
+  defp untyped_map_return?(Ash.Type.Map, constraints) do
+    not Introspection.has_field_constraints?(constraints)
+  end
+
+  defp untyped_map_return?({:array, Ash.Type.Map}, constraints) do
+    not Introspection.has_field_constraints?(Keyword.get(constraints, :items, []))
+  end
+
+  defp untyped_map_return?(_returns, _constraints), do: false
 
   defp action_returns_resource?(action) do
     case action.returns do

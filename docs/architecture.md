@@ -32,7 +32,7 @@ flowchart TB
     dev -->|"writes resources in"| app
     dev -->|"runs mix codegen task"| akm
     app -->|"declares domains and RPC actions for"| akm
-    akm -->|"hex dep: ash_introspection ~> 0.2.0"| ai
+    akm -->|"hex dep: ash_introspection ~> 0.3"| ai
     akm -->|"emits source files"| kclient
     kclient -->|"RPC request over HTTP"| app
     ai -->|"introspects at compile and run time"| ash
