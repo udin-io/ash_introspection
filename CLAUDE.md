@@ -278,6 +278,62 @@ sites. See `test/ash_introspection/rpc/load_restrictions_test.exs`.
 **They are not authorization.** Ash policies apply to every load that gets
 through. Say so in anything you write about them; risk T5 in
 [`docs/risks.md`](docs/risks.md) explains why it matters.
+
+### A template entry has three shapes, each with its own reader — #35
+
+**Symptom.** A field you selected is missing from the response, or arrives
+`nil`, and nothing errors. Selecting the same field a different way works.
+
+**Why.** `FieldSelector` emits three entry shapes and each consumer matches
+only some of them:
+
+| Entry | Meaning | Matched by |
+| --- | --- | --- |
+| `:name` | a plain field | `ResultProcessor`, every extractor |
+| `{:name, nested}` | a nested selection | `ResultProcessor`, atom key only |
+| `%{field_name: :name, index: n}` | a tuple position | `FieldExtractor.convert_tuple_to_map/2` and `ResultProcessor` |
+
+Every consumer ends its `case` with a catch-all that returns the accumulator
+untouched, so an entry no clause matches is dropped in silence. In #35 the
+tuple `{:nested, ...}` branch emitted `{"corner", nested}` with the raw wire
+name; `ResultProcessor` matches `{field_atom, nested} when is_atom(field_atom)`,
+so the field vanished from the response while the same field selected flat came
+back whole.
+
+**What we do.** Resolve the atom before you build an entry — never key a
+template from the wire name. And when you add a shape, add the clause that
+reads it in the same change; a shape nothing matches fails as missing data, not
+as an error. #66 is what is left of this: a nested entry carries no index, so
+`convert_tuple_to_map/2` cannot place a nested tuple field and the value comes
+back `nil`. See
+`test/ash_introspection/rpc/field_processing/field_selector_tuple_nested_test.exs`.
+
+### `a || b` yields `b` when both are falsy, so `||` erases one key — #45
+
+**Symptom.** A request behaves one way with atom keys and another way with
+string keys, and the two spellings are supposed to be the same request.
+
+**Why.** `Map.get(m, :k) || Map.get(m, "k")` is the #15 shape and it answers
+truthiness where the question is presence. The half that is easy to miss is
+which side loses: `||` returns its **right** operand when both are falsy, so
+`%{"k" => false}` yields `false` and `%{k: false}` yields `nil`. Measured on
+`main` at `b99e5a3` in `get_args_and_fields/1`: `%{"slug" => %{fields: false}}`
+loaded the calculation and dropped the selection, while
+`%{"slug" => %{"fields" => false}}` rejected it.
+
+**What we do.** `Map.fetch/2` on the atom key, then the string key —
+`plain_map_field/2` in `result_processor.ex` and `fetch_either_key/2` in
+`field_selector.ex` are the two copies of the shape. Both key forms reach the
+library: the atom form is why `atomize_nested_value/3` carries `%{args: _}` and
+`%{fields: _}` clauses alongside the string ones. This grep must stay empty:
+
+```
+grep -rn 'Map.get(\w*, :\w*) || Map.get(\w*, "' lib
+```
+
+`lib/ash_introspection/rpc/error.ex:68` is not this shape — it prefers
+`:fields` over a differently named `:field`, and both are atoms.
+
 ### An upstream fix that hangs off a Spark extension cannot be ported here
 
 **Symptom.** You start porting an `ash_typescript` commit, reach for
@@ -422,10 +478,10 @@ mix hex.audit
 mix deps.audit
 ```
 
-`main` is at **366 tests + 1 doctest, 0 failures** (measured 2026-09-10 on the
-#57 / #64 branch). A pull request that changes that number downward, or that
-leaves a compiler warning, is not finished. Never suppress a warning — fix the
-cause.
+`main` is at **359 tests + 1 doctest, 0 failures** (measured 2026-09-10 at
+`e16e5dc`, after #27 deleted the tests of the dead code it removed). A pull
+request that changes that number downward, or that leaves a compiler warning,
+is not finished. Never suppress a warning — fix the cause.
 
 ## Markdown in this repo
 

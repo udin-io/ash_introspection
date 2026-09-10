@@ -31,6 +31,33 @@ which come first. Numbers in parentheses are GitHub issues on
   classification tags. `Rpc.Pipeline`'s moduledoc no longer claims a
   `parse_request/3` this repo does not implement, and no longer lists
   `discover_action` in its example config, which nothing here reads.
+- **Key a nested tuple selection from the resolved atom** (#35, `24e7773`).
+  The `{:nested, ...}` branch of `FieldSelector.select_tuple_fields/4` built
+  its extraction template from the raw wire name while every sibling branch
+  used the resolved atom. `ResultProcessor` matches a nested entry as
+  `{atom, nested}`, so the string key fell through its catch-all and the field
+  vanished from the response. Measured on `main` at `b99e5a3` against a tuple
+  of `{label :: string, corner :: map(x, y)}`: `["label", "corner"]` returned
+  both fields, `[%{"corner" => ["x", "y"]}]` returned `%{}`, and the
+  multi-entry spelling of the same request returned `%{"corner" => nil}` —
+  three answers to one request. `test/support/tuple_selection_resources.ex` is
+  the first tuple fixture with a nested-selectable field; `Test.Post.get_bounds`
+  carries two floats, so the branch had no coverage at all. The value still
+  does not survive, because a nested entry carries no tuple index: that is #66,
+  pinned by an assertion in the new test.
+- **Read the calculation envelope keys by presence, not truthiness** (#45,
+  `14d806e`). `get_args_and_fields/1` kept the
+  `Map.get(m, :args) || Map.get(m, "args")` shape that #15 removed from
+  `result_processor`. Latent for data, as the issue said — `:args` is a map
+  and `:fields` is a list, and neither `%{}` nor `[]` is falsy — but not
+  inert: `||` returns its right operand when both sides are falsy, so a
+  present-and-`false` value survived under the string key and was erased under
+  the atom key. Measured on `main` at `b99e5a3`, `%{"slug" => %{fields:
+  false}}` loaded the calculation and dropped the selection while
+  `%{"slug" => %{"fields" => false}}` rejected it. `Map.fetch/2` before the
+  string key, in the style of `plain_map_field/2`. `nil` keeps its meaning: a
+  JSON `null` under `:args` is "no arguments", so the `not is_nil/1` guard
+  stays and both null cases answer as they did before.
 - **Format every record of a multi-record read** (#57).
   `format_output_with_request/3` formatted nothing when the result was a plain
   list, so an unpaginated read handed the client internal atom keys.
@@ -198,8 +225,9 @@ dozen other items.
    attributes and follows its relationships to their destinations. It does not
    walk `load` statements — see T1 in [risks.md](risks.md) for the grep.
 2. **Correctness fixes that need no manifest**: #40 (second `rescue` in
-   `process_single_error` has no `catch` clause), #35 (tuple nested selection
-   keys its template from the raw wire name), #16 (a list of errors in
+   `process_single_error` has no `catch` clause), #66 (a nested selection
+   inside a tuple field returns `nil`, because the template entry carries no
+   tuple index — filed out of #35), #16 (a list of errors in
    `build_error_response/1` for bulk actions), #17 (unwrap Reactor step errors,
    serialize `Ash.Type.Vector`).
 3. **#18 — the RPC test floor.** Coverage arrives with each fix by preference,
@@ -209,8 +237,7 @@ dozen other items.
    `FieldSelector` clauses #19 just guarded: a relationship loaded through an
    `%Ash.Query{}` envelope is a seventh append site and needs its own
    `check_load_allowed!/3`.
-5. **Housekeeping**: #45 (the remaining `||` key-lookup pattern in
-   `field_selector`), #39 (README wrapping — half of it, the test-domain
+5. **Housekeeping**: #39 (README wrapping — half of it, the test-domain
    warning, is already fixed in `config/test.exs`).
 
 ## Decided against

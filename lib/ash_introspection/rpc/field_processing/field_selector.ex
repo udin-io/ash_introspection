@@ -733,7 +733,12 @@ defmodule AshIntrospection.Rpc.FieldProcessing.FieldSelector do
               {_nested_select, _nested_load, nested_template} =
                 select_fields(field_type, field_constraints, nested_fields, new_path, config)
 
-              {select, load, template ++ [{field_name, nested_template}]}
+              # `field_atom`, never `field_name`. `ResultProcessor` matches a
+              # nested template entry as `{atom, nested}`, so the raw wire name
+              # fell through its catch-all and the field vanished from the
+              # response, while the same field asked for flat came back. See
+              # #35.
+              {select, load, template ++ [{field_atom, nested_template}]}
             else
               throw({:unknown_field, field_atom, "tuple", path})
             end
@@ -1044,29 +1049,44 @@ defmodule AshIntrospection.Rpc.FieldProcessing.FieldSelector do
 
   defp atomize_nested_value(value, _resource, _config), do: value
 
+  # A calculation envelope names `:args` and `:fields` under either key form:
+  # a wire request carries strings, an internally built request carries atoms.
+  # `nil` under `:args` is a JSON `null` and means "no arguments", so it is not
+  # a with-args request; a `:fields` key is a field selection whatever it
+  # holds, and a value that is not a list is rejected downstream rather than
+  # dropped here.
   defp get_args_and_fields(map) when is_map(map) do
-    args = Map.get(map, :args) || Map.get(map, "args")
-    has_fields_key = Map.has_key?(map, :fields) || Map.has_key?(map, "fields")
+    fields = fetch_either_key(map, :fields)
 
-    cond do
-      args != nil ->
-        fields =
-          cond do
-            Map.has_key?(map, :fields) -> Map.get(map, :fields)
-            Map.has_key?(map, "fields") -> Map.get(map, "fields")
-            true -> nil
-          end
+    case fetch_either_key(map, :args) do
+      {:ok, args} when not is_nil(args) ->
+        {:ok, args, fetched_value(fields)}
 
-        {:ok, args, fields}
-
-      has_fields_key ->
-        fields = Map.get(map, :fields) || Map.get(map, "fields")
-        {:ok, nil, fields}
-
-      true ->
-        :not_args_structure
+      _ ->
+        case fields do
+          {:ok, value} -> {:ok, nil, value}
+          :error -> :not_args_structure
+        end
     end
   end
+
+  # `Map.fetch/2` before the string key, never
+  # `Map.get(map, key) || Map.get(map, to_string(key))`. `||` answers
+  # truthiness where the question is presence: it erases a key that is present
+  # and `false`, and — because it returns its right operand when both sides
+  # are falsy — it erases it only under the atom key, so one request got two
+  # answers depending on which form the caller built. Same reasoning and same
+  # shape as `plain_map_field/2` in `ResultProcessor`, which is where #15 fixed
+  # it for record fields. See #45.
+  defp fetch_either_key(map, key) do
+    case Map.fetch(map, key) do
+      {:ok, value} -> {:ok, value}
+      :error -> Map.fetch(map, to_string(key))
+    end
+  end
+
+  defp fetched_value({:ok, value}), do: value
+  defp fetched_value(:error), do: nil
 
   defp resolve_resource_field_name(resource, field_name, config) when is_binary(field_name) do
     if is_interop_resource?(resource, config) do
