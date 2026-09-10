@@ -771,11 +771,21 @@ defmodule AshIntrospection.Rpc.Pipeline do
   # resource path for its envelope names. That is not a double pass: the
   # already-formatted list sits under a key the resource does not define, and
   # `format/5` returns any value whose type is `nil` untouched.
+  #
+  # It matches on `:has_more` as well as `:results` because a single record is
+  # also a map here, keyed by the extraction template, and a resource is free
+  # to name an attribute `results`. Both keys come from `ResultProcessor.process/4`,
+  # which sets them on the offset page and the keyset page alike.
   defp format_resource_output(data, resource, formatter, config) when is_list(data) do
     format_value(data, {:array, resource}, formatter, config)
   end
 
-  defp format_resource_output(%{results: results} = page, resource, formatter, config)
+  defp format_resource_output(
+         %{results: results, has_more: _} = page,
+         resource,
+         formatter,
+         config
+       )
        when is_list(results) do
     page
     |> Map.put(:results, format_value(results, {:array, resource}, formatter, config))
