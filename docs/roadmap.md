@@ -17,7 +17,17 @@ which come first. Numbers in parentheses are GitHub issues on
 
 ### Unreleased
 
-- **Remove dead code and fix the pipeline moduledoc** (#27). Deleted five
+Nothing. 0.4.0 was cut on 2026-09-10.
+
+### 0.4.0 — 2026-09-10
+
+Five breaking changes, all in how a read action selects its record and which
+public helpers still exist. `mix ash_introspection.upgrade 0.3.0 0.4.0`
+rewrites nothing and prints what each break needs instead — none of the three
+has a call site a codemod can find, and the task's moduledoc records why for
+each.
+
+- **Remove dead code and fix the pipeline moduledoc** (#27). Deleted six
   public functions with zero callers, confirmed by grepping this repo and
   `ash_kotlin_multiplatform`: the TypeScript-named leftovers
   `has_typescript_field_names?/1`, `get_typescript_field_names_map/1` and
@@ -178,6 +188,20 @@ which come first. Numbers in parentheses are GitHub issues on
   custom type's interop name off the original type rather than the unwrapped
   subtype. Ports `ash_typescript` `88783c0`, `618851b`, `ecb1364` and
   `a74c551`.
+- **Handle a list of errors, unwrap Reactor step errors, serialize
+  `Ash.Type.Vector`** (#16, #17, `66cdc72`). `Ash.bulk_create/update/destroy`
+  return `%Ash.BulkResult{errors: [...]}`, and a list matched neither
+  `is_exception` nor `is_map` in `build_error_response/1`, so every per-record
+  validation error collapsed into one "An unexpected error occurred".
+  `%Reactor.Error.Invalid.RunStepError{}` is itself an exception, so it matched
+  the generic Ash clause and the client got a notice naming a step it has never
+  heard of. `%Ash.Vector{}` keeps its floats in a packed binary that `Jason`
+  refuses to encode. Merged three hours after the 0.3.0 changelog section was
+  cut, so it ships here.
+- **Closed without a code change**: #26, which is in "Decided against" below
+  with its measurement, and #39, whose two halves had both already landed —
+  the README reflow in #51, the test-domain warning in `config/test.exs` in
+  #42. #61 was filed out of #26 and is in "Next".
 
 ### 0.3.0 — 2026-09-09
 
@@ -227,9 +251,7 @@ dozen other items.
 2. **Correctness fixes that need no manifest**: #40 (second `rescue` in
    `process_single_error` has no `catch` clause), #66 (a nested selection
    inside a tuple field returns `nil`, because the template entry carries no
-   tuple index — filed out of #35), #16 (a list of errors in
-   `build_error_response/1` for bulk actions), #17 (unwrap Reactor step errors,
-   serialize `Ash.Type.Vector`).
+   tuple index — filed out of #35).
 3. **#18 — the RPC test floor.** Coverage arrives with each fix by preference,
    but the harness and the fixtures are still a ticket of their own.
 4. **Upstream parity features**: #24 (relationship query envelopes), #25
@@ -237,8 +259,10 @@ dozen other items.
    `FieldSelector` clauses #19 just guarded: a relationship loaded through an
    `%Ash.Query{}` envelope is a seventh append site and needs its own
    `check_load_allowed!/3`.
-5. **Housekeeping**: #39 (README wrapping — half of it, the test-domain
-   warning, is already fixed in `config/test.exs`).
+5. **Performance**: #61 (replace `FieldFormatter`'s three regex case
+   predicates with binary walks). Filed out of #26 with the measurement: the
+   predicates are ~410 ns of the 470 ns each `format_field_name/2` call costs,
+   and a binary walk computing the same answer measures ~10 ns.
 
 ## Decided against
 
