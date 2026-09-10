@@ -733,7 +733,12 @@ defmodule AshIntrospection.Rpc.FieldProcessing.FieldSelector do
               {_nested_select, _nested_load, nested_template} =
                 select_fields(field_type, field_constraints, nested_fields, new_path, config)
 
-              {select, load, template ++ [{field_name, nested_template}]}
+              # `field_atom`, never `field_name`. `ResultProcessor` matches a
+              # nested template entry as `{atom, nested}`, so the raw wire name
+              # fell through its catch-all and the field vanished from the
+              # response, while the same field asked for flat came back. See
+              # #35.
+              {select, load, template ++ [{field_atom, nested_template}]}
             else
               throw({:unknown_field, field_atom, "tuple", path})
             end
