@@ -4,13 +4,19 @@
 
 defmodule AshIntrospection.Rpc.Pipeline do
   @moduledoc """
-  Language-agnostic four-stage RPC pipeline for Ash actions.
+  Language-agnostic RPC pipeline for Ash actions.
 
-  Implements the core pipeline stages:
-  1. parse_request/3 - Parse and validate input with fail-fast
+  This module implements stages 2 through 4 of the four-stage pipeline:
   2. execute_ash_action/2 - Execute Ash operations
   3. process_result/3 - Apply field selection
   4. format_output/3 - Format for client consumption
+
+  Stage 1, parsing and validating client input, is not implemented here and
+  there is no `parse_request/3` in this module. It is language-specific and is
+  a consumer's responsibility: build the `%Request{}` this pipeline expects
+  (and the load/select statement, via `Rpc.FieldProcessing.FieldSelector`)
+  before calling into it. See "Action metadata" below for what that leaves
+  unenforced when a wrapper skips its own parse stage.
 
   ## Configuration
 
@@ -24,7 +30,6 @@ defmodule AshIntrospection.Rpc.Pipeline do
     field_names_callback: :interop_field_names,
     get_original_field_name: fn resource, client_key -> ... end,
     format_field_for_client: fn field_name, resource, formatter -> ... end,
-    discover_action: fn otp_app, params -> ... end,
     not_found_error?: true
   }
   ```
