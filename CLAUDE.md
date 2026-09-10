@@ -139,6 +139,42 @@ camelCase changes under a second pass: `AshIntrospection.Test.RevisionInfo`
 maps `:revision` to `_rev`, which a second camelization rewrites to `rev`. See
 `test/ash_introspection/rpc/pipeline_metadata_formatting_test.exs`.
 
+### Never compare a whole constraints keyword list against `[]` — fixed in #62
+
+**Symptom.** A branch that should fire for a type carrying no interesting
+constraints never fires. Nothing errors and nothing warns; the code takes the
+other path and every test still passes, because the other path returns
+something plausible.
+
+**Why.** Ash normalises constraints against the type's declared schema before
+you ever see them. A generic action goes through
+`Ash.Resource.Actions.Action.transform/1` →
+`Ash.Type.init/2` → `Ash.Type.validate_constraints/2` →
+`Spark.Options.validate/2`, which fills in **every default the type
+declares** (ash 3.33.1, `deps/ash/lib/ash/type/type.ex:2647`). So
+`action :raw_payload, :map` with no `constraints` block arrives as
+`[preserve_nil_values?: false]`, from `Ash.Type.Map`'s schema
+(`deps/ash/lib/ash/type/map.ex:7`). Attributes, arguments and metadata are
+normalised the same way. In #62 the untyped-map fast path in `Rpc.Pipeline`
+asked for `action.constraints == []`, so it was dead from the first commit and
+every untyped-map response went through the typed path, which nils each
+requested field name the caller's map does not happen to use. Measured
+2026-09-10: ash 3.11.3 and 3.33.1 both normalise that action to
+`[preserve_nil_values?: false]`, so an ash bump did not cause it and an ash pin
+will not save the next one.
+
+**What we do.** Ask about the constraint key you actually need.
+`AshIntrospection.TypeSystem.Introspection.has_field_constraints?/1` answers
+"does this shape have `:fields` to select against", and it is the only right
+way to phrase that question here. Everywhere else, read the key with
+`Keyword.get(constraints, :fields, [])` — the `[]` default is what keeps
+`field_specs == []` alive at the four sites that use it. This grep must stay
+empty:
+
+```
+grep -rn 'constraints == \[\]\|constraints == nil\|Enum.empty?(constraints' lib
+```
+
 ### Never call `Ash.DataLayer.Ets.stop/1` in a test — fixed in #55
 
 **Symptom, before the fix.** Roughly one `mix test` run in forty failed on
@@ -354,7 +390,8 @@ mix hex.audit
 mix deps.audit
 ```
 
-`main` is at **309 tests, 0 failures**. A pull request that changes that number
+`main` is at **348 tests + 1 doctest, 0 failures** (measured 2026-09-10 on the
+#62 branch). A pull request that changes that number
 downward, or that leaves a compiler warning, is not finished. Never suppress a
 warning — fix the cause.
 

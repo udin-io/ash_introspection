@@ -82,13 +82,20 @@ yet and is not on the board.
 **The risk.** `lib/ash_introspection/rpc/` had **zero** test coverage until the
 week of 2026-09-09 (#18). Coverage arrived as regression tests attached to the
 seven fixes shipped in 0.3.0 — one test per fixed bug, not a suite that
-describes the pipeline. `main` is at 309 tests, and whole modules
+describes the pipeline. `main` is at 348 tests, and whole modules
 (`value_formatter.ex`, `field_extractor.ex`, `atomizer.ex`) are still exercised
 only incidentally.
 
 **Why it bites.** Every open correctness issue on the board (#35, #40, #16)
 touches code that has no behavioural test around it, so a fix can break a
 neighbour silently.
+
+**A test that asserts the shape and not the values is worse than none.** #62
+was silent data loss — an untyped-map response reached the client with every
+value replaced by `nil` — and the one existing test on that action passed
+throughout, because it asked for an empty field list and so took a different
+branch. Coverage counted; the payload did not. Assert the values a caller
+receives, not the key casing and not the presence of keys.
 
 **What we watch.** `mix test` count and which modules new tests land in. CI
 runs the suite on every pull request as of #32.

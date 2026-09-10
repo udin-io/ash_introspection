@@ -17,6 +17,23 @@ which come first. Numbers in parentheses are GitHub issues on
 
 ### Unreleased
 
+- **Stop nilling the payload of a generic action that returns an unconstrained
+  `:map`** (#62). `unconstrained_map_action?/1` skips field selection when
+  there are no field definitions to select against, and it asked for
+  `action.constraints == []`. Ash normalises a generic action's constraints
+  through `Ash.Type.init/2`, which fills in the return type's declared
+  defaults, and `Ash.Type.Map` declares `preserve_nil_values?` with
+  `default: false`, so the list always read `[preserve_nil_values?: false]` and
+  the skip never fired. Every such response took the typed path, which looked
+  up each requested field name in a map that does not use those names and wrote
+  `nil` per miss: `%{"_id" => "audit-1", "field_name" => "title"}` reached the
+  client as `%{id: nil, name: nil, email: nil}`. Not a regression from the
+  `ash` bump in #46 — 3.11.3 normalises the same action to the same
+  constraints, measured 2026-09-10 against both versions — so the feature
+  never worked. The condition now asks whether `:fields` is present and
+  non-empty, through the `Introspection.has_field_constraints?/1` the same file
+  already used for the same question. Blocked `ash_kotlin_multiplatform#48`.
+  See [`CLAUDE.md`](../CLAUDE.md).
 - **Shape an action's loadable surface with `allowed_loads` / `denied_loads`**
   (#19). The core could not restrict what a client loads, so no generator
   built on it could either, and `ash_kotlin_multiplatform` shipped without the
