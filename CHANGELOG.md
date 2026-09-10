@@ -57,6 +57,39 @@ and this project adheres to
   already documented returns of this function; a consumer matching only
   `{:ok, :resource, _}` for such an action sees the change.
 
+### Removed
+
+- **Breaking.** `AshIntrospection.TypeSystem.Introspection.classify_ash_type/3`
+  and `get_union_types/1`
+  ([#27](https://github.com/udin-io/ash_introspection/issues/27)). Upstream
+  `ash_typescript` dropped both in `b6ddffd`; here their only callers were
+  their own unit tests. `get_union_types_from_constraints/2` is unaffected and
+  stays — it is live, used by `Codegen.TypeDiscovery`,
+  `Codegen.ValidationErrorTypes`, and three sites in
+  `ash_kotlin_multiplatform`.
+- **Breaking.**
+  `AshIntrospection.TypeSystem.Introspection.has_typescript_field_names?/1`,
+  `get_typescript_field_names_map/1` and `is_custom_typescript_type?/1`
+  ([#27](https://github.com/udin-io/ash_introspection/issues/27)). These
+  duplicated the generalized `interop_field_names`/`interop_type_name`
+  helpers for one language generator, in a core meant to stay
+  language-agnostic. Grep of this repo's `lib/` and `test/`, and of
+  `ash_kotlin_multiplatform`'s `lib/`, finds no caller of any of the three.
+- **Breaking.**
+  `AshIntrospection.Rpc.ResultProcessor.normalize_value_for_json/1`
+  ([#27](https://github.com/udin-io/ash_introspection/issues/27)). A
+  backwards-compatibility alias for `normalize_primitive/1` with no caller in
+  this repo or `ash_kotlin_multiplatform`.
+- No codemod ships for any of the five removals above. Each was confirmed to
+  have zero callers, in this repo and in the one known consumer
+  (`ash_kotlin_multiplatform`), before deletion — a codemod would have
+  nothing to rewrite. If your code calls one of them outside those two
+  repos, replace `classify_ash_type/3` and `get_union_types/1` with your own
+  logic (or a copy from before this release), replace the TypeScript-named
+  helpers with the `interop_*` equivalents already public on the same
+  module, and replace `normalize_value_for_json/1` with
+  `normalize_primitive/1`.
+
 ### Fixed
 
 - A generic action returning an unconstrained `:map` hands its payload to the
