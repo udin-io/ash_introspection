@@ -1,3 +1,9 @@
+<!--
+SPDX-FileCopyrightText: 2025 ash_introspection contributors
+
+SPDX-License-Identifier: MIT
+-->
+
 # Changelog
 
 All notable changes to this project will be documented in this file.
@@ -7,6 +13,30 @@ and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+## [0.4.0] - 2026-09-10
+
+Five breaking changes: a read action may no longer carry `identity`, a `null`
+identity value is refused, and six public functions with no callers are gone.
+Run the upgrade task before anything else:
+
+```
+mix igniter.upgrade ash_introspection
+```
+
+For 0.4.0 it rewrites nothing and prints what each break needs instead — no
+break in this release has a call site a codemod can find, and
+`mix ash_introspection.upgrade`'s moduledoc records why for each one. To run it
+on its own: `mix ash_introspection.upgrade 0.3.0 0.4.0`.
+
+The `identity` change is the one that reaches a client. Generated Swift clients
+from `ash_kotlin_multiplatform` send `identity` on every `get?` read
+(`swift/codegen.ex`, `generate_get_function/3`); regenerate them against an
+action that uses `get_by`.
+
+[#26](https://github.com/udin-io/ash_introspection/issues/26) also closed in
+this release, without a code change: a compile-time field-name cache cannot be
+built here, and would buy little if it could. See `docs/decisions.md`.
 
 ### Added
 
@@ -57,39 +87,6 @@ and this project adheres to
   already documented returns of this function; a consumer matching only
   `{:ok, :resource, _}` for such an action sees the change.
 
-### Removed
-
-- **Breaking.** `AshIntrospection.TypeSystem.Introspection.classify_ash_type/3`
-  and `get_union_types/1`
-  ([#27](https://github.com/udin-io/ash_introspection/issues/27)). Upstream
-  `ash_typescript` dropped both in `b6ddffd`; here their only callers were
-  their own unit tests. `get_union_types_from_constraints/2` is unaffected and
-  stays — it is live, used by `Codegen.TypeDiscovery`,
-  `Codegen.ValidationErrorTypes`, and three sites in
-  `ash_kotlin_multiplatform`.
-- **Breaking.**
-  `AshIntrospection.TypeSystem.Introspection.has_typescript_field_names?/1`,
-  `get_typescript_field_names_map/1` and `is_custom_typescript_type?/1`
-  ([#27](https://github.com/udin-io/ash_introspection/issues/27)). These
-  duplicated the generalized `interop_field_names`/`interop_type_name`
-  helpers for one language generator, in a core meant to stay
-  language-agnostic. Grep of this repo's `lib/` and `test/`, and of
-  `ash_kotlin_multiplatform`'s `lib/`, finds no caller of any of the three.
-- **Breaking.**
-  `AshIntrospection.Rpc.ResultProcessor.normalize_value_for_json/1`
-  ([#27](https://github.com/udin-io/ash_introspection/issues/27)). A
-  backwards-compatibility alias for `normalize_primitive/1` with no caller in
-  this repo or `ash_kotlin_multiplatform`.
-- No codemod ships for any of the five removals above. Each was confirmed to
-  have zero callers, in this repo and in the one known consumer
-  (`ash_kotlin_multiplatform`), before deletion — a codemod would have
-  nothing to rewrite. If your code calls one of them outside those two
-  repos, replace `classify_ash_type/3` and `get_union_types/1` with your own
-  logic (or a copy from before this release), replace the TypeScript-named
-  helpers with the `interop_*` equivalents already public on the same
-  module, and replace `normalize_value_for_json/1` with
-  `normalize_primitive/1`.
-
 ### Fixed
 
 - A generic action returning an unconstrained `:map` hands its payload to the
@@ -110,6 +107,65 @@ and this project adheres to
   3.11.3 normalises the same action to the same
   `[preserve_nil_values?: false]`. The condition now asks whether `:fields` is
   present and non-empty, so an incidental constraint cannot kill it again.
+- A generic action returning an unconstrained `{:array, :map}` keeps its values
+  too ([#64](https://github.com/udin-io/ash_introspection/issues/64)). The
+  sibling of #62 one type shape over: the guard named `Ash.Type.Map` only, and
+  Ash normalises `{:array, :map}` to `{:array, Ash.Type.Map}` with the
+  element's constraints under `:items`, so an array fell through to the typed
+  path. Measured on `main` at `51a9c27` with a template of `[:id, :name]`,
+  `[%{"_id" => "a-1", "name" => "KSR"}]` reached the client as
+  `[%{id: nil, name: "KSR"}]`. The guard now unwraps the tuple and reads
+  `constraints[:items]`.
+- Every record of a multi-record read is formatted
+  ([#57](https://github.com/udin-io/ash_introspection/issues/57)).
+  `format_output_with_request/3` formatted nothing when the result was a plain
+  list, so an unpaginated read handed the client internal atom keys.
+  `ValueFormatter.format/5` unwraps a collection only when the *type* says
+  `{:array, _}`, and a bare resource module carries no cardinality. A paginated
+  read failed a second way: an `%Ash.Page.Offset{}` is a map, so the envelope
+  camelized to `hasMore`, but `:results` is not a field on the resource and
+  every record inside it kept its atom keys. Both shapes now format, the page's
+  `:results` first and the envelope after, so nothing is formatted twice.
+  Single-record `get?` reads were always correct, which is why 348 tests stayed
+  green — every RPC fixture read one record.
+- A nested selection inside a tuple field is keyed from the resolved atom
+  ([#35](https://github.com/udin-io/ash_introspection/issues/35)). The
+  `{:nested, ...}` branch of `FieldSelector.select_tuple_fields/4` built its
+  extraction template from the raw wire name while every sibling branch used
+  the atom, and `ResultProcessor` matches a nested entry as `{atom, nested}`,
+  so the string key fell through a catch-all and the field vanished. Measured
+  on `main` at `b99e5a3` against a tuple of
+  `{label :: string, corner :: map(x, y)}`, one request had three answers
+  depending on how it was spelled. The value itself still does not survive,
+  because a nested entry carries no tuple index — that is
+  [#66](https://github.com/udin-io/ash_introspection/issues/66), pinned by an
+  assertion in the new test.
+- A calculation envelope's `args` and `fields` keys are read by presence, not
+  truthiness ([#45](https://github.com/udin-io/ash_introspection/issues/45)).
+  `get_args_and_fields/1` kept the `Map.get(m, :args) || Map.get(m, "args")`
+  shape that #15 removed elsewhere. `||` returns its right operand when both
+  sides are falsy, so a present-and-`false` value survived under the string key
+  and was erased under the atom key: measured on `main` at `b99e5a3`,
+  `%{"slug" => %{fields: false}}` loaded the calculation and dropped the
+  selection while `%{"slug" => %{"fields" => false}}` rejected it. `nil` keeps
+  its meaning — a JSON `null` under `:args` is still "no arguments".
+- Every check against a consumer-supplied module is guarded with
+  `Code.ensure_loaded?/1`
+  ([#49](https://github.com/udin-io/ash_introspection/issues/49)).
+  `function_exported?/3` answers `false` for a module the VM has not loaded,
+  and Elixir loads lazily, so a domain, resource or type nothing had touched
+  silently lost its configuration and a cold VM behaved differently from a warm
+  one. Ten call sites across `Rpc.Errors`, `Rpc.ResultProcessor`,
+  `Rpc.FieldProcessing.Atomizer`, `Rpc.FieldProcessing.FieldSelector`,
+  `Rpc.Pipeline`, `TypeSystem.Introspection` and `Codegen.TypeDiscovery` are
+  now guarded.
+- Test suite only: `AshIntrospection.Test.Account` declares `private? true`, so
+  each test process gets its own ETS table
+  ([#55](https://github.com/udin-io/ash_introspection/issues/55)). The five
+  `Ash.DataLayer.Ets.stop/1` calls in `on_exit` are gone with it — `stop/1`
+  kills the table's owning process asynchronously, so the next test could wrap
+  a table the VM had not yet reaped. `mix test` failed 5 times in 200 runs
+  before the change and 0 times in 200 runs after. No library code changed.
 - Action metadata is formatted once, by the type its action declared for it
   ([#20](https://github.com/udin-io/ash_introspection/issues/20)). A metadata
   name is not an attribute, so stage 4 looked it up on the resource, found
@@ -169,6 +225,39 @@ and this project adheres to
   original type rather than the unwrapped subtype
   ([#22](https://github.com/udin-io/ash_introspection/issues/22)). A NewType
   declaring its own interop name was routed to the container branch instead.
+
+### Removed
+
+- **Breaking.** `AshIntrospection.TypeSystem.Introspection.classify_ash_type/3`
+  and `get_union_types/1`
+  ([#27](https://github.com/udin-io/ash_introspection/issues/27)). Upstream
+  `ash_typescript` dropped both in `b6ddffd`; here their only callers were
+  their own unit tests. `get_union_types_from_constraints/2` is unaffected and
+  stays — it is live, used by `Codegen.TypeDiscovery`,
+  `Codegen.ValidationErrorTypes`, and three sites in
+  `ash_kotlin_multiplatform`.
+- **Breaking.**
+  `AshIntrospection.TypeSystem.Introspection.has_typescript_field_names?/1`,
+  `get_typescript_field_names_map/1` and `is_custom_typescript_type?/1`
+  ([#27](https://github.com/udin-io/ash_introspection/issues/27)). These
+  duplicated the generalized `interop_field_names`/`interop_type_name`
+  helpers for one language generator, in a core meant to stay
+  language-agnostic. Grep of this repo's `lib/` and `test/`, and of
+  `ash_kotlin_multiplatform`'s `lib/`, finds no caller of any of the three.
+- **Breaking.**
+  `AshIntrospection.Rpc.ResultProcessor.normalize_value_for_json/1`
+  ([#27](https://github.com/udin-io/ash_introspection/issues/27)). A
+  backwards-compatibility alias for `normalize_primitive/1` with no caller in
+  this repo or `ash_kotlin_multiplatform`.
+- No codemod ships for the six functions above. Each was confirmed to
+  have zero callers, in this repo and in the one known consumer
+  (`ash_kotlin_multiplatform`), before deletion — a codemod would have
+  nothing to rewrite. If your code calls one of them outside those two
+  repos, replace `classify_ash_type/3` and `get_union_types/1` with your own
+  logic (or a copy from before this release), replace the TypeScript-named
+  helpers with the `interop_*` equivalents already public on the same
+  module, and replace `normalize_value_for_json/1` with
+  `normalize_primitive/1`.
 
 ## [0.3.0] - 2026-09-09
 
