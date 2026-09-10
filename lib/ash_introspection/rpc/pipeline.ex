@@ -828,10 +828,26 @@ defmodule AshIntrospection.Rpc.Pipeline do
   # came back as `nil` per requested field. Ask about `:fields` — the thing the
   # typed path actually needs — and a future ash release adding another default
   # cannot kill the check again.
+  #
+  # #64 is the same silent data loss one type shape over. `{:array, :map}`
+  # normalises to `{:array, Ash.Type.Map}` and puts the element's constraints
+  # under `:items`, so the tuple has to be unwrapped and the inner keyword list
+  # asked the same question. Read `:items` with a `[]` default for the reason
+  # `has_field_constraints?/1` exists: the constraint key is the question, never
+  # the shape of the whole list.
   defp unconstrained_map_action?(action) do
-    action.type == :action && action.returns == Ash.Type.Map &&
-      not Introspection.has_field_constraints?(action.constraints || [])
+    action.type == :action && untyped_map_return?(action.returns, action.constraints || [])
   end
+
+  defp untyped_map_return?(Ash.Type.Map, constraints) do
+    not Introspection.has_field_constraints?(constraints)
+  end
+
+  defp untyped_map_return?({:array, Ash.Type.Map}, constraints) do
+    not Introspection.has_field_constraints?(Keyword.get(constraints, :items, []))
+  end
+
+  defp untyped_map_return?(_returns, _constraints), do: false
 
   defp action_returns_resource?(action) do
     case action.returns do
