@@ -456,7 +456,10 @@ at the top of every `.ex`, `.exs` and `.md` file. Markdown uses an HTML comment.
 **Why.** `ash_kotlin_multiplatform` calls `AshIntrospection` at 35 sites across
 21 files (measured 2026-09-09) and there is no contract test between the two
 repos. Its `mix.exs` asks for `~> 0.3` (line 102, checked 2026-09-10), so it
-takes every 0.3.x release here unreviewed.
+takes every 0.3.x release here unreviewed — **and stops at 0.4.0**, which
+`~> 0.3` excludes. That pin is the only thing keeping the 0.4.0 `identity`
+break off the consumer, so bumping it there is a deliberate step with the
+Swift regeneration in the same pull request, never a routine `mix deps.update`.
 
 **What we do.** Before changing a public function on `Rpc.Pipeline`,
 `Rpc.Request`, `FieldFormatter`, `Helpers`, `TypeSystem.Introspection` or
@@ -464,6 +467,13 @@ takes every 0.3.x release here unreviewed.
 `~/work/clients/udin/ash/ash_kotlin_multiplatform`. A breaking change ships a
 codemod step in `mix ash_introspection.upgrade` and a CHANGELOG entry naming
 what the codemod cannot reach.
+
+**A codemod step is not always a rewrite.** 0.4.0's three breaks are all
+decided by runtime data or live in generated non-Elixir source, so its step
+adds notices and touches no file — see the 0.4.0 section of
+`lib/mix/tasks/ash_introspection.upgrade.ex`'s module comment for the argument
+per break. Ship the step either way: without an entry the task is silent on
+that version, which reads as "nothing to do".
 
 ## CI and the definition of green
 
@@ -478,8 +488,8 @@ mix hex.audit
 mix deps.audit
 ```
 
-`main` is at **359 tests + 1 doctest, 0 failures** (measured 2026-09-10 at
-`e16e5dc`, after #27 deleted the tests of the dead code it removed). A pull
+`main` is at **379 tests + 1 doctest, 0 failures** (measured 2026-09-10 on the
+`release-0.4.0` branch, three tests above `7fb48e7`'s 376). A pull
 request that changes that number downward, or that leaves a compiler warning,
 is not finished. Never suppress a warning — fix the cause.
 
