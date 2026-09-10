@@ -757,8 +757,37 @@ defmodule AshIntrospection.Rpc.Pipeline do
     end
   end
 
+  # A read hands stage 4 one of three shapes and only one of them used to
+  # format. `ValueFormatter.format/5` unwraps a collection when the *type* says
+  # `{:array, _}`, and this is the only caller that knows the data is a
+  # collection of `resource`, because a resource module carries no cardinality.
+  # #57: passing the bare module for a list left every record with internal
+  # atom keys, and the paginated page — a map with `:results` — formatted its
+  # own envelope and nothing inside it, since `:results` is not a field on the
+  # resource so `ResourceFields.get_field_type_info/2` answers `{nil, []}`.
+  # Both measured on `main` at `51a9c27`.
+  #
+  # The page clause formats `:results` first and then runs the page through the
+  # resource path for its envelope names. That is not a double pass: the
+  # already-formatted list sits under a key the resource does not define, and
+  # `format/5` returns any value whose type is `nil` untouched.
+  defp format_resource_output(data, resource, formatter, config) when is_list(data) do
+    format_value(data, {:array, resource}, formatter, config)
+  end
+
+  defp format_resource_output(%{results: results} = page, resource, formatter, config)
+       when is_list(results) do
+    page
+    |> Map.put(:results, format_value(results, {:array, resource}, formatter, config))
+    |> format_value(resource, formatter, config)
+  end
+
   defp format_resource_output(data, resource, formatter, config) do
-    ValueFormatter.format(data, resource, [], :output, value_formatter_config(formatter, config))
+    format_value(data, resource, formatter, config)
+  end
+
+  defp format_value(data, type, formatter, config) do
+    ValueFormatter.format(data, type, [], :output, value_formatter_config(formatter, config))
   end
 
   defp format_generic_action_output(data, action, formatter, config) do
