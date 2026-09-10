@@ -59,6 +59,24 @@ and this project adheres to
 
 ### Fixed
 
+- A generic action returning an unconstrained `:map` hands its payload to the
+  client verbatim, values included
+  ([#62](https://github.com/udin-io/ash_introspection/issues/62)). The check
+  that skips field selection for such an action compared the whole constraints
+  keyword list against `[]`. Ash normalises a generic action's constraints
+  through `Ash.Type.init/2`, which fills in the return type's declared
+  defaults, and `Ash.Type.Map` declares `preserve_nil_values?` with
+  `default: false`, so the list always read `[preserve_nil_values?: false]` and
+  the skip never fired. Every such response went through the typed path, which
+  has no field definitions to work from: it looked up each requested name in a
+  map that does not use those names and wrote `nil` for every miss, so
+  `%{"_id" => "audit-1", "field_name" => "title"}` reached the client as
+  `%{id: nil, name: nil, email: nil}`. This never worked; it is not a
+  regression from the `ash` 3.11.3 → 3.33.1 bump in
+  [#46](https://github.com/udin-io/ash_introspection/issues/46), because
+  3.11.3 normalises the same action to the same
+  `[preserve_nil_values?: false]`. The condition now asks whether `:fields` is
+  present and non-empty, so an incidental constraint cannot kill it again.
 - Action metadata is formatted once, by the type its action declared for it
   ([#20](https://github.com/udin-io/ash_introspection/issues/20)). A metadata
   name is not an attribute, so stage 4 looked it up on the resource, found

@@ -788,9 +788,20 @@ defmodule AshIntrospection.Rpc.Pipeline do
   # Type Introspection Helpers
   # ---------------------------------------------------------------------------
 
+  # "Unconstrained" means no `:fields` to select against — never "no
+  # constraints at all". Ash normalises a generic action's constraints through
+  # `Ash.Type.init/2`, which fills in every default the return type declares, so
+  # an action returning a bare `:map` arrives here carrying
+  # `[preserve_nil_values?: false]` from `Ash.Type.Map`'s constraint schema
+  # (`deps/ash/lib/ash/type/map.ex:7`). #62: this test used to compare the
+  # keyword list against `[]`, which that default can never equal, so the skip
+  # never fired and every untyped-map response went through the typed path and
+  # came back as `nil` per requested field. Ask about `:fields` — the thing the
+  # typed path actually needs — and a future ash release adding another default
+  # cannot kill the check again.
   defp unconstrained_map_action?(action) do
     action.type == :action && action.returns == Ash.Type.Map &&
-      (action.constraints == nil || action.constraints == [])
+      not Introspection.has_field_constraints?(action.constraints || [])
   end
 
   defp action_returns_resource?(action) do
