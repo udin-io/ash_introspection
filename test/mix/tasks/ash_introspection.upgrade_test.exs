@@ -113,8 +113,35 @@ defmodule Mix.Tasks.AshIntrospection.UpgradeTest do
     end
   end
 
+  describe "0.4.0" do
+    test "notices the three breaks, and rewrites nothing" do
+      "error.code"
+      |> upgrade(from: "0.3.0", to: "0.4.0")
+      |> assert_unchanged("lib/my_app/rpc.ex")
+      |> assert_has_notice(&(&1 =~ "identity_not_supported"))
+      |> assert_has_notice(&(&1 =~ "invalid_identity"))
+      |> assert_has_notice(&(&1 =~ "normalize_primitive/1"))
+    end
+
+    test "leaves an identity a read genuinely uses alone" do
+      # A consumer builds one `%Request{}` for every action kind, so the
+      # `identity:` key it sets is right for update and destroy and wrong only
+      # for a read the client happens to name at runtime. Rewriting this is
+      # what the codemod refuses to do.
+      ~s|%AshIntrospection.Rpc.Request{identity: params["identity"]}|
+      |> upgrade(from: "0.3.0", to: "0.4.0")
+      |> assert_unchanged("lib/my_app/rpc.ex")
+    end
+
+    test "does not fire when 0.4.0 falls outside the range" do
+      igniter = upgrade("error.code", from: "0.2.0", to: "0.3.0")
+
+      refute Enum.any?(igniter.notices, &(&1 =~ "identity_not_supported"))
+    end
+  end
+
   describe "version selection" do
-    test "does nothing when 0.3.0 falls outside the range" do
+    test "does not rewrite code when 0.3.0 falls outside the range" do
       "error.code"
       |> upgrade(from: "0.3.0", to: "0.4.0")
       |> assert_unchanged("lib/my_app/rpc.ex")
