@@ -335,6 +335,48 @@ defmodule AshIntrospection.ResourceInfo do
     end
   end
 
+  @doc """
+  How the read behind the `:many` relationship `name` paginates.
+
+  `:offset`, `:keyset`, `:mixed` when the action offers both, and `:none` when
+  it offers neither — which is also the answer for every to-one relationship
+  and for a relationship nobody declared.
+
+  Live, this walks to the destination's read action on every call. The
+  decorator resolves it once per relationship at compile time. Precomputed for
+  issue #24, the relationship query envelopes, which need the answer per
+  relationship per request.
+  """
+  @spec relationship_pagination(module(), atom(), config()) ::
+          :offset | :keyset | :mixed | :none
+  def relationship_pagination(resource, name, config \\ %{}) do
+    case decorated_relationship(config, resource, name) do
+      nil -> resource |> live_read_action(name) |> pagination_kind()
+      {relationship, namespace} -> Custom.relationship_pagination(relationship, namespace)
+    end
+  end
+
+  @doc """
+  The read action the `:many` relationship `name` loads through, or `nil`.
+
+  The relationship's own `read_action` when it names one, the destination's
+  primary read otherwise. `nil` for a to-one relationship, for a destination
+  with no primary read, and for a relationship nobody declared.
+  """
+  @spec relationship_read_action(module(), atom(), config()) :: atom() | nil
+  def relationship_read_action(resource, name, config \\ %{}) do
+    case decorated_relationship(config, resource, name) do
+      nil ->
+        case live_read_action(resource, name) do
+          nil -> nil
+          action -> action.name
+        end
+
+      {relationship, namespace} ->
+        Custom.relationship_read_action(relationship, namespace)
+    end
+  end
+
   # ---------------------------------------------------------------------------
   # Fields and actions
   #
@@ -565,6 +607,49 @@ defmodule AshIntrospection.ResourceInfo do
       _ -> nil
     end
   end
+
+  # The decorated `%Ash.Info.Manifest.Relationship{}` for `name` plus its
+  # namespace, or `nil` to compute live. A private relationship is never in the
+  # manifest, so this is `nil` for every one of them.
+  defp decorated_relationship(config, resource, name) do
+    with %Source{namespace: namespace} = source <- source(config),
+         %Ash.Info.Manifest.Resource{} = manifest_resource <-
+           manifest_resource_in(source, resource),
+         %Ash.Info.Manifest.Relationship{} = relationship <-
+           Ash.Info.Manifest.Resource.get_relationship(manifest_resource, name),
+         true <- Custom.decorated?(relationship, namespace) do
+      {relationship, namespace}
+    else
+      _ -> nil
+    end
+  end
+
+  # The `%Ash.Resource.Actions.Read{}` a `:many` relationship loads through, or
+  # `nil`. The relationship's own `read_action` wins over the destination's
+  # primary read; a to-one relationship has neither, because it loads one
+  # record and never paginates.
+  #
+  # `Code.ensure_loaded?/1` guards the destination for the reason #49 records:
+  # the decorator runs at compile time, where a referenced module may not be
+  # compiled yet, and an unloaded module would answer as though it declared
+  # nothing.
+  defp live_read_action(resource, name) do
+    with %{cardinality: :many, destination: destination} = relationship <-
+           Ash.Resource.Info.relationship(resource, name),
+         true <- is_atom(destination) and Code.ensure_loaded?(destination) do
+      case Map.get(relationship, :read_action) do
+        nil -> Ash.Resource.Info.primary_action(destination, :read)
+        read_action -> Ash.Resource.Info.action(destination, read_action)
+      end
+    else
+      _ -> nil
+    end
+  end
+
+  defp pagination_kind(%{pagination: %{offset?: true, keyset?: true}}), do: :mixed
+  defp pagination_kind(%{pagination: %{offset?: true}}), do: :offset
+  defp pagination_kind(%{pagination: %{keyset?: true}}), do: :keyset
+  defp pagination_kind(_), do: :none
 
   defp narrow_relationship(nil), do: nil
 

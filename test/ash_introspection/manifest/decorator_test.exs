@@ -35,6 +35,13 @@ defmodule AshIntrospection.Manifest.DecoratorTest do
       end
     end
 
+    test "every relationship on every resource", %{manifest: manifest} do
+      for resource <- manifest.resources, {name, relationship} <- resource.relationships do
+        assert Custom.decorated?(relationship),
+               "#{inspect(resource.module)}.#{name} was left undecorated"
+      end
+    end
+
     test "the resource nested inside each embedded-resource type", %{manifest: manifest} do
       embedded = Enum.filter(manifest.types, &(&1.kind == :embedded_resource))
       assert embedded != [], "the fixture manifest carries no embedded resources"
@@ -278,6 +285,8 @@ defmodule AshIntrospection.Manifest.DecoratorTest do
         assert Custom.mapped_field_name(struct, :id) == nil
         assert Custom.original_field_name(struct, "id") == nil
         assert Custom.formatted_field_name(struct, :id, :camel_case) == nil
+        assert Custom.relationship_pagination(struct) == :none
+        assert Custom.relationship_read_action(struct) == nil
       end
     end
 

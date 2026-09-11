@@ -42,6 +42,7 @@ defmodule AshIntrospection.Manifest.Decorator do
   |---|---|
   | `%Ash.Info.Manifest{}` | `entrypoint_lookup` |
   | each `%Manifest.Resource{}` | fields, actions, aggregate types, bulk strategy, field names |
+  | each `%Manifest.Relationship{}` on it | the read action it loads through, and how that action paginates |
   | each embedded `%Manifest.Type{}`'s nested resource | the same resource payload |
   | each `%Manifest.Type{}` with a field-names callback | field-name mappings |
   | each `%Manifest.Entrypoint{}` | `client_name`, from the `:entrypoint_name` callback |
@@ -73,6 +74,7 @@ defmodule AshIntrospection.Manifest.Decorator do
   alias Ash.Info.Manifest
   alias AshIntrospection.FieldFormatter
   alias AshIntrospection.Manifest.Custom
+  alias AshIntrospection.ResourceInfo
   alias AshIntrospection.TypeSystem.Introspection
 
   @builtin_formatters [:camel_case, :pascal_case, :snake_case]
@@ -133,9 +135,36 @@ defmodule AshIntrospection.Manifest.Decorator do
         resource
 
       payload ->
-        %Manifest.Resource{resource | custom: put_namespace(resource.custom, namespace, payload)}
+        %Manifest.Resource{
+          resource
+          | custom: put_namespace(resource.custom, namespace, payload),
+            relationships: decorate_relationships(module, resource.relationships, namespace)
+        }
     end
   end
+
+  # The pagination question a relationship query envelope asks (#24) is fixed
+  # at compile time: it walks the relationship's `read_action`, or the
+  # destination's primary read, and reads that action's `pagination`.
+  # `AshIntrospection.ResourceInfo` owns that walk, so the decorator asks it
+  # with an empty config and stores the live answer rather than repeating the
+  # logic here.
+  defp decorate_relationships(module, relationships, namespace) when is_map(relationships) do
+    Map.new(relationships, fn {name, %Manifest.Relationship{} = relationship} ->
+      payload = %{
+        pagination: ResourceInfo.relationship_pagination(module, name),
+        read_action: ResourceInfo.relationship_read_action(module, name)
+      }
+
+      {name,
+       %Manifest.Relationship{
+         relationship
+         | custom: put_namespace(relationship.custom, namespace, payload)
+       }}
+    end)
+  end
+
+  defp decorate_relationships(_module, relationships, _namespace), do: relationships
 
   defp build_resource_payload(module, %Manifest.Resource{} = resource, config)
        when is_atom(module) and not is_nil(module) do

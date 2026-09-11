@@ -212,6 +212,47 @@ defmodule AshIntrospection.Manifest.DifferentialTest do
       end
     end
 
+    test "the pagination and read action behind every relationship", %{manifest: manifest} do
+      for resource <- resources(),
+          name <- Enum.map(Ash.Resource.Info.relationships(resource), & &1.name) do
+        assert ResourceInfo.relationship_pagination(resource, name, manifest) ==
+                 ResourceInfo.relationship_pagination(resource, name, @live),
+               "relationship_pagination/3 disagreed for #{inspect(resource)}.#{name}"
+
+        assert ResourceInfo.relationship_read_action(resource, name, manifest) ==
+                 ResourceInfo.relationship_read_action(resource, name, @live),
+               "relationship_read_action/3 disagreed for #{inspect(resource)}.#{name}"
+      end
+    end
+
+    test "the fixture covers every pagination shape, so the test above is not vacuous",
+         %{manifest: manifest} do
+      library = AshIntrospection.Test.RelPagination.Library
+
+      assert ResourceInfo.relationship_pagination(library, :books, manifest) == :offset
+      assert ResourceInfo.relationship_pagination(library, :recent_books, manifest) == :keyset
+      assert ResourceInfo.relationship_pagination(library, :journals, manifest) == :mixed
+      assert ResourceInfo.relationship_pagination(library, :found_books, manifest) == :none
+
+      # A defaulted read is not an unpaginated read: Ash fills pagination in
+      # from the data layer, and ETS offers both kinds.
+      assert ResourceInfo.relationship_pagination(library, :notes, manifest) == :mixed
+
+      # These three share one destination and differ only in the
+      # relationship's own `read_action`, so they are what prove the decorator
+      # reads it rather than the destination's primary read.
+      assert ResourceInfo.relationship_read_action(library, :books, manifest) == :read
+      assert ResourceInfo.relationship_read_action(library, :found_books, manifest) == :find
+
+      assert ResourceInfo.relationship_read_action(library, :recent_books, manifest) ==
+               :list_keyset
+    end
+
+    test "a to-one relationship has no pagination", %{manifest: manifest} do
+      assert ResourceInfo.relationship_pagination(AshIntrospection.Test.User, :address, manifest) ==
+               :none
+    end
+
     test "the bulk-authorization strategy", %{manifest: manifest} do
       for resource <- resources() do
         assert ResourceInfo.authorize_bulk_strategy(resource, manifest) ==

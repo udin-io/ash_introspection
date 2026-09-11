@@ -56,6 +56,12 @@ defmodule AshIntrospection.Manifest.Custom do
           formatted_field_names: %{{atom(), atom()} => String.t()}
         }
 
+  @typedoc "The decoration map written on a `%Ash.Info.Manifest.Relationship{}`."
+  @type relationship_payload :: %{
+          pagination: :offset | :keyset | :mixed | :none,
+          read_action: atom() | nil
+        }
+
   @typedoc "The decoration map written on a `%Ash.Info.Manifest.Type{}`."
   @type type_payload :: %{
           field_name_mappings: %{atom() => String.t()},
@@ -290,6 +296,40 @@ defmodule AshIntrospection.Manifest.Custom do
   end
 
   def formatted_field_name(_resource, _field, _formatter, _namespace), do: nil
+
+  # ---------------------------------------------------------------------------
+  # Relationships
+  # ---------------------------------------------------------------------------
+
+  @doc """
+  How the read behind a decorated `:many` relationship paginates.
+
+  `:none` for an undecorated relationship, for every to-one relationship, and
+  for a read that offers neither pagination kind. Those three collapse on
+  purpose: a caller asking how to page a relationship it cannot page gets the
+  same answer either way.
+  """
+  @spec relationship_pagination(Manifest.Relationship.t() | nil, atom()) ::
+          :offset | :keyset | :mixed | :none
+  def relationship_pagination(relationship, namespace \\ @default_namespace) do
+    case payload(relationship, namespace) do
+      %{pagination: pagination} -> pagination
+      _ -> :none
+    end
+  end
+
+  @doc """
+  The read action a decorated `:many` relationship loads through, or `nil`.
+
+  `nil` for an undecorated relationship and for a to-one one.
+  """
+  @spec relationship_read_action(Manifest.Relationship.t() | nil, atom()) :: atom() | nil
+  def relationship_read_action(relationship, namespace \\ @default_namespace) do
+    case payload(relationship, namespace) do
+      %{read_action: read_action} -> read_action
+      _ -> nil
+    end
+  end
 
   # ---------------------------------------------------------------------------
   # Entrypoints
