@@ -105,13 +105,16 @@ whether the consumer's call sites still compile.
 **The risk.** `lib/ash_introspection/rpc/` had **zero** test coverage until the
 week of 2026-09-09 (#18). Coverage arrived as regression tests attached to the
 seven fixes shipped in 0.3.0 — one test per fixed bug, not a suite that
-describes the pipeline. `main` is at 366 tests, and whole modules
-(`value_formatter.ex`, `field_extractor.ex`, `atomizer.ex`) are still exercised
-only incidentally.
+describes the pipeline. `mix test` on `main` at `99cdbd4` reports 413 tests and
+1 doctest (2026-09-11), and whole modules (`value_formatter.ex`,
+`field_extractor.ex`, `atomizer.ex`) are still exercised only incidentally.
 
-**Why it bites.** Every open correctness issue on the board (#35, #40, #16)
-touches code that has no behavioural test around it, so a fix can break a
-neighbour silently.
+**Why it bites.** #66, the one correctness bug still open, touches code that
+has no behavioural test around it, so a fix can break a neighbour silently.
+`lib/ash_introspection/rpc/errors.ex` is the shape to copy instead: #12 and #40
+each landed with a test file for the failure they fixed, and
+`errors_protocol_failure_test.exs` covers a raise, a throw and an exit out of an
+`Error` protocol implementation in 7 tests.
 
 **A test that asserts the shape and not the values is worse than none.** #62
 was silent data loss — an untyped-map response reached the client with every

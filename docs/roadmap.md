@@ -9,7 +9,7 @@ SPDX-License-Identifier: MIT
 What has shipped, what is open, and what was declined. Drawn on 2026-09-09 from
 `git log --oneline` and `gh issue list --state all`, not from intentions, so a
 reader can trust the "shipped" column without checking the log. Issue #36 asked
-for this page because the board carries 19 open items with no statement of
+for this page because the board carried 19 open items with no statement of
 which come first. Numbers in parentheses are GitHub issues on
 `udin-io/ash_introspection`.
 
@@ -17,6 +17,18 @@ which come first. Numbers in parentheses are GitHub issues on
 
 ### Unreleased
 
+- **#40 — a throw or exit from an `Error` protocol implementation no longer
+  takes the request with it** (`99cdbd4`). The `rescue` around
+  `ErrorProtocol.to_error/1` in `process_single_error/6` only saw exceptions,
+  so an implementation that threw or exited escaped `to_errors/6` — the one
+  place in the pipeline that must always produce a response. A
+  `catch kind, reason` clause now sits beside the `rescue`, and both route
+  through one `protocol_failure/3` that returns the same opaque fallback the
+  raising case already returned and logs the implementation, the failure, the
+  original error and the stacktrace. The wire shape is unchanged, so the log is
+  the only correlation — see [decisions.md](decisions.md).
+  `test/ash_introspection/rpc/errors_protocol_failure_test.exs` adds 7 tests,
+  5 of which fail without the `catch` clause.
 - **#61 — the case predicates walk bytes instead of running regexes.**
   `FieldFormatter.format_field_name/2` spent more time deciding what case a
   name was already in than converting it. `is_camel_case?/1`,
@@ -287,10 +299,10 @@ dozen other items.
    incremental compiles with no error), and `SpecCache` must not be ported —
    upstream added it in `199f9cd` and deleted it in `b7104a8` because Spark's
    persisted DSL state is already free at runtime.
-2. **Correctness fixes that need no manifest**: #40 (second `rescue` in
-   `process_single_error` has no `catch` clause), #66 (a nested selection
-   inside a tuple field returns `nil`, because the template entry carries no
-   tuple index — filed out of #35).
+2. **The one correctness fix left that needs no manifest**: #66 (a nested
+   selection inside a tuple field returns `nil`, because the template entry
+   carries no tuple index — filed out of #35). #40 shipped in Unreleased
+   above.
 3. **#18 — the RPC test floor.** Coverage arrives with each fix by preference,
    but the harness and the fixtures are still a ticket of their own.
 4. **Upstream parity features**: #24 (relationship query envelopes), #25
