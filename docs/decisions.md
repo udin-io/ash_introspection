@@ -13,6 +13,65 @@ recorded nowhere in the repo. This page replaces ADRs; there is no `adr/`
 directory here and none should be created. A decision that no longer shapes the
 code is deleted, not archived, because git keeps the history.
 
+## 2026-09-11 — The decoration carries Ash's structs, it does not rebuild them
+
+**Decided.** `AshIntrospection.Manifest.Decorator` captures the live
+`%Ash.Resource.Attribute{}`, `%Ash.Resource.Calculation{}`,
+`%Ash.Resource.Aggregate{}` and action structs and stores them under
+`custom.<namespace>`. It does not translate them into anything of its own, and
+it does not read `%Ash.Info.Manifest.Field{}` in their place. Issue #23 stage
+2.
+
+**Why.** A manifest field is a *client-facing* description. It carries a
+resolved `%Ash.Info.Manifest.Type{}` where every caller here reads `.type` plus
+a `.constraints` keyword list, and `has_default?` where they read `.default` —
+a value the manifest does not carry at all. Two callers go further and depend
+on the struct itself: `Codegen.ActionIntrospection` pattern-matches
+`%Ash.Resource.Attribute{}` to decide whether an input is required, and
+`Codegen.ValidationErrorTypes.classify_action_input_errors/3` hands the struct
+back to its caller. Rebuilding would be lossy *and* breaking, in a stage whose
+whole claim is that it is neither.
+
+So the decorator only *computes* what is genuinely derived and genuinely
+repeated per request: resolved aggregate types, return classifications, the
+bulk-authorization strategy, client-facing field and argument names under each
+built-in formatter with their reverses, per-relationship pagination, and the
+entrypoint lookup. Everything else is a captured pointer.
+
+**Cost.** The decoration is bigger than it needs to be, and it is a snapshot: a
+resource recompiled without the manifest recompiling leaves stale structs
+behind. That is the staleness upstream's `8c07331` exists to prevent, and it
+belongs to the consumer's compile edges — stage 3 — because a pure function
+of its arguments cannot own a dependency graph. It also means the win is
+smaller than "stop introspecting": the request path stops *walking*, it does
+not stop *holding*. And moving to manifest-shaped return values later is a
+breaking change this stage deferred rather than avoided; it belongs with stage
+4, which deletes `Codegen.TypeDiscovery`.
+
+## 2026-09-11 — The `custom` namespace is a parameter, not a constant
+
+**Decided.** Every function in `AshIntrospection.Manifest.Decorator` and
+`AshIntrospection.Manifest.Custom` takes the namespace as a trailing argument
+defaulting to `:ash_introspection`, and `ResourceInfo.Source` carries the one a
+read should use. An optional `:manifest_namespace` config key sets it. Issue
+#23 stage 2.
+
+**Why.** `Ash.Info.Manifest` leaves a `custom` map on every struct so each
+client library can hang its own precomputed data off one manifest. Whether the
+generators built on this core share a single decoration or each take their own
+key is a real question with no answer yet: sharing is cheaper and couples every
+generator's client-name rules together, and separating is the split this
+library exists to enable. Stage 2 does not need to settle it, and settling it
+by hard-coding a constant would settle it silently. A parameter answers both,
+and `decorator_test.exs` proves two namespaces coexist on one manifest.
+
+**Cost.** Every public function in both modules gained an argument, and the
+`Source` struct gained a field. A caller that prepares a source under one
+namespace and reads under another gets the fallback rather than an error: the
+reads answer live, correctly and more slowly, and nothing says why. That is the
+same silence the decorator's skip has, for the same reason — an undecorated
+read is a correct read.
+
 ## 2026-09-11 — A failed error protocol gets a log line, not a wire id
 
 **Decided.** When `ErrorProtocol.to_error/1` raises, throws or exits, the
@@ -121,14 +180,16 @@ Both count embedded resources. `Ash.Info.Manifest.Generator` splits them out of
 would answer `false` for every one of them — a divergence from live
 introspection that has nothing to do with scoping.
 
-**What stage 1 does not do.** The readers for attributes, calculations,
-aggregates and actions take a config and ignore it: they answer live whether or
-not a manifest is present. `%Ash.Info.Manifest.Field{}` carries a resolved
-`%Ash.Info.Manifest.Type{}` where `%Ash.Resource.Attribute{}` carries an Ash
-type module plus a constraints keyword list, and translating between the two is
-stage 2's decorator, with its own failure modes. Half-translating it here would
-put a second, quieter answer beside the live one. The reader's moduledoc lists
-which functions are manifest-backed and which are not.
+**What stage 1 did not do, and stage 2 did.** Stage 1's readers for attributes,
+calculations, aggregates and actions took a config and ignored it: they
+answered live whether or not a manifest was present.
+`%Ash.Info.Manifest.Field{}` carries a resolved `%Ash.Info.Manifest.Type{}`
+where `%Ash.Resource.Attribute{}` carries an Ash type module plus a constraints
+keyword list, and translating between the two was stage 2's decorator, with its
+own failure modes. Half-translating it in stage 1 would have put a second,
+quieter answer beside the live one. Those readers now route through the
+decoration — see the two entries at the top of this page — and the reader's
+moduledoc still lists what is answered from where.
 
 **Cost.** Two functions where the domain has one concept, and a call site that
 picks the wrong one fails silently in exactly the way the split exists to

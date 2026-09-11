@@ -81,6 +81,7 @@ defmodule AshIntrospection.Codegen.ActionIntrospection do
   including resources, typed maps, typed structs, and primitives.
   """
 
+  alias AshIntrospection.Manifest.Custom
   alias AshIntrospection.ResourceInfo
   alias AshIntrospection.TypeSystem.Introspection
 
@@ -319,6 +320,35 @@ defmodule AshIntrospection.Codegen.ActionIntrospection do
       {:error, :not_generic_action}
     else
       check_action_returns(action, config)
+    end
+  end
+
+  @doc """
+  The return classification of `action` on `resource`, precomputed where a
+  decorated manifest carries it.
+
+  Same value and same shape as `action_returns_field_selectable_type?/2`, which
+  is what this falls back to for an undecorated resource. Prefer this one
+  wherever the resource is in hand: the live walk unwraps arrays and NewTypes
+  and asks whether a returned struct is a declared resource, per action, per
+  call.
+
+  The classification is scoped by the manifest on `config`, because "is this a
+  declared resource?" is. Decoration settles that question earlier; it does not
+  change the answer.
+  """
+  @spec action_return_classification(
+          module(),
+          Ash.Resource.Actions.action(),
+          ResourceInfo.config()
+        ) :: term()
+  def action_return_classification(resource, action, config \\ %{}) do
+    with {manifest_resource, namespace} <- ResourceInfo.decoration(resource, config),
+         classification when classification != :undecorated <-
+           Custom.return_classification(manifest_resource, action, namespace) do
+      classification
+    else
+      _ -> action_returns_field_selectable_type?(action, config)
     end
   end
 

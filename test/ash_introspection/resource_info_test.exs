@@ -214,6 +214,37 @@ defmodule AshIntrospection.ResourceInfoTest do
       end
     end
 
+    test "a private relationship the manifest omits still answers" do
+      # `Ash.Info.Manifest.Generator` defaults `:include_private_relationships?`
+      # to false, so a private `belongs_to` is in no manifest generated with the
+      # defaults. `Ash.Resource.Info.relationship/2` answers for it, so the
+      # manifest path has to as well. `Test.Address.user` is the fixture.
+      manifest_config = ManifestFixture.config()
+
+      assert ResourceInfo.relationship(Test.Address, :user, manifest_config) ==
+               narrow(Ash.Resource.Info.relationship(Test.Address, :user))
+
+      # The public reader must not fall back. The manifest carries every public
+      # relationship, so a miss there is the answer.
+      assert ResourceInfo.public_relationship(Test.Address, :user, manifest_config) == nil
+      assert ResourceInfo.public_relationship(Test.Address, :user, @live) == nil
+    end
+
+    test "every relationship agrees, private ones included" do
+      manifest_config = ManifestFixture.config()
+
+      for resource <- manifest_resources() ++ ManifestFixture.embedded_modules(),
+          name <- Enum.map(Ash.Resource.Info.relationships(resource), & &1.name) do
+        assert ResourceInfo.relationship(resource, name, manifest_config) ==
+                 ResourceInfo.relationship(resource, name, @live),
+               "relationship/3 disagreed for #{inspect(resource)}.#{name}"
+
+        assert ResourceInfo.public_relationship(resource, name, manifest_config) ==
+                 ResourceInfo.public_relationship(resource, name, @live),
+               "public_relationship/3 disagreed for #{inspect(resource)}.#{name}"
+      end
+    end
+
     test "the fixture manifest really is read, not quietly ignored" do
       # Without this, every assertion above would also pass against a reader
       # that never looked at the manifest. A module absent from the manifest is

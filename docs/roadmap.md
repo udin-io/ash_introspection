@@ -17,6 +17,35 @@ which come first. Numbers in parentheses are GitHub issues on
 
 ### Unreleased
 
+- **#23 stage 2 — one compile-time pass writes what this library reads.**
+  `AshIntrospection.Manifest.Decorator.decorate/3` walks a generated
+  `%Ash.Info.Manifest{}` once and writes under `custom.<namespace>` what the
+  request path used to recompute: the live `%Ash.Resource.Attribute{}`,
+  `Calculation`, `Aggregate` and action structs, resolved aggregate types,
+  each action's return classification, the bulk-authorization strategy,
+  client-facing field and argument names under each built-in formatter with
+  their reverse maps, how each `:many` relationship paginates and which read
+  action it loads through, and an entrypoint lookup keyed by client-facing
+  name. `AshIntrospection.Manifest.Custom` reads it back and is the only
+  reader of `custom`. Stage 1's field and action readers stopped ignoring the
+  manifest, and `Rpc.Pipeline` no longer asks the data layer about bulk
+  authorization per request. Additive and reversible: an undecorated resource
+  — or no manifest at all — reads live, which is what every caller in this
+  repo still does. `test/ash_introspection/manifest/differential_test.exs` is
+  the acceptance criterion, comparing every read against live introspection
+  field for field and action for action. Ports `ash_typescript` `5292280`,
+  `f28feec`, `fe90d56` and `afdae11`. Three stages remain — see below.
+- **#23 — a private relationship the manifest omits answers again.**
+  `Ash.Info.Manifest.Generator.generate/1` defaults
+  `:include_private_relationships?` to `false`, so a private `belongs_to` is in
+  no manifest built with the defaults. `ResourceInfo.relationship/3` read the
+  manifest and stopped, returning `nil` where `Ash.Resource.Info` returns the
+  relationship — and `ResourceFields.get_field_type_info/3` inherited it,
+  because it asks `relationship/3` for the field's type. Shipped in stage 1 and
+  missed, because stage 1's differential test walks `public_relationships/1`
+  only. `Test.Address.user` is the fixture. `public_relationship/3` keeps its
+  stop: the manifest carries every public relationship, so a miss there is the
+  answer.
 - **#40 — a throw or exit from an `Error` protocol implementation no longer
   takes the request with it** (`99cdbd4`). The `rescue` around
   `ErrorProtocol.to_error/1` in `process_single_error/6` only saw exceptions,
@@ -264,29 +293,37 @@ merged commit on `main`.
 
 ## In progress
 
-- **#23 stage 2** has not started. Stage 1 is in Unreleased above.
+- **#23 stage 3** has not started, and it is in `ash_kotlin_multiplatform`,
+  not here. Stages 1 and 2 are in Unreleased above.
 
 ## Next
 
 Ordered by what unblocks the most. #23 is first because it gates roughly a
 dozen other items.
 
-1. **#23 — adopt `Ash.Info.Manifest`, stages 2 to 5.** Stage 1 shipped the
-   seam (above). The manifest module itself cannot live here: building one
-   needs a Spark DSL to declare entrypoints, and this library ships none — the
-   recorded reason #26 was declined. So it goes in `ash_kotlin_multiplatform`,
-   next to the DSL that already names the RPC actions. The remaining stages, in
-   the order that keeps the escape hatch open longest:
+1. **#23 — adopt `Ash.Info.Manifest`, stages 3 to 5.** Stages 1 and 2 shipped
+   the seam and the decorator that fills it (above). The manifest module itself
+   cannot live here: building one needs a Spark DSL to declare entrypoints, and
+   this library ships none — the recorded reason #26 was declined. So it goes
+   in `ash_kotlin_multiplatform`, next to the DSL that already names the RPC
+   actions. The stages, in the order that keeps the escape hatch open longest:
 
-   | Stage | Repo | Delivers | Release |
-   |---|---|---|---|
-   | 2 | this | `Manifest.Decorator.decorate/3` and `Manifest.Custom`: field and argument name maps, `formatted_field_names`, `return_classification`, per-relationship pagination | 0.4.x, additive |
-   | 3 | consumer | `use AshKotlinMultiplatform.Manifest`, its two transformers, the `8c07331` compile-time edges, an installer | consumer minor |
-   | 4 | this | delete `Codegen.TypeDiscovery` (1010 lines); codegen reads the manifest only | 0.5.0, breaking |
-   | 5 | this | make `:manifest` required in the request path; drop the live fallbacks except the runtime struct guards | 0.6.0, breaking |
+   | Stage | Repo | Delivers | Release | State |
+   |---|---|---|---|---|
+   | 1 | this | `AshIntrospection.ResourceInfo` and the optional `:manifest` key | 0.4.x, additive | shipped |
+   | 2 | this | `Manifest.Decorator.decorate/3` and `Manifest.Custom`: field and argument name maps, `formatted_field_names`, `return_classification`, per-relationship pagination | 0.4.x, additive | shipped |
+   | 3 | consumer | `use AshKotlinMultiplatform.Manifest`, its two transformers, the `8c07331` compile-time edges, an installer | consumer minor | next |
+   | 4 | this | delete `Codegen.TypeDiscovery` (1010 lines); codegen reads the manifest only | 0.5.0, breaking | |
+   | 5 | this | make `:manifest` required in the request path; drop the live fallbacks except the runtime struct guards | 0.6.0, breaking | |
+
+   **Stage 3 is the one that makes any of this run.** Nothing in this repo
+   builds a manifest, so stage 2's decorator has no caller in production: the
+   only thing that calls `decorate/3` today is
+   `test/support/manifest_fixture.ex`. Until the consumer declares a manifest
+   and decorates it, every read here is still live and stage 2 is inert.
 
    Stage 4 is the point of no return. Stage 2 is where the field-name cache
-   declined in #26 arrives for free, as upstream's
+   declined in #26 arrived for free, as
    `Manifest.Custom.formatted_field_names`. Stage 4 carries the remainder of
    #21: entrypoint scoping here branches on the action kind, where upstream's
    `Reachability` walks each declared action's accepted attributes and follows

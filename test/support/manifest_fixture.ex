@@ -41,7 +41,11 @@ defmodule AshIntrospection.Test.ManifestFixture do
   divergence — see `test/ash_introspection/resource_info_test.exs`.
   """
 
+  alias AshIntrospection.Manifest.Custom
+  alias AshIntrospection.Manifest.Decorator
   alias AshIntrospection.Test
+
+  @default_namespace Custom.default_namespace()
 
   @entrypoints [
     {Test.User, :read},
@@ -64,7 +68,8 @@ defmodule AshIntrospection.Test.ManifestFixture do
     {Test.AuditedRecord, :read_with_metadata},
     {Test.LoadRestrictions.Article, :read},
     {Test.LoadRestrictions.Author, :read},
-    {Test.LoadRestrictions.Comment, :read}
+    {Test.LoadRestrictions.Comment, :read},
+    {Test.RelPagination.Library, :read}
   ]
 
   @doc "The `{resource, action}` pairs the fixture manifest is generated from."
@@ -96,27 +101,83 @@ defmodule AshIntrospection.Test.ManifestFixture do
   """
   @spec manifest() :: Ash.Info.Manifest.t()
   def manifest do
-    case :persistent_term.get(__MODULE__, nil) do
-      nil ->
-        {:ok, manifest} =
-          Ash.Info.Manifest.generate(
-            otp_app: :ash_introspection,
-            action_entrypoints: @entrypoints
-          )
+    cached(__MODULE__, fn ->
+      {:ok, manifest} =
+        Ash.Info.Manifest.generate(
+          otp_app: :ash_introspection,
+          action_entrypoints: @entrypoints
+        )
 
-        :persistent_term.put(__MODULE__, manifest)
-        manifest
+      manifest
+    end)
+  end
 
-      manifest ->
-        manifest
-    end
+  @doc """
+  The fixture manifest decorated by `AshIntrospection.Manifest.Decorator`.
+
+  Cached per VM like `manifest/0`, and only for the default namespace with an
+  empty config — a test that passes either builds its own, because those are
+  the arguments it is varying.
+  """
+  @spec decorated(atom(), map() | nil) :: Ash.Info.Manifest.t()
+  def decorated(namespace \\ Custom.default_namespace(), config \\ nil)
+
+  def decorated(@default_namespace, nil) do
+    cached({__MODULE__, :decorated}, fn ->
+      Decorator.decorate(manifest(), @default_namespace, decorator_config())
+    end)
+  end
+
+  def decorated(namespace, config),
+    do: Decorator.decorate(manifest(), namespace, config || decorator_config())
+
+  @doc """
+  The decorator config the fixture uses.
+
+  Only `:entrypoint_name` is set, because the decorator has no default for it:
+  a client-facing action name is the consumer's to choose, and an action name
+  alone is not unique across resources. The fixture qualifies each with its
+  resource so `:read` on four resources gets four names.
+  """
+  @spec decorator_config() :: map()
+  def decorator_config, do: %{entrypoint_name: &entrypoint_name/2}
+
+  @doc "The fixture's client-facing name for `{resource, action}`."
+  @spec entrypoint_name(module(), atom()) :: String.t()
+  def entrypoint_name(resource, action) do
+    resource
+    |> Module.split()
+    |> List.last()
+    |> Macro.underscore()
+    |> Kernel.<>("_#{action}")
+    |> AshIntrospection.FieldFormatter.format_field_name(:camel_case)
   end
 
   @doc "The fixture manifest with its lookup maps prepared."
   @spec source() :: AshIntrospection.ResourceInfo.Source.t()
   def source, do: AshIntrospection.ResourceInfo.prepare(manifest())
 
-  @doc "A config map carrying the prepared fixture manifest."
+  @doc "The decorated fixture manifest with its lookup maps prepared."
+  @spec decorated_source() :: AshIntrospection.ResourceInfo.Source.t()
+  def decorated_source, do: AshIntrospection.ResourceInfo.prepare(decorated())
+
+  @doc "A config map carrying the prepared, undecorated fixture manifest."
   @spec config(map()) :: map()
   def config(extra \\ %{}), do: Map.put(extra, :manifest, source())
+
+  @doc "A config map carrying the prepared, decorated fixture manifest."
+  @spec decorated_config(map()) :: map()
+  def decorated_config(extra \\ %{}), do: Map.put(extra, :manifest, decorated_source())
+
+  defp cached(key, build) do
+    case :persistent_term.get(key, nil) do
+      nil ->
+        value = build.()
+        :persistent_term.put(key, value)
+        value
+
+      value ->
+        value
+    end
+  end
 end
