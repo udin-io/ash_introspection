@@ -14,6 +14,19 @@ and this project adheres to
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-09-11
+
+Additive. Stages 1 and 2 of
+[#23](https://github.com/udin-io/ash_introspection/issues/23) land the manifest
+seam and the decoration that fills it, a protocol implementation that throws or
+exits can no longer take a request down, and the field-name case predicates stop
+running regexes. No breaking change, so no upgrade task is needed.
+
+Stage 2 is inert until a consumer builds a manifest.
+`AshIntrospection.Manifest.Decorator.decorate/3` has no caller in `lib/` — the
+manifest module needs a Spark DSL to declare entrypoints and this library ships
+none. `ash_kotlin_multiplatform` declares it in stage 3.
+
 ### Added
 
 - `AshIntrospection.ResourceInfo`, the one module in `lib/` that calls
@@ -42,6 +55,62 @@ and this project adheres to
   `action_supports_field_selection?/2`, and
   `Codegen.ValidationErrorTypes.classify_action_input_errors/3` and
   `classify_resource_attribute_errors/2`.
+
+- `AshIntrospection.Manifest.Decorator` and `AshIntrospection.Manifest.Custom`,
+  stage 2 of five for
+  [#23](https://github.com/udin-io/ash_introspection/issues/23).
+  `Decorator.decorate/3` walks a generated `%Ash.Info.Manifest{}` once at
+  compile time and writes what this library reads under `custom.<namespace>`;
+  `Custom` is the only module that reads it back. Between them they precompute
+  the field and argument name maps and their reverses, `formatted_field_names`,
+  each action's return classification, each relationship's pagination and read
+  action, and the bulk-authorization strategy.
+
+  Additive and reversible: a config map with no `:manifest` key reads live
+  introspection exactly as before, and `decorated?/2` distinguishes a resource
+  with no decoration from one with no fields. The namespace is a parameter
+  defaulting to `:ash_introspection`, because whether one decoration serves
+  every generator or each generator decorates under its own key is still open
+  on #23.
+
+  A differential test compares roughly 2,560 reads per run — every reader, in
+  both atom and string spellings, against a decorated manifest and against
+  `Ash.Resource.Info` — and requires the two to agree.
+
+### Changed
+
+- `FieldFormatter.format_field_name/2` matches on the binary instead of running
+  regexes to decide what case a name is already in
+  ([#61](https://github.com/udin-io/ash_introspection/issues/61)).
+  `is_camel_case?/1`, `is_pascal_case?/1` and `is_snake_case?/1` walk bytes.
+  Measured at `74afafd` on OTP 27 / Elixir 1.18.4, warmed loops through
+  `:timer.tc/1`: `(:user_name, :camel_case)` 453-472 ns to 156-170 ns,
+  `("userName", :camel_case)` 585-607 ns to 12 ns, `("success", :camel_case)`
+  773-783 ns to 130-142 ns, `(:user_name, :snake_case)` 355-363 ns to 24-28 ns.
+  Behaviour is unchanged: the old regexes stay in the suite as an oracle over
+  420 names, comparing both the string returned and the path taken.
+
+### Fixed
+
+- A `AshIntrospection.Rpc.Error` implementation that throws or exits no longer
+  escapes error transformation and takes the request with it
+  ([#40](https://github.com/udin-io/ash_introspection/issues/40)). The `rescue`
+  around `ErrorProtocol.to_error/1` saw exceptions only. Raise, throw and exit
+  now route through one `protocol_failure/3` returning the same opaque fallback
+  the raising case already returned. The response shape is unchanged, so the
+  log is the only correlation: it names the implementation, the failure, the
+  original error and the stacktrace.
+
+- `ResourceInfo.relationship/3` answers for a private relationship again.
+  `Ash.Info.Manifest.Generator.generate/1` defaults
+  `:include_private_relationships?` to `false`, so a private `belongs_to` is in
+  no manifest built with the defaults; the reader consulted the manifest and
+  stopped, returning `nil` where `Ash.Resource.Info.relationship/2` answers.
+  It now falls back to live introspection on a miss.
+  `public_relationship/3` keeps its stop — every public relationship is
+  carried, so a miss there is the answer. Shipped in stage 1 and caught by
+  stage 2's differential test, which walks every relationship rather than only
+  the public ones.
 
 ## [0.4.0] - 2026-09-10
 
