@@ -82,7 +82,8 @@ defmodule AshIntrospection.Rpc.Pipeline do
           optional(:field_names_callback) => atom(),
           optional(:get_original_field_name) => (module(), String.t() -> atom() | nil),
           optional(:format_field_for_client) => (atom(), module() | nil, atom() -> String.t()),
-          optional(:not_found_error?) => boolean()
+          optional(:not_found_error?) => boolean(),
+          optional(:manifest) => Ash.Info.Manifest.t() | ResourceInfo.Source.t() | nil
         }
 
   # ---------------------------------------------------------------------------
@@ -156,8 +157,14 @@ defmodule AshIntrospection.Rpc.Pipeline do
             resource_for_mapping =
               get_field_mapping_module(request.action, request.resource, config)
 
+            # `:manifest` rides along explicitly. This map is built from
+            # scratch rather than passed through, so a key added to `config`
+            # and not named here is silently dropped before it reaches
+            # `ResultProcessor` — which is how stage 3 would quietly keep
+            # reading live introspection while stages 1 and 4 read a manifest.
             processor_config = %{
-              field_names_callback: Map.get(config, :field_names_callback, :interop_field_names)
+              field_names_callback: Map.get(config, :field_names_callback, :interop_field_names),
+              manifest: Map.get(config, :manifest)
             }
 
             filtered =
