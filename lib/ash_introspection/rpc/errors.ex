@@ -109,12 +109,10 @@ defmodule AshIntrospection.Rpc.Errors do
             ErrorProtocol.to_error(error)
           rescue
             e ->
-              Logger.warning("""
-              Failed to transform error via protocol: #{inspect(e)}
-              Original error: #{inspect(error)}
-              """)
-
-              fallback_error_response(error, false)
+              protocol_failure(inspect(e), __STACKTRACE__, error)
+          catch
+            kind, reason ->
+              protocol_failure("#{kind}: #{inspect(reason)}", __STACKTRACE__, error)
           end
         else
           handle_unimplemented_error(error, false)
@@ -163,6 +161,27 @@ defmodule AshIntrospection.Rpc.Errors do
         {module, function, args},
         error
       )
+  end
+
+  # A protocol implementation is consumer code, so it can fail every way code
+  # can. Error transformation is the last thing standing between a failed
+  # request and the caller: an escaping throw or exit takes the request with it
+  # and the client learns nothing, so both failures land here and return the
+  # same opaque fallback the raising case already returned.
+  #
+  # The fallback carries no error id - it is the response shape consumers
+  # already receive and adding a field to it would change the wire - so the log
+  # is the only place the two ends can be joined. It names the implementation
+  # that failed, the failure, the error it was handed and the stacktrace.
+  defp protocol_failure(reason, stacktrace, error) do
+    Logger.warning("""
+    Failed to transform error via protocol: #{reason}
+    Implementation: #{inspect(ErrorProtocol.impl_for(error))}
+    Original error: #{inspect(error)}
+    #{Exception.format_stacktrace(stacktrace)}
+    """)
+
+    fallback_error_response(error, false)
   end
 
   # Error handlers are the application's hook for redacting or suppressing errors
