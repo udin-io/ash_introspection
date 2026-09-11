@@ -308,7 +308,7 @@ defmodule AshIntrospection.Rpc.Pipeline do
         notify?: true,
         strategy: [:atomic, :stream, :atomic_batches],
         allow_stream_with: :full_read,
-        authorize_changeset_with: authorize_bulk_with(request.resource),
+        authorize_changeset_with: ResourceInfo.authorize_bulk_strategy(request.resource, config),
         return_records?: true,
         tenant: opts[:tenant],
         context: opts[:context] || %{},
@@ -372,7 +372,7 @@ defmodule AshIntrospection.Rpc.Pipeline do
         notify?: true,
         strategy: [:atomic, :stream, :atomic_batches],
         allow_stream_with: :full_read,
-        authorize_changeset_with: authorize_bulk_with(request.resource),
+        authorize_changeset_with: ResourceInfo.authorize_bulk_strategy(request.resource, config),
         return_records?: true,
         tenant: opts[:tenant],
         context: opts[:context] || %{},
@@ -682,14 +682,6 @@ defmodule AshIntrospection.Rpc.Pipeline do
         ResourceInfo.identity_keys(resource, identity_name, config) || []
     end)
     |> Enum.uniq()
-  end
-
-  defp authorize_bulk_with(resource) do
-    if Ash.DataLayer.data_layer_can?(resource, :expr_error) do
-      :error
-    else
-      :filter
-    end
   end
 
   # ---------------------------------------------------------------------------
