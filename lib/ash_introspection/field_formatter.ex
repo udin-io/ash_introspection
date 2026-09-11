@@ -170,20 +170,58 @@ defmodule AshIntrospection.FieldFormatter do
     end
   end
 
-  defp is_camel_case?(string) do
-    # camelCase: starts with lowercase, no underscores, has at least one uppercase
-    String.match?(string, ~r/^[a-z][a-zA-Z0-9]*$/) && String.match?(string, ~r/[A-Z]/)
-  end
+  # The three predicates below walk bytes rather than run a regex. They answer
+  # exactly what `~r/^[a-z][a-zA-Z0-9]*$/` and its two siblings answered before
+  # #61 — `field_formatter_case_predicate_equivalence_test.exs` keeps the old
+  # implementation as an oracle and compares the two over 420 names. Two details
+  # of those regexes are reproduced on purpose: the character classes are
+  # ASCII-only, because the regexes carried no `u` flag, and a single trailing
+  # newline is accepted, because PCRE's `$` matches before one. Measured
+  # 2026-09-11 on OTP 27 / Elixir 1.18.4: one `String.match?/2` call costs
+  # ~300-370 ns and a whole walk ~10 ns.
 
-  defp is_pascal_case?(string) do
-    # PascalCase: starts with uppercase, no underscores
-    String.match?(string, ~r/^[A-Z][a-zA-Z0-9]*$/)
-  end
+  # camelCase: starts with lowercase, ASCII alphanumeric after it, and at least
+  # one uppercase somewhere.
+  defp is_camel_case?(<<char, rest::binary>>) when char >= ?a and char <= ?z,
+    do: alphanumeric_tail?(rest, false)
 
-  defp is_snake_case?(string) do
-    # snake_case: lowercase with underscores, no uppercase
-    String.match?(string, ~r/^[a-z][a-z0-9_]*$/) && String.contains?(string, "_")
-  end
+  defp is_camel_case?(_string), do: false
+
+  # PascalCase: starts with uppercase, ASCII alphanumeric after it. That leading
+  # character already satisfies "has an uppercase", which is why PascalCase
+  # shares camelCase's tail walk with the flag set.
+  defp is_pascal_case?(<<char, rest::binary>>) when char >= ?A and char <= ?Z,
+    do: alphanumeric_tail?(rest, true)
+
+  defp is_pascal_case?(_string), do: false
+
+  # snake_case: starts with lowercase, then lowercase, digits and underscores,
+  # with at least one underscore.
+  defp is_snake_case?(<<char, rest::binary>>) when char >= ?a and char <= ?z,
+    do: snake_tail?(rest, false)
+
+  defp is_snake_case?(_string), do: false
+
+  defp alphanumeric_tail?(<<char, rest::binary>>, _uppercase?) when char >= ?A and char <= ?Z,
+    do: alphanumeric_tail?(rest, true)
+
+  defp alphanumeric_tail?(<<char, rest::binary>>, uppercase?)
+       when (char >= ?a and char <= ?z) or (char >= ?0 and char <= ?9),
+       do: alphanumeric_tail?(rest, uppercase?)
+
+  defp alphanumeric_tail?("", uppercase?), do: uppercase?
+  defp alphanumeric_tail?("\n", uppercase?), do: uppercase?
+  defp alphanumeric_tail?(_rest, _uppercase?), do: false
+
+  defp snake_tail?(<<?_, rest::binary>>, _underscore?), do: snake_tail?(rest, true)
+
+  defp snake_tail?(<<char, rest::binary>>, underscore?)
+       when (char >= ?a and char <= ?z) or (char >= ?0 and char <= ?9),
+       do: snake_tail?(rest, underscore?)
+
+  defp snake_tail?("", underscore?), do: underscore?
+  defp snake_tail?("\n", underscore?), do: underscore?
+  defp snake_tail?(_rest, _underscore?), do: false
 
   @doc """
   Recursively formats every key in a nested structure for client consumption.

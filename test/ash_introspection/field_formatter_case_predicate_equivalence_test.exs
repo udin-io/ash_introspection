@@ -22,6 +22,10 @@ defmodule AshIntrospection.FieldFormatterCasePredicateEquivalenceTest do
   (verified 2026-09-11 on OTP 27 / Elixir 1.18.4; `"abC\\r\\n"` and `"abC\\n\\n"`
   are not).
 
+  Half the equivalence is invisible to a value assertion, so one test compares
+  the *path* taken rather than the string returned — see the comment on
+  `returned_untouched?/2`.
+
   A divergence here is a behaviour change, not a refactor. Update the oracle
   only with a decision recorded in `docs/decisions.md`.
   """
@@ -98,6 +102,14 @@ defmodule AshIntrospection.FieldFormatterCasePredicateEquivalenceTest do
       end
     end
 
+    test "taking the untouched-name path for exactly the names the regexes accept" do
+      for name <- corpus(), name != "", formatter <- @formatters do
+        assert returned_untouched?(name, formatter) == regex_predicate?(name, formatter),
+               "#{inspect(formatter)} takes the wrong path for #{inspect(name)}: " <>
+                 "regex says #{regex_predicate?(name, formatter)}"
+      end
+    end
+
     test "for atom input, which reaches the predicates through to_string/1" do
       for name <- [:user_name, :userName, :UserName, :_id, :field_1_name, :a__b],
           formatter <- @formatters do
@@ -163,6 +175,23 @@ defmodule AshIntrospection.FieldFormatterCasePredicateEquivalenceTest do
     rest = cartesian(tail)
     for item <- head, suffix <- rest, do: [item | suffix]
   end
+
+  # A value assertion cannot see a predicate that answers `false` where the
+  # regex answered `true`: every name a predicate accepts is a fixed point of
+  # the conversion it skips (checked over 4681 names on 2026-09-11), so the
+  # wrong path still produces the right string, only slower. What separates the
+  # paths is the term: `format_field_name/2` hands back the binary it was given
+  # when the predicate accepts, and builds a new one when it converts.
+  # `:erts_debug.same/2` sees that, so it is how this file observes the
+  # predicates at all. `""` is excluded because two empty binaries can be the
+  # same term for reasons that have nothing to do with the branch taken.
+  defp returned_untouched?(name, formatter) do
+    :erts_debug.same(FieldFormatter.format_field_name(name, formatter), name)
+  end
+
+  defp regex_predicate?(name, :camel_case), do: regex_camel_case?(name)
+  defp regex_predicate?(name, :pascal_case), do: regex_pascal_case?(name)
+  defp regex_predicate?(name, :snake_case), do: regex_snake_case?(name)
 
   # --- The pre-#61 implementation, frozen. Do not "modernise" it. ---
 
