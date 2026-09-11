@@ -72,6 +72,7 @@ defmodule AshIntrospection.Rpc.Pipeline do
   """
 
   alias AshIntrospection.{ErrorFormatter, FieldFormatter}
+  alias AshIntrospection.ResourceInfo
   alias AshIntrospection.Rpc.{Request, ResultProcessor, ValueFormatter}
   alias AshIntrospection.TypeSystem.Introspection
 
@@ -502,7 +503,7 @@ defmodule AshIntrospection.Rpc.Pipeline do
 
   defp maybe_apply_identity_filter(query, identity, identities, resource, config)
        when is_map(identity) do
-    with {:ok, filter} <- build_identity_filter(resource, identity, identities),
+    with {:ok, filter} <- build_identity_filter(resource, identity, identities, config),
          :ok <- validate_non_null_identity_filter(filter, config),
          :ok <- validate_scalar_identity_filter(filter, config) do
       {:ok, Ash.Query.do_filter(query, filter)}
@@ -511,16 +512,16 @@ defmodule AshIntrospection.Rpc.Pipeline do
 
   defp maybe_apply_identity_filter(query, identity, identities, resource, config)
        when not is_nil(identity) do
-    with {:ok, filter} <- build_identity_filter(resource, identity, identities),
+    with {:ok, filter} <- build_identity_filter(resource, identity, identities, config),
          :ok <- validate_non_null_identity_filter(filter, config),
          :ok <- validate_scalar_identity_filter(filter, config) do
       {:ok, Ash.Query.do_filter(query, filter)}
     end
   end
 
-  defp maybe_apply_identity_filter(_query, nil, identities, resource, _config)
+  defp maybe_apply_identity_filter(_query, nil, identities, resource, config)
        when identities != [] do
-    expected_keys = get_expected_identity_keys(resource, identities)
+    expected_keys = get_expected_identity_keys(resource, identities, config)
 
     {:error,
      {:missing_identity,
@@ -582,24 +583,24 @@ defmodule AshIntrospection.Rpc.Pipeline do
     end
   end
 
-  defp build_identity_filter(resource, identity, identities) when is_map(identity) do
+  defp build_identity_filter(resource, identity, identities, config) when is_map(identity) do
     result =
       Enum.find_value(identities, fn
         :_primary_key ->
-          primary_key_attrs = Ash.Resource.Info.primary_key(resource)
+          primary_key_attrs = ResourceInfo.primary_key(resource, config)
 
           if length(primary_key_attrs) > 1 &&
                Enum.all?(primary_key_attrs, &Map.has_key?(identity, &1)) do
-            {:ok, primary_key_filter(resource, identity)}
+            {:ok, primary_key_filter(resource, identity, config)}
           else
             nil
           end
 
         identity_name ->
-          identity_info = Ash.Resource.Info.identity(resource, identity_name)
+          keys = ResourceInfo.identity_keys(resource, identity_name, config)
 
-          if identity_info && Enum.all?(identity_info.keys, &Map.has_key?(identity, &1)) do
-            {:ok, build_named_identity_filter(identity_info, identity)}
+          if keys && Enum.all?(keys, &Map.has_key?(identity, &1)) do
+            {:ok, build_named_identity_filter(keys, identity)}
           else
             nil
           end
@@ -611,7 +612,7 @@ defmodule AshIntrospection.Rpc.Pipeline do
 
       nil ->
         provided_keys = Map.keys(identity)
-        expected_keys = get_expected_identity_keys(resource, identities)
+        expected_keys = get_expected_identity_keys(resource, identities, config)
 
         {:error,
          {:invalid_identity,
@@ -623,9 +624,9 @@ defmodule AshIntrospection.Rpc.Pipeline do
     end
   end
 
-  defp build_identity_filter(resource, identity, identities) when not is_nil(identity) do
+  defp build_identity_filter(resource, identity, identities, config) when not is_nil(identity) do
     if :_primary_key in identities do
-      {:ok, primary_key_filter(resource, identity)}
+      {:ok, primary_key_filter(resource, identity, config)}
     else
       {:error,
        {:invalid_identity,
@@ -636,10 +637,10 @@ defmodule AshIntrospection.Rpc.Pipeline do
     end
   end
 
-  defp build_identity_filter(_resource, _identity, _identities), do: {:ok, []}
+  defp build_identity_filter(_resource, _identity, _identities, _config), do: {:ok, []}
 
-  defp primary_key_filter(resource, primary_key_value) do
-    primary_key_fields = Ash.Resource.Info.primary_key(resource)
+  defp primary_key_filter(resource, primary_key_value, config) do
+    primary_key_fields = ResourceInfo.primary_key(resource, config)
 
     if is_map(primary_key_value) do
       Enum.map(primary_key_fields, fn field ->
@@ -655,26 +656,23 @@ defmodule AshIntrospection.Rpc.Pipeline do
   # `key == nil`. The update or destroy then ran against a record the caller
   # never named, or against none at all.
   #
-  # `fetch!` cannot raise here. `build_identity_filter/3` picks a named identity
-  # only when `Enum.all?(identity_info.keys, &Map.has_key?(parsed_identity, &1))`
+  # `fetch!` cannot raise here. `build_identity_filter/4` picks a named identity
+  # only when `Enum.all?(keys, &Map.has_key?(parsed_identity, &1))`
   # holds, so every atom key is present by the time this runs. #15 carried a
   # string-key fallback for parity with upstream `ash_typescript`; #44 removed
   # it because the same guard makes it unreachable there too, and dead code that
   # looks like a safety net invites the next reader to trust it.
-  defp build_named_identity_filter(identity, parsed_identity) when is_map(parsed_identity) do
-    Enum.map(identity.keys, fn key -> {key, Map.fetch!(parsed_identity, key)} end)
+  defp build_named_identity_filter(keys, parsed_identity) when is_map(parsed_identity) do
+    Enum.map(keys, fn key -> {key, Map.fetch!(parsed_identity, key)} end)
   end
 
-  defp get_expected_identity_keys(resource, identities) do
+  defp get_expected_identity_keys(resource, identities, config) do
     Enum.flat_map(identities, fn
       :_primary_key ->
-        Ash.Resource.Info.primary_key(resource)
+        ResourceInfo.primary_key(resource, config)
 
       identity_name ->
-        case Ash.Resource.Info.identity(resource, identity_name) do
-          nil -> []
-          identity -> identity.keys
-        end
+        ResourceInfo.identity_keys(resource, identity_name, config) || []
     end)
     |> Enum.uniq()
   end
@@ -864,16 +862,20 @@ defmodule AshIntrospection.Rpc.Pipeline do
 
   defp untyped_map_return?(_returns, _constraints), do: false
 
+  # No config argument: this only decides whether to `Ash.load/3` the result of
+  # a generic action, and `ResourceInfo.runtime_resource?/2` answers a real
+  # resource module `true` with or without a manifest. Threading one through
+  # `execute_generic_action/2` would buy nothing.
   defp action_returns_resource?(action) do
     case action.returns do
       nil ->
         false
 
       type when is_atom(type) ->
-        Ash.Resource.Info.resource?(type)
+        ResourceInfo.runtime_resource?(type)
 
       {:array, type} when is_atom(type) ->
-        Ash.Resource.Info.resource?(type)
+        ResourceInfo.runtime_resource?(type)
 
       _ ->
         false
@@ -894,7 +896,7 @@ defmodule AshIntrospection.Rpc.Pipeline do
       constraints = action.constraints || []
 
       cond do
-        is_atom(return_type) && Ash.Resource.Info.resource?(return_type) ->
+        is_atom(return_type) && ResourceInfo.runtime_resource?(return_type, config) ->
           return_type
 
         return_type == Ash.Type.Struct && Keyword.has_key?(constraints, :instance_of) ->

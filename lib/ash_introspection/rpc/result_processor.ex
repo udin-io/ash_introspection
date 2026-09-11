@@ -42,11 +42,13 @@ defmodule AshIntrospection.Rpc.ResultProcessor do
   ```
   """
 
+  alias AshIntrospection.ResourceInfo
   alias AshIntrospection.Rpc.FieldExtractor
   alias AshIntrospection.TypeSystem.{Introspection, ResourceFields}
 
   @type config :: %{
-          optional(:field_names_callback) => atom()
+          optional(:field_names_callback) => atom(),
+          optional(:manifest) => Ash.Info.Manifest.t() | ResourceInfo.Source.t() | nil
         }
 
   @doc """
@@ -123,14 +125,14 @@ defmodule AshIntrospection.Rpc.ResultProcessor do
 
     cond do
       # For Ash resources, check all field types
-      Ash.Resource.Info.resource?(resource) ->
+      ResourceInfo.runtime_resource?(resource, config) ->
         # Use resolved aggregate type for aggregates
-        case Ash.Resource.Info.aggregate(resource, field_name) do
+        case ResourceInfo.aggregate(resource, field_name, config) do
           nil ->
-            ResourceFields.get_field_type_info(resource, field_name)
+            ResourceFields.get_field_type_info(resource, field_name, config)
 
           agg ->
-            agg_type = Ash.Resource.Info.aggregate_type(resource, agg)
+            agg_type = ResourceInfo.aggregate_type(resource, agg, config)
             {agg_type, []}
         end
 
@@ -201,7 +203,7 @@ defmodule AshIntrospection.Rpc.ResultProcessor do
         extract_array_value(value, inner_type, inner_constraints, template, config)
 
       # Ash Resources
-      is_atom(unwrapped_type) && Ash.Resource.Info.resource?(unwrapped_type) ->
+      is_atom(unwrapped_type) && ResourceInfo.runtime_resource?(unwrapped_type, config) ->
         extract_resource_value(value, unwrapped_type, template, config)
 
       # Ash.Type.Struct with resource instance_of
@@ -591,7 +593,7 @@ defmodule AshIntrospection.Rpc.ResultProcessor do
       is_atom(value) and not is_boolean(value) ->
         Atom.to_string(value)
 
-      is_struct(value) && Ash.Resource.Info.resource?(value.__struct__) ->
+      is_struct(value) && ResourceInfo.runtime_resource?(value.__struct__) ->
         normalize_resource_struct(value, value.__struct__)
 
       is_struct(value) ->
@@ -623,16 +625,14 @@ defmodule AshIntrospection.Rpc.ResultProcessor do
     end
   end
 
+  # `normalize_primitive/1` and this helper take no config, deliberately. They
+  # are the untemplated path: the only question they ask is what the struct Ash
+  # handed back actually is, and `ResourceInfo.runtime_resource?/2` answers a
+  # real Ash struct `true` with or without a manifest. Threading a config here
+  # would change `normalize_primitive/1`'s public arity and fourteen recursive
+  # call sites to buy nothing.
   defp normalize_resource_struct(value, resource) do
-    public_attrs = Ash.Resource.Info.public_attributes(resource)
-    public_calcs = Ash.Resource.Info.public_calculations(resource)
-    public_aggs = Ash.Resource.Info.public_aggregates(resource)
-
-    public_field_names =
-      (Enum.map(public_attrs, & &1.name) ++
-         Enum.map(public_calcs, & &1.name) ++
-         Enum.map(public_aggs, & &1.name))
-      |> MapSet.new()
+    public_field_names = MapSet.new(ResourceInfo.public_field_names(resource))
 
     value
     |> Map.from_struct()
@@ -715,8 +715,8 @@ defmodule AshIntrospection.Rpc.ResultProcessor do
   2. The provided resource context
   3. Falls back to nil for unknown types
   """
-  def determine_data_type(nil, resource, _config) do
-    if resource && Ash.Resource.Info.resource?(resource) do
+  def determine_data_type(nil, resource, config) do
+    if resource && ResourceInfo.runtime_resource?(resource, config) do
       {resource, []}
     else
       {nil, []}
@@ -727,7 +727,7 @@ defmodule AshIntrospection.Rpc.ResultProcessor do
     field_names_callback = Map.get(config, :field_names_callback, :interop_field_names)
 
     cond do
-      is_struct(data) && Ash.Resource.Info.resource?(data.__struct__) ->
+      is_struct(data) && ResourceInfo.runtime_resource?(data.__struct__, config) ->
         {data.__struct__, []}
 
       is_struct(data) && Code.ensure_loaded?(data.__struct__) &&
@@ -735,8 +735,8 @@ defmodule AshIntrospection.Rpc.ResultProcessor do
         {Ash.Type.Struct, [instance_of: data.__struct__]}
 
       match?(%Ash.Union{}, data) ->
-        if resource && Ash.Resource.Info.resource?(resource) do
-          {Ash.Type.Union, get_union_constraints_from_resource(resource)}
+        if resource && ResourceInfo.runtime_resource?(resource, config) do
+          {Ash.Type.Union, get_union_constraints_from_resource(resource, config)}
         else
           {Ash.Type.Union, []}
         end
@@ -750,7 +750,7 @@ defmodule AshIntrospection.Rpc.ResultProcessor do
       is_map(data) && not is_struct(data) ->
         {nil, []}
 
-      resource && Ash.Resource.Info.resource?(resource) && is_struct(data) ->
+      resource && ResourceInfo.runtime_resource?(resource, config) && is_struct(data) ->
         {resource, []}
 
       true ->
@@ -758,8 +758,8 @@ defmodule AshIntrospection.Rpc.ResultProcessor do
     end
   end
 
-  defp get_union_constraints_from_resource(resource) do
-    attrs = Ash.Resource.Info.attributes(resource)
+  defp get_union_constraints_from_resource(resource, config) do
+    attrs = ResourceInfo.attributes(resource, config)
 
     Enum.find_value(attrs, [], fn attr ->
       case attr.type do
