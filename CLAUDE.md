@@ -402,7 +402,34 @@ apiece. A binary-walk clause computing the same answer measures ~10 ns.
 
 **What we do.** Measure before optimising this function, and optimise the
 predicates rather than caching the result. A cache helps resource fields only;
-the predicates are on every caller's path, codegen and errors included.
+the predicates are on every caller's path, codegen and errors included. #61
+replaced the three regexes with binary walks on 2026-09-11 and the function now
+costs 12-170 ns depending on the name; the remaining cost is `Macro.camelize/1`
+and there is nothing left here worth optimising.
+
+### A wrong case predicate is invisible to a value assertion
+
+**Symptom.** You change `is_camel_case?/1` and the suite stays green, including
+the tests that assert what `format_field_name/2` returns. You conclude the
+predicate has no behaviour. It has.
+
+**Why.** Every name a predicate accepts is a **fixed point** of the conversion
+it skips — measured 2026-09-11 over 4681 names, `snake_to_camel_case/1` is the
+identity on all 392 that the camelCase regex accepts, and the same holds for
+the other two. So a predicate that wrongly answers `false` returns the right
+string by the slow route, and no assertion about the value can see it. Only a
+wrong `true` is visible, and then only for a name the conversion would have
+changed. This is the same idempotency that hides double formatting, one level
+down.
+
+**What we do.** `field_formatter_case_predicate_equivalence_test.exs` compares
+the **path**, not the string: `format_field_name/2` hands back the binary it
+was given when the predicate accepts and builds a new one when it converts, so
+`:erts_debug.same/2` separates the two. Five hand-made mutations of the walk
+(accepting an uppercase in snake_case, dropping the digit range, seeding the
+uppercase flag, dropping the trailing-newline clause, seeding the underscore
+flag) all pass a value-only test and all fail that one. Two empty binaries can
+be the same term for unrelated reasons, so `""` is excluded from it.
 
 ### No stdlib `JSON`: `mix.exs` declares `elixir: "~> 1.15"`
 
@@ -512,10 +539,11 @@ mix hex.audit
 mix deps.audit
 ```
 
-`main` is at **400 tests + 1 doctest, 0 failures** (measured 2026-09-11 on
-`issue-23-manifest-stage-1`, 21 tests above `74afafd`'s 379). A pull
-request that changes that number downward, or that leaves a compiler warning,
-is not finished. Never suppress a warning — fix the cause.
+`main` is at **406 tests + 1 doctest, 0 failures** (measured 2026-09-11 on
+`issue-61-formatter-predicates`, 6 tests above `6ada29f`'s 400, which was
+itself 21 above `74afafd`'s 379). A pull request that changes that number
+downward, or that leaves a compiler warning, is not finished. Never suppress a
+warning — fix the cause.
 
 ## Markdown in this repo
 
