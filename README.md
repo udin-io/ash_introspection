@@ -120,6 +120,12 @@ release breaks.
 
 ## Module Reference
 
+### Introspection
+
+| Module | Description |
+|--------|-------------|
+| `AshIntrospection.ResourceInfo` | The only caller of `Ash.Resource.Info`; reads live or from an `Ash.Info.Manifest` |
+
 ### Type System
 
 | Module | Description |
@@ -234,6 +240,26 @@ config = %{
   end
 }
 ```
+
+### Reading from an `Ash.Info.Manifest`
+
+Every `Ash.Resource.Info` call in this library goes through
+`AshIntrospection.ResourceInfo`. Put an `%Ash.Info.Manifest{}` under an optional
+`:manifest` key on the config map and it answers from the manifest where it
+can; omit the key — which is what every caller does today — and it reads live
+introspection.
+
+```elixir
+config = %{manifest: MyApp.Manifest.manifest()}
+```
+
+`Ash.Resource.Info.resource?/1` asks whether a module is a resource;
+`Ash.Info.Manifest.has_resource?/2` asks whether it is part of the declared API
+surface. Those differ for a module nobody declared, so `ResourceInfo` exposes
+both: `runtime_resource?/2` falls back to live introspection, and
+`declared_resource?/2` treats absence as the answer. See the module docs for
+which functions the manifest currently backs — issue #23 is staged, and this is
+stage 1 of five.
 
 ### Load Restrictions
 

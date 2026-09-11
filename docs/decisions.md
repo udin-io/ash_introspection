@@ -13,6 +13,66 @@ recorded nowhere in the repo. This page replaces ADRs; there is no `adr/`
 directory here and none should be created. A decision that no longer shapes the
 code is deleted, not archived, because git keeps the history.
 
+## 2026-09-11 — One reader for introspection, and `resource?/1` split in two
+
+**Decided.** Every `Ash.Resource.Info` call in `lib/` — 64 of them at
+`74afafd`, across nine modules — goes through
+`AshIntrospection.ResourceInfo`, which reads an optional `:manifest` key off
+the config map the pipeline and codegen already thread. Omitting the key reads
+live introspection exactly as before. This is stage 1 of five for issue #23;
+the staged plan is in [roadmap.md](roadmap.md).
+
+**Why one reader.** The alternative was to migrate the 64 sites to the manifest
+in one change. That is a diff nobody can review, and it couples the seam to the
+translation: if the manifest turns out to answer a question differently, the
+whole thing has to come back out. With the reader in place, stage 2 changes one
+module and stage 5 deletes a branch in it. The compatibility guarantee is
+testable rather than asserted — `resource_info_test.exs` compares every read
+against `Ash.Resource.Info` itself, and `pipeline_manifest_parity_test.exs`
+runs the same request twice and compares the responses.
+
+**Why `resource?/1` is two functions.** `Ash.Resource.Info.resource?/1` answers
+a fact about a module. `Ash.Info.Manifest.has_resource?/2` answers a fact about
+the declared API surface. Eighteen of the 64 sites ask that question, so the
+reader exposes both readings and makes each call site choose:
+
+- `runtime_resource?/2` falls back to live introspection when the manifest does
+  not carry the module. Every request-path site uses it. Four of them classify
+  a runtime `value.__struct__`, and answering `false` for a struct Ash actually
+  handed back would drop it into `ResultProcessor`'s generic
+  `Map.from_struct/1` branch — a different response body, with no error.
+- `declared_resource?/2` treats absence as the answer. Codegen uses it, because
+  scoping to what was declared is the whole point of generating against a
+  manifest.
+
+Both count embedded resources. `Ash.Info.Manifest.Generator` splits them out of
+`resources` and files them under `types` with `kind: :embedded_resource`
+(`deps/ash/lib/ash/info/manifest/generator.ex:110`), so a bare `has_resource?/2`
+would answer `false` for every one of them — a divergence from live
+introspection that has nothing to do with scoping.
+
+**What stage 1 does not do.** The readers for attributes, calculations,
+aggregates and actions take a config and ignore it: they answer live whether or
+not a manifest is present. `%Ash.Info.Manifest.Field{}` carries a resolved
+`%Ash.Info.Manifest.Type{}` where `%Ash.Resource.Attribute{}` carries an Ash
+type module plus a constraints keyword list, and translating between the two is
+stage 2's decorator, with its own failure modes. Half-translating it here would
+put a second, quieter answer beside the live one. The reader's moduledoc lists
+which functions are manifest-backed and which are not.
+
+**Cost.** Two functions where the domain has one concept, and a call site that
+picks the wrong one fails silently in exactly the way the split exists to
+prevent. The rule — fallback by default, `declared_resource?/2` only where the
+site is unambiguously codegen — is written in the reader's moduledoc and
+nothing enforces it. Six public functions gained an optional trailing argument,
+which is additive but widens the surface `ash_kotlin_multiplatform` depends on.
+`Codegen.TypeDiscovery` routes its 14 reads but is handed no config, because
+stage 4 deletes the module; until then it cannot read a manifest even if one is
+supplied, and its moduledoc says so. And the reader narrows two return shapes
+the two sources cannot share — `relationship/3` and `identity_keys/3` return
+only the keys this library reads, so a future caller wanting
+`%Ash.Resource.Relationships.HasOne{}.writable?` has to widen them first.
+
 ## 2026-09-09 — Load restrictions ride on the config map, not a manifest
 
 **Decided.** `allowed_loads` / `denied_loads` reach field selection through an
@@ -320,6 +380,10 @@ no tests on the RPC layer, so the sequencing put security fixes first.
 type-discovery fixes do not port cleanly here. Roughly a dozen backlog items
 sit behind #23. The debt grows with every upstream release — see
 [risks.md](risks.md), T1.
+
+**Superseded in part on 2026-09-11.** The reasoning above still holds for the
+manifest *module*, which stays in the consumer. What changed is that the
+library now accepts one: see the entry at the top of this page.
 
 ## 2025-11-25 — Extract the shared core out of `ash_typescript` by copying it
 

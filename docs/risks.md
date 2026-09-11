@@ -22,7 +22,10 @@ upstream makes to the pipeline, the field selector or type discovery has to be
 ported by hand, and the two implementations have already diverged enough that
 the port is not mechanical: upstream replaced live `Ash.Resource.Info`
 introspection with `Ash.Info.Manifest` in `ash` 3.32.3, while this repo still
-does it live at roughly 66 call sites (#23).
+does it live at 64 call sites (#23, measured at `74afafd`). Since stage 1 of
+#23 all 64 read through `AshIntrospection.ResourceInfo`, which will answer from
+a manifest when one is supplied — but nothing supplies one yet, so every read
+in production is still live.
 
 **Why it bites.** A bug fixed upstream stays live here, and it stays live in
 `ash_kotlin_multiplatform`, which is what a real user runs.
@@ -34,7 +37,8 @@ items #19 through #26 are all upstream-parity work.
 **What we would do.** Land #23 first so the introspection layers match, then
 port the rest against the manifest instead of against live introspection.
 Re-porting each fix onto live introspection is the expensive path and it is the
-one we are on until #23 lands.
+one we are on until #23 lands. Stage 1 shipped the seam; stages 2 to 5 are on
+[roadmap.md](roadmap.md), and stage 4 is the one that closes the gap.
 
 **A port can now be partial, which is new.** #21 landed the behaviour of
 upstream `437901f` by hand, because upstream's own version of that commit calls
@@ -87,6 +91,14 @@ consumer's `mix.exs` requirement, on every release here.
 release here and run its suite, until there is a published contract test that
 exercises the shared surface from the consumer's side. That test does not exist
 yet and is not on the board.
+
+**One half of it now does exist, for one surface.** #23 stage 1 added
+`test/ash_introspection/resource_info_test.exs` and
+`test/ash_introspection/rpc/pipeline_manifest_parity_test.exs`, which run live
+introspection and a manifest against each other field by field and response by
+response. That is the differential test this page said was missing — for
+`AshIntrospection.ResourceInfo`, and for nothing else. It says nothing about
+whether the consumer's call sites still compile.
 
 ### T3 — The RPC layer is young code with new tests
 

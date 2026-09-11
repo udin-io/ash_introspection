@@ -119,12 +119,13 @@ flowchart LR
         errp["Rpc.Error (protocol)"]
         errh["Rpc.DefaultErrorHandler"]
         efmt["ErrorFormatter"]
+        rinfo["ResourceInfo<br/>the only caller of Ash.Resource.Info"]
         rfields["TypeSystem.ResourceFields"]
         tdisc["Codegen.TypeDiscovery"]
         vet["Codegen.ValidationErrorTypes"]
     end
 
-    ash["Ash: Ash.read, Ash.create,<br/>Ash.Resource.Info"]
+    ash["Ash: Ash.read, Ash.create,<br/>Ash.Resource.Info, Ash.Info.Manifest"]
 
     cpipe -->|"%Request{}"| pipeline
     cpipe --> request
@@ -156,7 +157,25 @@ flowchart LR
     vet --> tsi
     actint --> vet
     actint --> tsi
+
+    pipeline --> rinfo
+    fsel --> rinfo
+    rproc --> rinfo
+    vfmt --> rinfo
+    rfields --> rinfo
+    tsi --> rinfo
+    actint --> rinfo
+    vet --> rinfo
+    tdisc --> rinfo
+    rinfo -->|"live, or an Ash.Info.Manifest<br/>off the config map's :manifest key"| ash
 ```
+
+`ResourceInfo` is the seam issue #23 stage 1 added. Every `Ash.Resource.Info`
+call in `lib/` goes through it — 64 of them, measured at `74afafd` — so a
+later stage changes one module rather than nine. With no `:manifest` key on the
+config map it reads live introspection, which is what every caller does today.
+`grep -rn 'Ash\.Resource\.Info\.' lib` should match nothing outside
+`lib/ash_introspection/resource_info.ex`.
 
 Measured 2026-09-09: `ash_kotlin_multiplatform` names `AshIntrospection` at 35
 call sites across 21 files. `Helpers` is the most used (10), then
@@ -217,10 +236,13 @@ Stage 4 has camelized everything around them. Both have regression tests —
 
 ## 5. What is not here
 
-- **No `Ash.Info.Manifest`.** This library still does live
-  `Ash.Resource.Info` introspection at roughly 66 call sites while upstream
-  moved to a precomputed manifest. Tracked in issue #23 — see
-  [decisions.md](decisions.md).
+- **No manifest module, and no manifest in production yet.** Stage 1 of issue
+  #23 added `AshIntrospection.ResourceInfo` and an optional `:manifest` config
+  key, so a caller *can* hand this library an `%Ash.Info.Manifest{}`. Nothing
+  builds one: the manifest module needs a Spark DSL to declare entrypoints, and
+  #23 puts that DSL in `ash_kotlin_multiplatform`, not here. So every read in
+  production is still live. Stages 2 to 5 are on the roadmap — see
+  [roadmap.md](roadmap.md) and [decisions.md](decisions.md).
 - **No persistence.** `test/support/*.ex` uses `Ash.DataLayer.Ets`; there is no
   repo, no migration directory and no database setup step.
 - **No contract test with the consumer.** Nothing in either repo fails when the
