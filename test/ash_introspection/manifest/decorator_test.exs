@@ -206,6 +206,36 @@ defmodule AshIntrospection.Manifest.DecoratorTest do
       assert Custom.original_field_name(resource, "camel_case:id") == :id
     end
 
+    test ":format_field_for_client names action arguments too" do
+      config = %{
+        format_field_for_client: fn field, _resource, formatter -> "#{formatter}:#{field}" end
+      }
+
+      manifest = Decorator.decorate(ManifestFixture.manifest(), :ash_introspection, config)
+      resource = Enum.find(manifest.resources, &(&1.module == Test.Document))
+
+      assert Custom.formatted_argument_name(resource, :attach, :attachment, :camel_case) ==
+               "camel_case:attachment"
+
+      assert Custom.original_argument_name(resource, :attach, "camel_case:attachment") ==
+               :attachment
+    end
+
+    test ":get_original_field_name does not touch argument names" do
+      # The callback answers "which field is this client name?", and an
+      # argument is not a field. Overriding the argument inverse with a field
+      # answer would rename an argument nobody asked to rename.
+      config = %{
+        get_original_field_name: fn _resource, _client_name -> :something_else end
+      }
+
+      manifest = Decorator.decorate(ManifestFixture.manifest(), :ash_introspection, config)
+      resource = Enum.find(manifest.resources, &(&1.module == Test.Document))
+
+      assert Custom.original_argument_name(resource, :attach, "attachment") == :attachment
+      assert Custom.original_field_name(resource, "id") == :something_else
+    end
+
     test ":get_original_field_name overrides the computed inverse" do
       config = %{
         get_original_field_name: fn
@@ -288,6 +318,11 @@ defmodule AshIntrospection.Manifest.DecoratorTest do
         assert Custom.formatted_field_name(struct, :id, :camel_case) == nil
         assert Custom.relationship_pagination(struct) == :none
         assert Custom.relationship_read_action(struct) == nil
+        assert Custom.argument_name_mappings(struct, :read) == %{}
+        assert Custom.reverse_argument_name_mappings(struct, :read) == %{}
+        assert Custom.mapped_argument_name(struct, :read, :id) == nil
+        assert Custom.original_argument_name(struct, :read, "id") == nil
+        assert Custom.formatted_argument_name(struct, :read, :id, :camel_case) == nil
       end
     end
 

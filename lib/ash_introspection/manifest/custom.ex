@@ -54,7 +54,10 @@ defmodule AshIntrospection.Manifest.Custom do
           authorize_bulk_strategy: :error | :filter,
           field_name_mappings: %{atom() => String.t()},
           reverse_field_name_mappings: %{String.t() => atom()},
-          formatted_field_names: %{{atom(), atom()} => String.t()}
+          formatted_field_names: %{{atom(), atom()} => String.t()},
+          argument_name_mappings: %{atom() => %{atom() => String.t()}},
+          reverse_argument_name_mappings: %{atom() => %{String.t() => atom()}},
+          formatted_argument_names: %{atom() => %{{atom(), atom()} => String.t()}}
         }
 
   @typedoc "The decoration map written on a `%Ash.Info.Manifest.Relationship{}`."
@@ -330,6 +333,102 @@ defmodule AshIntrospection.Manifest.Custom do
   end
 
   def formatted_field_name(_resource, _field, _formatter, _namespace), do: nil
+
+  # ---------------------------------------------------------------------------
+  # Argument names
+  #
+  # The same three maps the fields have, one set per action, because an
+  # argument name is unique within an action and not across a resource: two
+  # actions may each take a `:filter`, and they are different arguments.
+  # ---------------------------------------------------------------------------
+
+  @doc "The `%{argument_atom => client_name}` map for one action, or `%{}`."
+  @spec argument_name_mappings(Manifest.Resource.t() | nil, atom(), atom()) ::
+          %{atom() => String.t()}
+  def argument_name_mappings(resource, action_name, namespace \\ @default_namespace)
+
+  def argument_name_mappings(resource, action_name, namespace) when is_atom(action_name) do
+    case payload(resource, namespace) do
+      %{argument_name_mappings: by_action} -> Map.get(by_action, action_name, %{})
+      _ -> %{}
+    end
+  end
+
+  def argument_name_mappings(_resource, _action_name, _namespace), do: %{}
+
+  @doc "The `%{client_name => argument_atom}` map for one action, or `%{}`."
+  @spec reverse_argument_name_mappings(Manifest.Resource.t() | nil, atom(), atom()) ::
+          %{String.t() => atom()}
+  def reverse_argument_name_mappings(resource, action_name, namespace \\ @default_namespace)
+
+  def reverse_argument_name_mappings(resource, action_name, namespace)
+      when is_atom(action_name) do
+    case payload(resource, namespace) do
+      %{reverse_argument_name_mappings: by_action} -> Map.get(by_action, action_name, %{})
+      _ -> %{}
+    end
+  end
+
+  def reverse_argument_name_mappings(_resource, _action_name, _namespace), do: %{}
+
+  @doc "The client-facing name for one argument of one action, or `nil`."
+  @spec mapped_argument_name(Manifest.Resource.t() | nil, atom(), atom(), atom()) ::
+          String.t() | nil
+  def mapped_argument_name(resource, action_name, argument, namespace \\ @default_namespace)
+      when is_atom(argument) do
+    resource |> argument_name_mappings(action_name, namespace) |> Map.get(argument)
+  end
+
+  @doc "The argument atom behind a client-facing name on one action, or `nil`."
+  @spec original_argument_name(
+          Manifest.Resource.t() | nil,
+          atom(),
+          String.t() | atom(),
+          atom()
+        ) :: atom() | nil
+  def original_argument_name(resource, action_name, client_name, namespace \\ @default_namespace)
+
+  def original_argument_name(resource, action_name, client_name, namespace)
+      when is_binary(client_name) do
+    resource |> reverse_argument_name_mappings(action_name, namespace) |> Map.get(client_name)
+  end
+
+  def original_argument_name(resource, action_name, client_name, namespace)
+      when is_atom(client_name) and not is_nil(client_name) do
+    original_argument_name(resource, action_name, Atom.to_string(client_name), namespace)
+  end
+
+  def original_argument_name(_resource, _action_name, _client_name, _namespace), do: nil
+
+  @doc """
+  The precomputed client-facing name for one argument under `formatter`, or
+  `nil`.
+
+  Only the built-in formatters are precomputed, for the reason
+  `formatted_field_name/4` gives.
+  """
+  @spec formatted_argument_name(Manifest.Resource.t() | nil, atom(), atom(), atom(), atom()) ::
+          String.t() | nil
+  def formatted_argument_name(
+        resource,
+        action_name,
+        argument,
+        formatter,
+        namespace \\ @default_namespace
+      )
+
+  def formatted_argument_name(resource, action_name, argument, formatter, namespace)
+      when is_atom(action_name) and is_atom(argument) and is_atom(formatter) do
+    case payload(resource, namespace) do
+      %{formatted_argument_names: by_action} ->
+        by_action |> Map.get(action_name, %{}) |> Map.get({argument, formatter})
+
+      _ ->
+        nil
+    end
+  end
+
+  def formatted_argument_name(_resource, _action_name, _argument, _formatter, _namespace), do: nil
 
   # ---------------------------------------------------------------------------
   # Relationships

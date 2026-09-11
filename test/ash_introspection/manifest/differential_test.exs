@@ -364,6 +364,53 @@ defmodule AshIntrospection.Manifest.DifferentialTest do
       end
     end
 
+    test "every action argument, under every built-in formatter", %{manifest: manifest} do
+      source = Map.fetch!(manifest, :manifest)
+
+      checked =
+        for resource <- resources(),
+            action <- Ash.Resource.Info.actions(resource),
+            argument <- action.arguments,
+            formatter <- [:camel_case, :pascal_case, :snake_case] do
+          entry =
+            Map.get(source.resources, resource) || Map.get(source.types, resource).resource
+
+          assert Custom.formatted_argument_name(
+                   entry,
+                   action.name,
+                   argument.name,
+                   formatter,
+                   source.namespace
+                 ) ==
+                   AshIntrospection.FieldFormatter.format_field_name(argument.name, formatter),
+                 "#{inspect(resource)}.#{action.name}(#{argument.name}) under #{formatter}"
+
+          {resource, action.name, argument.name}
+        end
+
+      assert checked != [], "no fixture action takes an argument — this test is vacuous"
+    end
+
+    test "the reverse argument map inverts the forward one", %{manifest: manifest} do
+      source = Map.fetch!(manifest, :manifest)
+
+      for resource <- resources() do
+        entry =
+          Map.get(source.resources, resource) || Map.get(source.types, resource).resource
+
+        for action <- Ash.Resource.Info.actions(resource),
+            {argument, client_name} <-
+              Custom.argument_name_mappings(entry, action.name, source.namespace) do
+          assert Custom.original_argument_name(
+                   entry,
+                   action.name,
+                   client_name,
+                   source.namespace
+                 ) == argument
+        end
+      end
+    end
+
     test "the reverse map inverts the forward one", %{manifest: manifest} do
       source = Map.fetch!(manifest, :manifest)
 

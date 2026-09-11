@@ -28,9 +28,10 @@ defmodule AshIntrospection.Manifest.Decorator do
 
   So the decorator captures the live struct. What it *computes* is the data
   that is genuinely derived and genuinely repeated per request: resolved
-  aggregate types, the bulk-authorization strategy, client-facing field names
-  under each built-in formatter and their reverse, and an entrypoint lookup
-  keyed by client-facing name.
+  aggregate types, each action's return classification, the
+  bulk-authorization strategy, client-facing field and argument names under
+  each built-in formatter and their reverse, how each `:many` relationship
+  paginates, and an entrypoint lookup keyed by client-facing name.
 
   Changing those return types is a separate, breaking decision. It belongs to
   the stage that deletes `AshIntrospection.Codegen.TypeDiscovery`, not to this
@@ -41,7 +42,7 @@ defmodule AshIntrospection.Manifest.Decorator do
   | Struct | Payload |
   |---|---|
   | `%Ash.Info.Manifest{}` | `entrypoint_lookup` |
-  | each `%Manifest.Resource{}` | fields, actions, aggregate types, bulk strategy, field names |
+  | each `%Manifest.Resource{}` | fields, actions, aggregate types, return classifications, bulk strategy, field and argument names |
   | each `%Manifest.Relationship{}` on it | the read action it loads through, and how that action paginates |
   | each embedded `%Manifest.Type{}`'s nested resource | the same resource payload |
   | each `%Manifest.Type{}` with a field-names callback | field-name mappings |
@@ -182,6 +183,7 @@ defmodule AshIntrospection.Manifest.Decorator do
       aggregates = Ash.Resource.Info.aggregates(module)
       actions = Ash.Resource.Info.actions(module)
       formatted = formatted_field_names(module, resource, config)
+      formatted_arguments = formatted_argument_names(module, actions, config)
 
       %{
         attributes: attributes,
@@ -198,9 +200,12 @@ defmodule AshIntrospection.Manifest.Decorator do
         aggregate_types: aggregate_types(module, aggregates),
         return_classifications: return_classifications(actions, config),
         authorize_bulk_strategy: authorize_bulk_strategy(module),
-        field_name_mappings: field_name_mappings(formatted, config),
+        field_name_mappings: forward_mappings(formatted, config),
         reverse_field_name_mappings: reverse_field_name_mappings(module, formatted, config),
-        formatted_field_names: formatted
+        formatted_field_names: formatted,
+        argument_name_mappings: map_values(formatted_arguments, &forward_mappings(&1, config)),
+        reverse_argument_name_mappings: map_values(formatted_arguments, &computed_reverse/1),
+        formatted_argument_names: formatted_arguments
       }
     end
   end
@@ -270,10 +275,30 @@ defmodule AshIntrospection.Manifest.Decorator do
     Enum.uniq(live ++ Map.keys(fields) ++ Map.keys(rels))
   end
 
+  # One entry per argument per built-in formatter, keyed by action, so an
+  # argument name arriving on a request resolves with one map read instead of a
+  # `format_field_name/2` call per candidate. This library has no argument-name
+  # DSL — the recorded reason #26 was declined — so an argument's client name
+  # is whatever the formatter makes of it, or whatever
+  # `:format_field_for_client` returns.
+  defp formatted_argument_names(module, actions, config) do
+    Map.new(actions, fn action ->
+      names =
+        for argument <- Map.get(action, :arguments) || [],
+            formatter <- @builtin_formatters,
+            into: %{} do
+          {{argument.name, formatter},
+           format_for_client(argument.name, module, formatter, config)}
+        end
+
+      {action.name, names}
+    end)
+  end
+
   # The canonical client-facing name: the one the consumer's output formatter
-  # produces. `reverse_field_name_mappings/3` accepts every built-in spelling,
-  # because a client name arrives as a bare string with no formatter attached.
-  defp field_name_mappings(formatted, config) do
+  # produces. The reverse maps accept every built-in spelling, because a client
+  # name arrives as a bare string with no formatter attached.
+  defp forward_mappings(formatted, config) do
     formatter = Map.get(config, :output_field_formatter, :camel_case)
 
     for {{field, ^formatter}, client_name} <- formatted, into: %{} do
@@ -281,18 +306,21 @@ defmodule AshIntrospection.Manifest.Decorator do
     end
   end
 
-  # Built in a fixed formatter order and first-binding-wins, so two fields whose
-  # client names collide under different formatters resolve the same way on
-  # every compile. `:get_original_field_name` overrides the computed inverse
-  # where the consumer supplies it, since that callback is the consumer's own
-  # answer to this exact question.
+  # Built in a fixed formatter order and first-binding-wins, so two names that
+  # collide under different formatters resolve the same way on every compile.
+  defp computed_reverse(formatted) do
+    for formatter <- @builtin_formatters,
+        {{field, ^formatter}, client_name} <- formatted,
+        reduce: %{} do
+      acc -> Map.put_new(acc, client_name, field)
+    end
+  end
+
+  # `:get_original_field_name` overrides the computed inverse where the consumer
+  # supplies it, since that callback is the consumer's own answer to this exact
+  # question. It is a *field* callback, so the argument maps do not consult it.
   defp reverse_field_name_mappings(module, formatted, config) do
-    computed =
-      for formatter <- @builtin_formatters,
-          {{field, ^formatter}, client_name} <- formatted,
-          reduce: %{} do
-        acc -> Map.put_new(acc, client_name, field)
-      end
+    computed = computed_reverse(formatted)
 
     case Map.get(config, :get_original_field_name) do
       callback when is_function(callback, 2) ->
@@ -426,6 +454,8 @@ defmodule AshIntrospection.Manifest.Decorator do
   # ---------------------------------------------------------------------------
   # Internals
   # ---------------------------------------------------------------------------
+
+  defp map_values(map, fun), do: Map.new(map, fn {key, value} -> {key, fun.(value)} end)
 
   defp put_namespace(custom, namespace, payload) when is_map(custom),
     do: Map.put(custom, namespace, payload)
