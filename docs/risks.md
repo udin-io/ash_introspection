@@ -23,9 +23,10 @@ ported by hand, and the two implementations have already diverged enough that
 the port is not mechanical: upstream replaced live `Ash.Resource.Info`
 introspection with `Ash.Info.Manifest` in `ash` 3.32.3, while this repo still
 does it live at 64 call sites (#23, measured at `74afafd`). Since stage 1 of
-#23 all 64 read through `AshIntrospection.ResourceInfo`, which will answer from
-a manifest when one is supplied — but nothing supplies one yet, so every read
-in production is still live.
+#23 all 64 read through `AshIntrospection.ResourceInfo`, and since stage 2
+those reads answer out of a decorated manifest when one is supplied — but
+nothing supplies one yet, so every read in production is still live. Stage 3,
+in `ash_kotlin_multiplatform`, is what changes that.
 
 **Why it bites.** A bug fixed upstream stays live here, and it stays live in
 `ash_kotlin_multiplatform`, which is what a real user runs.
@@ -37,8 +38,9 @@ items #19 through #26 are all upstream-parity work.
 **What we would do.** Land #23 first so the introspection layers match, then
 port the rest against the manifest instead of against live introspection.
 Re-porting each fix onto live introspection is the expensive path and it is the
-one we are on until #23 lands. Stage 1 shipped the seam; stages 2 to 5 are on
-[roadmap.md](roadmap.md), and stage 4 is the one that closes the gap.
+one we are on until #23 lands. Stages 1 and 2 shipped the seam and the
+decorator that fills it; stages 3 to 5 are on [roadmap.md](roadmap.md), and
+stage 4 is the one that closes the gap.
 
 **A port can now be partial, which is new.** #21 landed the behaviour of
 upstream `437901f` by hand, because upstream's own version of that commit calls
@@ -94,19 +96,26 @@ yet and is not on the board.
 
 **One half of it now does exist, for one surface.** #23 stage 1 added
 `test/ash_introspection/resource_info_test.exs` and
-`test/ash_introspection/rpc/pipeline_manifest_parity_test.exs`, which run live
-introspection and a manifest against each other field by field and response by
-response. That is the differential test this page said was missing — for
-`AshIntrospection.ResourceInfo`, and for nothing else. It says nothing about
-whether the consumer's call sites still compile.
+`test/ash_introspection/rpc/pipeline_manifest_parity_test.exs`, and stage 2
+added `test/ash_introspection/manifest/differential_test.exs`, which run live
+introspection and a decorated manifest against each other field by field,
+action by action and response by response. That is the differential test this
+page said was missing — for `AshIntrospection.ResourceInfo`, and for nothing
+else. It says nothing about whether the consumer's call sites still compile.
+
+Stage 2 is what those tests were for, and they earned it on the first run: they
+found `relationship/3` answering `nil` for a private `belongs_to`, a bug stage
+1 shipped and stage 1's own differential test could not see, because it walked
+`public_relationships/1` only. A differential test is only as wide as the list
+it iterates.
 
 ### T3 — The RPC layer is young code with new tests
 
 **The risk.** `lib/ash_introspection/rpc/` had **zero** test coverage until the
 week of 2026-09-09 (#18). Coverage arrived as regression tests attached to the
 seven fixes shipped in 0.3.0 — one test per fixed bug, not a suite that
-describes the pipeline. `mix test` on `main` at `99cdbd4` reports 413 tests and
-1 doctest (2026-09-11), and whole modules (`value_formatter.ex`,
+describes the pipeline. `mix test` on the #23 stage 2 branch reports 463 tests
+and 1 doctest (2026-09-11), and whole modules (`value_formatter.ex`,
 `field_extractor.ex`, `atomizer.ex`) are still exercised only incidentally.
 
 **Why it bites.** #66, the one correctness bug still open, touches code that
@@ -194,6 +203,39 @@ Upstream `ash_typescript` draws the same line in `24266dc`.
 belongs, the fix is the policy; the restriction stays as the surface control it
 is. If the confusion recurs, rename the config key to something that cannot be
 read as authorization.
+
+### T6 — Decoration that does not happen says nothing
+
+**The risk.** `AshIntrospection.Manifest.Decorator` skips a module it cannot
+load. `Code.ensure_loaded?/1` guards every read it makes, per the repo-wide
+rule from #49, and a module that is not compiled yet when `decorate/3` runs
+leaves its resource in the manifest bare. `AshIntrospection.ResourceInfo` then
+reads that resource live — the right answer, computed the slow way, with no
+warning and no log line. The same silence covers a namespace mismatch: a source
+prepared under one `custom` key and read under another falls back the same way.
+
+**Why it bites.** The failure mode is a performance regression that looks like
+correct behaviour, which is the hardest kind to notice and the easiest to ship.
+A resource missing from the decoration is also a resource whose precomputed
+client names are missing, so a consumer that came to rely on
+`formatted_field_names` gets the formatter's answer instead — identical
+today, and only identical while nothing overrides it.
+
+**What we watch.** `AshIntrospection.Manifest.Custom.decorated?/2` is the
+question, and the tests ask it: `decorator_test.exs` asserts every resource,
+every relationship and every entrypoint in the fixture manifest is decorated,
+and `differential_test.exs` fails loudly if a fixture resource reaches it bare.
+Neither can watch a consumer's manifest.
+
+**What we would do.** Stage 3 owns the fix and must not skip it. Upstream's
+`8c07331` is the shape: force every referenced module to compile before
+decorating, and give the manifest module a compile-time dependency on the
+domains it was built from, so an incremental compile of a resource recompiles
+the manifest. A pure function of its arguments cannot own a dependency graph,
+which is why `decorate/3` does not try. If stage 3 lands without those edges,
+the right answer here is a `decorated?/2` assertion in the consumer's own test
+suite rather than a warning from this library, which cannot tell a skipped
+module from one nobody decorates.
 
 ## Operational
 

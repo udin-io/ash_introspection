@@ -22,18 +22,18 @@ which stayed a standalone upstream library and does **not** depend on this one.
 Today `ash_kotlin_multiplatform` is the only consumer.
 
 It is a library, not an application: no supervision tree, no endpoint, no
-database. Tests run against `Ash.DataLayer.Ets`. The published surface is 23
-modules — `AshIntrospection` plus 22 under `lib/ash_introspection/` — and
-the `mix ash_introspection.upgrade` codemod task.
+database. Tests run against `Ash.DataLayer.Ets`. The published surface is 26
+modules — `AshIntrospection` plus 25 under `lib/ash_introspection/`, counted
+2026-09-11 — and the `mix ash_introspection.upgrade` codemod task.
 
 ## The pages
 
 | Page | Answers | Status |
 |---|---|---|
-| [architecture.md](architecture.md) | What the pieces are, who calls what, which modules the consumer actually uses | Current as of #23 stage 1 |
-| [roadmap.md](roadmap.md) | What shipped, what is open with ticket numbers, what is next, what was declined | Current as of #40 (`99cdbd4`); 5 issues open |
-| [risks.md](risks.md) | What could go wrong, what we watch, what we would do | 5 live technical risks, 1 operational, 1 product |
-| [decisions.md](decisions.md) | The choices that still shape the library, dated, with what each cost | 15 entries, latest 2026-09-11 |
+| [architecture.md](architecture.md) | What the pieces are, who calls what, which modules the consumer actually uses | Current as of #23 stage 2 |
+| [roadmap.md](roadmap.md) | What shipped, what is open with ticket numbers, what is next, what was declined | Current as of #23 stage 2; 5 issues open |
+| [risks.md](risks.md) | What could go wrong, what we watch, what we would do | 6 live technical risks, 1 operational, 1 product |
+| [decisions.md](decisions.md) | The choices that still shape the library, dated, with what each cost | 17 entries, latest 2026-09-11 |
 
 ## Keeping this current
 
