@@ -17,6 +17,19 @@ which come first. Numbers in parentheses are GitHub issues on
 
 ### Unreleased
 
+- **#61 — the case predicates walk bytes instead of running regexes.**
+  `FieldFormatter.format_field_name/2` spent more time deciding what case a
+  name was already in than converting it. `is_camel_case?/1`,
+  `is_pascal_case?/1` and `is_snake_case?/1` now match on the binary.
+  Re-measured 2026-09-11 at `74afafd` on OTP 27 / Elixir 1.18.4, warmed loops
+  through `:timer.tc/1`, before and after back to back on one machine:
+  `format_field_name(:user_name, :camel_case)` 453-472 ns → 156-170 ns,
+  `("userName", :camel_case)` 585-607 ns → 12 ns, `("success", :camel_case)`
+  — a response-envelope literal — 773-783 ns → 130-142 ns, and
+  `(:user_name, :snake_case)` 355-363 ns → 24-28 ns. Behaviour is unchanged:
+  `field_formatter_case_predicate_equivalence_test.exs` keeps the old regexes
+  as an oracle and compares both the string returned and the path taken, over
+  420 names.
 - **#23 stage 1 — one reader for introspection.** All 64 `Ash.Resource.Info`
   call sites in `lib/` now route through `AshIntrospection.ResourceInfo`, which
   reads an optional `:manifest` key off the config map. Omitting the key is
@@ -209,7 +222,7 @@ each.
 - **Closed without a code change**: #26, which is in "Decided against" below
   with its measurement, and #39, whose two halves had both already landed —
   the README reflow in #51, the test-domain warning in `config/test.exs` in
-  #42. #61 was filed out of #26 and is in "Next".
+  #42. #61 was filed out of #26 and shipped in Unreleased above.
 
 ### 0.3.0 — 2026-09-09
 
@@ -285,10 +298,6 @@ dozen other items.
    `FieldSelector` clauses #19 just guarded: a relationship loaded through an
    `%Ash.Query{}` envelope is a seventh append site and needs its own
    `check_load_allowed!/3`.
-5. **Performance**: #61 (replace `FieldFormatter`'s three regex case
-   predicates with binary walks). Filed out of #26 with the measurement: the
-   predicates are ~410 ns of the 470 ns each `format_field_name/2` call costs,
-   and a binary walk computing the same answer measures ~10 ns.
 
 ## Decided against
 

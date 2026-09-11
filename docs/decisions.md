@@ -13,6 +13,53 @@ recorded nowhere in the repo. This page replaces ADRs; there is no `adr/`
 directory here and none should be created. A decision that no longer shapes the
 code is deleted, not archived, because git keeps the history.
 
+## 2026-09-11 — The case predicates walk bytes, quirks and all
+
+**Decided.** `FieldFormatter`'s `is_camel_case?/1`, `is_pascal_case?/1` and
+`is_snake_case?/1` match on the binary instead of running a regex, and they
+reproduce two PCRE quirks of the regexes they replace rather than correcting
+them: the character classes stay ASCII-only, because the old regexes carried no
+`u` flag, and a single trailing newline is still accepted, because PCRE's `$`
+matches before one. Issue #61, filed out of #26.
+
+**Why.** #26 found the cost of `format_field_name/2` is the predicate, not the
+conversion. Re-measured 2026-09-11 at `74afafd` on OTP 27 / Elixir 1.18.4,
+warmed loops through `:timer.tc/1`, five runs each: one `String.match?/2` call
+costs 280-370 ns, `Macro.camelize/1` — the work that transforms the name —
+costs 59-72 ns, and the binary walk costs 7-10 ns. #26's figures reproduced.
+Before and after, back to back on one machine:
+
+| Call | Before | After |
+|---|---|---|
+| `format_field_name(:user_name, :camel_case)` | 453-472 ns | 156-170 ns |
+| `format_field_name("user_name", :camel_case)` | 441-451 ns | 141-146 ns |
+| `format_field_name("userName", :camel_case)` | 585-607 ns | 12 ns |
+| `format_field_name("success", :camel_case)` | 773-783 ns | 130-142 ns |
+| `format_field_name(:user_name, :pascal_case)` | 317-321 ns | 76-92 ns |
+| `format_field_name(:user_name, :snake_case)` | 355-363 ns | 24-28 ns |
+
+The same laptop reads 15% apart between runs, so the ratio is the number to
+trust, not the nanoseconds. Every caller pays it — the RPC output path,
+codegen and error formatting — and unlike the cache #26 declined it reaches
+the `"success"` and `"data"` envelope literals, 2 of the 6 calls per record.
+
+**Why keep the quirks.** They are behaviour, and behaviour is what a
+performance change may not touch. `"userN\n"` is camelCase to the old regex and
+stays camelCase now; `ünter` was never lowercase to `[a-z]` and still is not.
+Correcting either is a separate decision with its own entry, taken on purpose
+rather than as a side effect of a rewrite.
+
+**Cost.** Two things a later reader will want to delete and should not.
+`test/ash_introspection/field_formatter_case_predicate_equivalence_test.exs`
+carries a frozen copy of the three regexes as an oracle — the only way to
+assert the answers did not move. And it reaches for `:erts_debug.same/2`,
+because half of the equivalence is invisible to a value assertion: every name a
+predicate accepts is a fixed point of the conversion it skips (checked over
+4681 names), so a predicate that wrongly answers `false` still produces the
+right string, by the slow route. What separates the two paths is the term —
+`format_field_name/2` returns the binary it was handed when the predicate
+accepts, and builds a new one when it converts.
+
 ## 2026-09-11 — One reader for introspection, and `resource?/1` split in two
 
 **Decided.** Every `Ash.Resource.Info` call in `lib/` — 64 of them at
@@ -167,7 +214,8 @@ the function to roughly 130 ns for every caller, resource field or not, with no
 extension, no transformer and no consumer wiring. That is filed as its own
 issue rather than folded into this one: those predicates decide casing
 behaviour across the whole library, and a faithful rewrite needs equivalence
-tests of its own.
+tests of its own. It shipped as #61 — see the 2026-09-11 entry at the top of
+this page for the before-and-after numbers.
 
 **Cost.** Upstream drift widens by one more commit, and this drift is invisible
 in a diff — a reader comparing the two trees sees a transformer that is
