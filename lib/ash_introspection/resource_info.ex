@@ -79,6 +79,13 @@ defmodule AshIntrospection.ResourceInfo do
   decorator exists for. Half-translating it here would put a second, quieter
   answer next to the live one.
 
+  **A manifest is not a complete list of relationships.**
+  `Ash.Info.Manifest.Generator.generate/1` defaults
+  `:include_private_relationships?` to `false`, so `relationship/3` falls back
+  to live on a miss — a private `belongs_to` is absent from the manifest and
+  present in `Ash.Resource.Info`. `public_relationship/3` does not fall back:
+  every public relationship is carried, so a miss there is the answer.
+
   ## Shapes the two sources cannot share
 
   Where the native return values differ, this module returns a narrow map with
@@ -275,12 +282,26 @@ defmodule AshIntrospection.ResourceInfo do
   @doc """
   The relationship `name` on `resource`, narrowed to `:name`, `:destination`
   and `:cardinality`, or `nil`.
+
+  A miss on the manifest falls back to live introspection, because a manifest
+  is not a complete list of relationships:
+  `Ash.Info.Manifest.Generator.generate/1` defaults
+  `:include_private_relationships?` to `false`
+  (`deps/ash/lib/ash/info/manifest/generator.ex:50`), so a private `belongs_to`
+  is absent from a manifest built with the defaults while
+  `Ash.Resource.Info.relationship/2` still answers for it.
   """
   @spec relationship(module(), atom(), config()) :: relationship() | nil
   def relationship(resource, name, config \\ %{}) do
     case manifest_resource(config, resource) do
-      nil -> narrow_relationship(Ash.Resource.Info.relationship(resource, name))
-      resource -> narrow_relationship(Ash.Info.Manifest.Resource.get_relationship(resource, name))
+      nil ->
+        narrow_relationship(Ash.Resource.Info.relationship(resource, name))
+
+      manifest_resource ->
+        case Ash.Info.Manifest.Resource.get_relationship(manifest_resource, name) do
+          nil -> narrow_relationship(Ash.Resource.Info.relationship(resource, name))
+          found -> narrow_relationship(found)
+        end
     end
   end
 
