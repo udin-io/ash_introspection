@@ -6,8 +6,9 @@ SPDX-License-Identifier: MIT
 
 # Architecture
 
-C4 views of `ash_introspection` as it stands on `main` at 0.3.0, drawn from the
-code rather than from the README. It exists because issue #36 found no written
+C4 views of `ash_introspection` as it stands on `main`, 0.4.0 plus the
+unreleased work through issue #23 stage 2, drawn from the code rather than from
+the README. It exists because issue #36 found no written
 account of the one relationship that confuses every new reader: `ash_typescript`
 is upstream and standalone, this library is the core extracted from it, and
 `ash_kotlin_multiplatform` is the only thing that depends on it. Use these
@@ -123,6 +124,11 @@ flowchart LR
         rfields["TypeSystem.ResourceFields"]
         tdisc["Codegen.TypeDiscovery"]
         vet["Codegen.ValidationErrorTypes"]
+        mcustom["Manifest.Custom ((NEW))<br/>the only reader of custom"]
+    end
+
+    subgraph compile["ash_introspection: compile time only"]
+        mdec["Manifest.Decorator ((NEW))<br/>decorate/3, the only writer of custom"]
     end
 
     ash["Ash: Ash.read, Ash.create,<br/>Ash.Resource.Info, Ash.Info.Manifest"]
@@ -168,6 +174,11 @@ flowchart LR
     vet --> rinfo
     tdisc --> rinfo
     rinfo -->|"live, or an Ash.Info.Manifest<br/>off the config map's :manifest key"| ash
+    rinfo -->|"decorated reads"| mcustom
+    actint -->|"return classification"| mcustom
+    mdec -->|"writes custom.namespace"| mcustom
+    mdec -->|"asks once, at compile time"| rinfo
+    ccodegen -.->|"stage 3: calls decorate/3 from a transformer"| mdec
 ```
 
 `ResourceInfo` is the seam issue #23 stage 1 added. Every `Ash.Resource.Info`
@@ -175,7 +186,13 @@ call in `lib/` goes through it — 64 of them, measured at `74afafd` — so a
 later stage changes one module rather than nine. With no `:manifest` key on the
 config map it reads live introspection, which is what every caller does today.
 `grep -rn 'Ash\.Resource\.Info\.' lib` should match nothing outside
-`lib/ash_introspection/resource_info.ex`.
+`lib/ash_introspection/resource_info.ex` and
+`lib/ash_introspection/manifest/decorator.ex`.
+
+`Manifest.Decorator` and `Manifest.Custom` are what #23 stage 2 added. The
+dashed arrow is the edge that does not exist yet: nothing in this repo calls
+`decorate/3` outside `test/support/manifest_fixture.ex`, and until stage 3
+builds a manifest in the consumer, every production read is still live.
 
 Measured 2026-09-09: `ash_kotlin_multiplatform` names `AshIntrospection` at 35
 call sites across 21 files. `Helpers` is the most used (10), then
@@ -184,7 +201,58 @@ call sites across 21 files. `Helpers` is the most used (10), then
 why a change to `Helpers` or `TypeSystem.Introspection` is a breaking change in
 practice even when the version number says otherwise.
 
-## 4. The four-stage RPC pipeline
+## 4. The compile-time decoration pass
+
+The second flow worth reading in order. It runs once, when the consumer's
+manifest module compiles, and everything it writes is read by the request path
+without touching `Ash.Resource.Info` again. The consumer half is stage 3 of
+issue #23 and does not exist yet, which is why the first two messages are
+dashed.
+
+```mermaid
+sequenceDiagram
+    participant T as Consumer manifest transformer
+    participant G as Ash.Info.Manifest.Generator
+    participant D as AshIntrospection.Manifest.Decorator
+    participant R as AshIntrospection.ResourceInfo
+    participant I as Ash.Resource.Info
+    participant P as Request path
+
+    Note over T: stage 3, not built yet
+    T-->>G: generate(otp_app, action_entrypoints)
+    G-->>T: %Ash.Info.Manifest{}
+    T->>D: decorate(manifest, namespace, config)
+    D->>D: prepare the undecorated source, for declared_resource?/2
+    loop each resource in the manifest
+        D->>I: attributes, calculations, aggregates, actions, aggregate_type
+        I-->>D: the live structs
+        D->>D: format field and argument names per built-in formatter
+        D->>D: classify each action's return type
+        loop each relationship on it
+            D->>R: relationship_pagination/3, relationship_read_action/3
+            R->>I: relationship, primary_action, action
+            I-->>R: the read behind it
+            R-->>D: :offset | :keyset | :mixed | :none, and the action name
+        end
+    end
+    D->>D: build the entrypoint lookup, raising on a duplicate client name
+    D-->>T: the manifest with custom.namespace populated
+    Note over T: persisted in the consumer's Spark DSL state
+    T-->>P: config map carrying :manifest
+    P->>R: attribute, action, aggregate_type, relationship_pagination, ...
+    R-->>P: read out of custom.namespace, no Ash.Resource.Info call
+```
+
+A module the decorator cannot load is **skipped**, not guessed at:
+`Code.ensure_loaded?/1` guards every read, per the repo-wide rule from #49, and
+the resource stays in the manifest bare. A bare resource reads live, so the
+answer is right and nothing says the decoration was missed. That silence is the
+staleness trap #23 records: the caller owns the compile edges — forcing every
+referenced module to compile first, and giving the manifest module a
+compile-time dependency on the domains it was built from — and that is stage
+3's job, not this library's.
+
+## 5. The four-stage RPC pipeline
 
 The one flow worth reading in order, because each stage constrains the next and
 only three of the four live here.
@@ -234,15 +302,17 @@ Stage 4 has camelized everything around them. Both have regression tests —
 `test/ash_introspection/rpc/error_type_key_test.exs` and
 `test/ash_introspection/rpc/pipeline_error_placeholder_test.exs`.
 
-## 5. What is not here
+## 6. What is not here
 
 - **No manifest module, and no manifest in production yet.** Stage 1 of issue
   #23 added `AshIntrospection.ResourceInfo` and an optional `:manifest` config
-  key, so a caller *can* hand this library an `%Ash.Info.Manifest{}`. Nothing
-  builds one: the manifest module needs a Spark DSL to declare entrypoints, and
-  #23 puts that DSL in `ash_kotlin_multiplatform`, not here. So every read in
-  production is still live. Stages 2 to 5 are on the roadmap — see
-  [roadmap.md](roadmap.md) and [decisions.md](decisions.md).
+  key; stage 2 added the decorator that fills it and the reader that empties
+  it. Nothing builds a manifest: the manifest module needs a Spark DSL to
+  declare entrypoints, and #23 puts that DSL in `ash_kotlin_multiplatform`, not
+  here. So every read in production is still live, and stage 2's decoration is
+  exercised only by `test/support/manifest_fixture.ex`. Stages 3 to 5 are on
+  the roadmap — see [roadmap.md](roadmap.md) and
+  [decisions.md](decisions.md).
 - **No persistence.** `test/support/*.ex` uses `Ash.DataLayer.Ets`; there is no
   repo, no migration directory and no database setup step.
 - **No contract test with the consumer.** Nothing in either repo fails when the
