@@ -23,7 +23,7 @@ defmodule AshIntrospection.Codegen.ActionIntrospection do
   ```elixir
   alias AshIntrospection.Codegen.ActionIntrospection
 
-  action = Ash.Resource.Info.action(MyApp.Post, :list)
+  action = AshIntrospection.ResourceInfo.action(MyApp.Post, :list)
 
   if ActionIntrospection.action_supports_pagination?(action) do
     # Generate paginated response type
@@ -81,6 +81,7 @@ defmodule AshIntrospection.Codegen.ActionIntrospection do
   including resources, typed maps, typed structs, and primitives.
   """
 
+  alias AshIntrospection.ResourceInfo
   alias AshIntrospection.TypeSystem.Introspection
 
   # Container types that can have field constraints for field selection
@@ -205,14 +206,14 @@ defmodule AshIntrospection.Codegen.ActionIntrospection do
   Determines whether an action requires input, has optional input, or has no input.
   This is based on the action's public arguments and accepted attributes.
   """
-  def action_input_type(resource, action) do
+  def action_input_type(resource, action, config \\ %{}) do
     # Get public arguments
     public_arguments = Enum.filter(action.arguments, & &1.public?)
 
     # Get accepted attributes (for create/update/destroy actions)
     accepted_attributes =
       (Map.get(action, :accept) || [])
-      |> Enum.map(&Ash.Resource.Info.attribute(resource, &1))
+      |> Enum.map(&ResourceInfo.attribute(resource, &1, config))
       |> Enum.reject(&is_nil/1)
 
     inputs = public_arguments ++ accepted_attributes
@@ -242,14 +243,14 @@ defmodule AshIntrospection.Codegen.ActionIntrospection do
 
   This returns the field names that must be provided (non-nil, no default).
   """
-  def get_required_inputs(resource, action) do
+  def get_required_inputs(resource, action, config \\ %{}) do
     # Get public arguments
     public_arguments = Enum.filter(action.arguments, & &1.public?)
 
     # Get accepted attributes (for create/update/destroy actions)
     accepted_attributes =
       (Map.get(action, :accept) || [])
-      |> Enum.map(&Ash.Resource.Info.attribute(resource, &1))
+      |> Enum.map(&ResourceInfo.attribute(resource, &1, config))
       |> Enum.reject(&is_nil/1)
 
     inputs = public_arguments ++ accepted_attributes
@@ -271,14 +272,14 @@ defmodule AshIntrospection.Codegen.ActionIntrospection do
 
   This returns the field names that can be provided but are not required.
   """
-  def get_optional_inputs(resource, action) do
+  def get_optional_inputs(resource, action, config \\ %{}) do
     # Get public arguments
     public_arguments = Enum.filter(action.arguments, & &1.public?)
 
     # Get accepted attributes (for create/update/destroy actions)
     accepted_attributes =
       (Map.get(action, :accept) || [])
-      |> Enum.map(&Ash.Resource.Info.attribute(resource, &1))
+      |> Enum.map(&ResourceInfo.attribute(resource, &1, config))
       |> Enum.reject(&is_nil/1)
 
     inputs = public_arguments ++ accepted_attributes
@@ -313,11 +314,11 @@ defmodule AshIntrospection.Codegen.ActionIntrospection do
   - `{:error, :not_generic_action}` - Not a generic action
   - `{:error, reason}` - Other errors
   """
-  def action_returns_field_selectable_type?(action) do
+  def action_returns_field_selectable_type?(action, config \\ %{}) do
     if action.type != :action do
       {:error, :not_generic_action}
     else
-      check_action_returns(action)
+      check_action_returns(action, config)
     end
   end
 
@@ -326,8 +327,8 @@ defmodule AshIntrospection.Codegen.ActionIntrospection do
 
   This is a convenience wrapper that returns a boolean.
   """
-  def action_supports_field_selection?(action) do
-    case action_returns_field_selectable_type?(action) do
+  def action_supports_field_selection?(action, config \\ %{}) do
+    case action_returns_field_selectable_type?(action, config) do
       {:ok, _type, _data} -> true
       {:error, _} -> false
     end
@@ -337,7 +338,7 @@ defmodule AshIntrospection.Codegen.ActionIntrospection do
   # Return Type Classification
   # ─────────────────────────────────────────────────────────────────
 
-  defp check_action_returns(action) do
+  defp check_action_returns(action, config) do
     {base_type, constraints, is_array} = unwrap_return_type(action)
 
     # A NewType keeps `:fields` and `:instance_of` on itself, so the wrapper
@@ -345,7 +346,7 @@ defmodule AshIntrospection.Codegen.ActionIntrospection do
     # match the runtime field selector, which sees the underlying type.
     {base_type, constraints} = Introspection.unwrap_new_type(base_type, constraints)
 
-    case classify_return_type(base_type, constraints) do
+    case classify_return_type(base_type, constraints, config) do
       {:resource, module} ->
         if is_array do
           {:ok, :array_of_resource, module}
@@ -388,13 +389,13 @@ defmodule AshIntrospection.Codegen.ActionIntrospection do
   end
 
   # Classifies a return type into a category for field selectability
-  @spec classify_return_type(atom() | tuple(), keyword()) ::
+  @spec classify_return_type(atom() | tuple(), keyword(), ResourceInfo.config()) ::
           {:resource, module()}
           | {:typed_map, keyword()}
           | {:typed_struct, {module(), keyword()}}
           | :unconstrained_map
           | {:error, atom()}
-  defp classify_return_type(type, constraints) do
+  defp classify_return_type(type, constraints, config) do
     cond do
       # Ash.Type.Struct with instance_of - a resource, or a plain typed struct.
       # `instance_of` accepts any struct module, so treating every one as a
@@ -404,7 +405,7 @@ defmodule AshIntrospection.Codegen.ActionIntrospection do
         instance_of = Keyword.get(constraints, :instance_of)
 
         cond do
-          Ash.Resource.Info.resource?(instance_of) ->
+          ResourceInfo.declared_resource?(instance_of, config) ->
             {:resource, instance_of}
 
           Keyword.has_key?(constraints, :fields) ->

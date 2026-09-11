@@ -52,7 +52,7 @@ defmodule AshIntrospection.Codegen.ValidationErrorTypes do
 
   ```elixir
   # Get error classifications for all action inputs
-  action = Ash.Resource.Info.action(MyApp.User, :create)
+  action = AshIntrospection.ResourceInfo.action(MyApp.User, :create)
   classifications = ValidationErrorTypes.classify_action_input_errors(MyApp.User, action)
 
   # Returns: [{:name, {:primitive_errors, nil}, %Ash.Resource.Attribute{...}}, ...]
@@ -82,6 +82,7 @@ defmodule AshIntrospection.Codegen.ValidationErrorTypes do
   consistent handling regardless of type wrapper depth.
   """
 
+  alias AshIntrospection.ResourceInfo
   alias AshIntrospection.TypeSystem.Introspection
 
   # ─────────────────────────────────────────────────────────────────
@@ -254,14 +255,14 @@ defmodule AshIntrospection.Codegen.ValidationErrorTypes do
   ## Returns
   A list of `{field_name, classification, field_struct}` tuples, or empty list if no inputs.
   """
-  def classify_action_input_errors(resource, action) do
+  def classify_action_input_errors(resource, action, config \\ %{}) do
     # Get public arguments
     public_arguments = Enum.filter(action.arguments, & &1.public?)
 
     # Get accepted attributes (for create/update/destroy actions)
     accepted_attributes =
       (Map.get(action, :accept) || [])
-      |> Enum.map(&Ash.Resource.Info.attribute(resource, &1))
+      |> Enum.map(&ResourceInfo.attribute(resource, &1, config))
       |> Enum.reject(&is_nil/1)
 
     inputs = public_arguments ++ accepted_attributes
@@ -283,9 +284,9 @@ defmodule AshIntrospection.Codegen.ValidationErrorTypes do
   ## Returns
   A list of `{field_name, classification, attribute_struct}` tuples.
   """
-  def classify_resource_attribute_errors(resource) do
+  def classify_resource_attribute_errors(resource, config \\ %{}) do
     resource
-    |> Ash.Resource.Info.public_attributes()
+    |> ResourceInfo.public_attributes(config)
     |> Enum.map(fn attr ->
       {:ok, classification} = classify_error_type(attr.type, attr.constraints || [])
       {attr.name, classification, attr}
