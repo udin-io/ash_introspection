@@ -279,6 +279,7 @@ defmodule AshIntrospection.Manifest.DecoratorTest do
         assert Custom.public_aggregate(struct, :id) == nil
         assert Custom.action(struct, :read) == nil
         assert Custom.aggregate_type(struct, :id) == :undecorated
+        assert Custom.return_classification(struct, :read) == :undecorated
         assert Custom.authorize_bulk_strategy(struct) == nil
         assert Custom.field_name_mappings(struct) == %{}
         assert Custom.reverse_field_name_mappings(struct) == %{}

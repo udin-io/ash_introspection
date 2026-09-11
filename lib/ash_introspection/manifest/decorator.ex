@@ -72,6 +72,7 @@ defmodule AshIntrospection.Manifest.Decorator do
   """
 
   alias Ash.Info.Manifest
+  alias AshIntrospection.Codegen.ActionIntrospection
   alias AshIntrospection.FieldFormatter
   alias AshIntrospection.Manifest.Custom
   alias AshIntrospection.ResourceInfo
@@ -110,6 +111,13 @@ defmodule AshIntrospection.Manifest.Decorator do
   def decorate(manifest, namespace \\ Custom.default_namespace(), config \\ %{})
 
   def decorate(%Manifest{} = manifest, namespace, config) when is_atom(namespace) do
+    # Return classification asks `ResourceInfo.declared_resource?/2`, so the
+    # decorator has to read the manifest it is decorating. It reads the
+    # *undecorated* one: `resources` and `types` are what that question needs
+    # and decoration leaves both keyed the same way, so there is no ordering
+    # problem to solve.
+    config = Map.put(config, :manifest, ResourceInfo.prepare(manifest, namespace))
+
     decorated_entrypoints =
       Enum.map(manifest.entrypoints, &decorate_entrypoint(&1, namespace, config))
 
@@ -188,6 +196,7 @@ defmodule AshIntrospection.Manifest.Decorator do
           actions: by_name(actions)
         },
         aggregate_types: aggregate_types(module, aggregates),
+        return_classifications: return_classifications(actions, config),
         authorize_bulk_strategy: authorize_bulk_strategy(module),
         field_name_mappings: field_name_mappings(formatted, config),
         reverse_field_name_mappings: reverse_field_name_mappings(module, formatted, config),
@@ -216,6 +225,17 @@ defmodule AshIntrospection.Manifest.Decorator do
   defp aggregate_types(module, aggregates) do
     Map.new(aggregates, fn aggregate ->
       {aggregate.name, Ash.Resource.Info.aggregate_type(module, aggregate)}
+    end)
+  end
+
+  # Codegen classifies every generic action's return type before it can decide
+  # whether the client may select fields from it. The walk unwraps arrays and
+  # NewTypes and asks whether a struct's `instance_of` is a declared resource
+  # — the last part is why `config` has to carry the manifest, and why
+  # `decorate/3` puts the undecorated source on it before this runs.
+  defp return_classifications(actions, config) do
+    Map.new(actions, fn action ->
+      {action.name, ActionIntrospection.action_returns_field_selectable_type?(action, config)}
     end)
   end
 

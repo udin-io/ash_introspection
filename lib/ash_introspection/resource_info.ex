@@ -160,6 +160,21 @@ defmodule AshIntrospection.ResourceInfo do
   end
 
   @doc """
+  The decorated `%Ash.Info.Manifest.Resource{}` for `resource` and the
+  namespace it was decorated under, or `nil` to read live.
+
+  For the modules that read decorated data this one does not wrap —
+  `AshIntrospection.Codegen.ActionIntrospection` and its return
+  classification. They still go through `AshIntrospection.Manifest.Custom` to
+  read it; this only finds the struct.
+
+  `nil` covers three cases a caller treats identically: no manifest, a manifest
+  that does not carry the module, and a manifest that carries it undecorated.
+  """
+  @spec decoration(module(), config()) :: {Ash.Info.Manifest.Resource.t(), atom()} | nil
+  def decoration(resource, config \\ %{}), do: decorated(config, resource)
+
+  @doc """
   Returns the prepared manifest source on `config`, or `nil` for live reads.
   """
   @spec source(config()) :: Source.t() | nil

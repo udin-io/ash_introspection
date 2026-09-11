@@ -50,6 +50,7 @@ defmodule AshIntrospection.Manifest.Custom do
           actions: [Ash.Resource.Actions.action()],
           by_name: %{atom() => %{(atom() | String.t()) => struct()}},
           aggregate_types: %{atom() => term()},
+          return_classifications: %{atom() => term()},
           authorize_bulk_strategy: :error | :filter,
           field_name_mappings: %{atom() => String.t()},
           reverse_field_name_mappings: %{String.t() => atom()},
@@ -210,6 +211,39 @@ defmodule AshIntrospection.Manifest.Custom do
   end
 
   def aggregate_type(_resource, _aggregate, _namespace), do: :undecorated
+
+  @doc """
+  The precomputed return classification of `action`, or `:undecorated`.
+
+  The shape is
+  `AshIntrospection.Codegen.ActionIntrospection.action_returns_field_selectable_type?/2`'s
+  — an `{:ok, kind, data}` or `{:error, reason}` tuple — because every
+  caller passes it through untouched. `:undecorated` is the signal to compute
+  live; `{:error, _}` cannot double as it, being a legitimate classification.
+
+  The classification is scoped by the manifest that was decorated:
+  `classify_return_type/3` asks whether the struct an action returns is a
+  declared resource, and a manifest is what declares one. Decorating settles
+  that question at compile time rather than changing it.
+  """
+  @spec return_classification(
+          Manifest.Resource.t() | nil,
+          Ash.Resource.Actions.action() | atom(),
+          atom()
+        ) :: term() | :undecorated
+  def return_classification(resource, action, namespace \\ @default_namespace)
+
+  def return_classification(resource, %{name: name}, namespace),
+    do: return_classification(resource, name, namespace)
+
+  def return_classification(resource, name, namespace) when is_atom(name) do
+    case payload(resource, namespace) do
+      %{return_classifications: classifications} -> Map.get(classifications, name, :undecorated)
+      _ -> :undecorated
+    end
+  end
+
+  def return_classification(_resource, _action, _namespace), do: :undecorated
 
   @doc """
   The precomputed bulk-authorization strategy, `:error` or `:filter`.

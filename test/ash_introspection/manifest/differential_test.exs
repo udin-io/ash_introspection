@@ -296,6 +296,40 @@ defmodule AshIntrospection.Manifest.DifferentialTest do
       end
     end
 
+    test "ActionIntrospection returns the classification it would have computed",
+         %{manifest: manifest} do
+      alias AshIntrospection.Codegen.ActionIntrospection
+
+      # Compared against the same manifest, not against `@live`.
+      # `classify_return_type/3` asks `ResourceInfo.declared_resource?/2`, whose
+      # answer is scoped by the manifest on purpose — a struct returning an
+      # undeclared resource classifies differently with and without one. What
+      # decoration must not change is the answer for a given config.
+      for resource <- resources(), action <- Ash.Resource.Info.actions(resource) do
+        assert ActionIntrospection.action_return_classification(resource, action, manifest) ==
+                 ActionIntrospection.action_returns_field_selectable_type?(action, manifest),
+               "return classification disagreed for #{inspect(resource)}.#{action.name}"
+      end
+    end
+
+    test "the fixture classifies more than one way, so the test above is not vacuous",
+         %{manifest: manifest} do
+      alias AshIntrospection.Codegen.ActionIntrospection
+
+      classifications =
+        for resource <- resources(),
+            action <- Ash.Resource.Info.actions(resource),
+            uniq: true do
+          case ActionIntrospection.action_return_classification(resource, action, manifest) do
+            {:ok, kind, _data} -> {:ok, kind}
+            {:error, reason} -> {:error, reason}
+          end
+        end
+
+      assert {:error, :not_generic_action} in classifications
+      assert Enum.any?(classifications, &match?({:ok, _}, &1))
+    end
+
     test "ValidationErrorTypes classifies the same inputs and attributes", %{manifest: manifest} do
       alias AshIntrospection.Codegen.ValidationErrorTypes
 
