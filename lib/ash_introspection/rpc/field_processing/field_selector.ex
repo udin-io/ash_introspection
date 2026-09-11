@@ -23,7 +23,7 @@ defmodule AshIntrospection.Rpc.FieldProcessing.FieldSelector do
 
   | Category | Detection | Handler |
   |----------|-----------|---------|
-  | Ash Resource | `Ash.Resource.Info.resource?(type)` | `select_resource_fields/4` |
+  | Ash Resource | `ResourceInfo.runtime_resource?(type, config)` | `select_resource_fields/4` |
   | TypedStruct/NewType | field_names callback | `select_typed_struct_fields/4` |
   | Typed Map/Struct | Has `fields` constraints | `select_typed_map_fields/5` |
   | Tuple | `Ash.Type.Tuple` | `select_tuple_fields/4` |
@@ -33,6 +33,7 @@ defmodule AshIntrospection.Rpc.FieldProcessing.FieldSelector do
   """
 
   alias AshIntrospection.FieldFormatter
+  alias AshIntrospection.ResourceInfo
   alias AshIntrospection.Rpc.FieldProcessing.Validation
   alias AshIntrospection.Rpc.LoadRestrictions
   alias AshIntrospection.TypeSystem.Introspection
@@ -45,7 +46,8 @@ defmodule AshIntrospection.Rpc.FieldProcessing.FieldSelector do
           optional(:resource_info_module) => module(),
           optional(:is_interop_resource?) => (module() -> boolean()),
           optional(:get_original_field_name) => (module(), term() -> atom() | nil),
-          optional(:load_restrictions) => term()
+          optional(:load_restrictions) => term(),
+          optional(:manifest) => Ash.Info.Manifest.t() | ResourceInfo.Source.t() | nil
         }
 
   # ---------------------------------------------------------------------------
@@ -74,7 +76,8 @@ defmodule AshIntrospection.Rpc.FieldProcessing.FieldSelector do
   """
   @spec process(module(), atom(), list(), config()) :: {:ok, select_result()} | {:error, term()}
   def process(resource, action_name, requested_fields, config \\ %{}) do
-    action = Ash.Resource.Info.action(resource, action_name)
+    config = ResourceInfo.normalize_config(config)
+    action = ResourceInfo.action(resource, action_name, config)
 
     if is_nil(action) do
       throw({:action_not_found, action_name})
@@ -142,11 +145,11 @@ defmodule AshIntrospection.Rpc.FieldProcessing.FieldSelector do
         inner_constraints = Keyword.get(constraints, :items, [])
         select_fields(inner_type, inner_constraints, requested_fields, path, config)
 
-      is_atom(unwrapped_type) && Ash.Resource.Info.resource?(unwrapped_type) ->
+      is_atom(unwrapped_type) && ResourceInfo.runtime_resource?(unwrapped_type, config) ->
         select_resource_fields(unwrapped_type, requested_fields, path, config)
 
       unwrapped_type == Ash.Type.Struct &&
-          Introspection.is_resource_instance_of?(full_constraints) ->
+          Introspection.is_resource_instance_of?(full_constraints, config) ->
         resource = Keyword.get(full_constraints, :instance_of)
         select_resource_fields(resource, requested_fields, path, config)
 
@@ -259,7 +262,9 @@ defmodule AshIntrospection.Rpc.FieldProcessing.FieldSelector do
 
   defp process_simple_resource_field(resource, field_name, path, {select, load, template}, config) do
     internal_name = resolve_resource_field_name(resource, field_name, config)
-    {field_type, constraints, category} = get_resource_field_info(resource, internal_name, path)
+
+    {field_type, constraints, category} =
+      get_resource_field_info(resource, internal_name, path, config)
 
     if category == :calculation_with_args do
       throw({:calculation_requires_args, internal_name, path})
@@ -293,7 +298,7 @@ defmodule AshIntrospection.Rpc.FieldProcessing.FieldSelector do
     internal_name = resolve_resource_field_name(resource, field_name, config)
 
     {field_type, field_constraints, category} =
-      get_resource_field_info(resource, internal_name, path)
+      get_resource_field_info(resource, internal_name, path, config)
 
     if category == :calculation_with_args do
       throw({:invalid_calculation_args, internal_name, path})
@@ -356,7 +361,7 @@ defmodule AshIntrospection.Rpc.FieldProcessing.FieldSelector do
         {select ++ [internal_name], new_load, template ++ [{internal_name, nested_template}]}
 
       :relationship ->
-        rel = Ash.Resource.Info.relationship(resource, internal_name)
+        rel = ResourceInfo.relationship(resource, internal_name, config)
         dest_resource = rel && rel.destination
 
         unless dest_resource && is_interop_resource?(dest_resource, config) do
@@ -387,7 +392,7 @@ defmodule AshIntrospection.Rpc.FieldProcessing.FieldSelector do
          config
        ) do
     internal_name = resolve_resource_field_name(resource, calc_name, config)
-    calc = Ash.Resource.Info.calculation(resource, internal_name)
+    calc = ResourceInfo.calculation(resource, internal_name, config)
 
     if is_nil(calc) do
       throw({:unknown_field, internal_name, resource, path})
@@ -466,18 +471,18 @@ defmodule AshIntrospection.Rpc.FieldProcessing.FieldSelector do
     {select, load ++ [load_spec], template ++ [template_item]}
   end
 
-  defp get_resource_field_info(resource, field_name, path) do
+  defp get_resource_field_info(resource, field_name, path, config) do
     cond do
-      attr = Ash.Resource.Info.public_attribute(resource, field_name) ->
+      attr = ResourceInfo.public_attribute(resource, field_name, config) ->
         constraints = attr.constraints || []
         category = classify_attribute_category(attr.type, constraints)
         {attr.type, constraints, category}
 
-      rel = Ash.Resource.Info.public_relationship(resource, field_name) ->
+      rel = ResourceInfo.public_relationship(resource, field_name, config) ->
         type = if rel.cardinality == :many, do: {:array, rel.destination}, else: rel.destination
         {type, [], :relationship}
 
-      calc = Ash.Resource.Info.public_calculation(resource, field_name) ->
+      calc = ResourceInfo.public_calculation(resource, field_name, config) ->
         constraints = calc.constraints || []
 
         category =
@@ -489,7 +494,7 @@ defmodule AshIntrospection.Rpc.FieldProcessing.FieldSelector do
 
         {calc.type, constraints, category}
 
-      agg = Ash.Resource.Info.public_aggregate(resource, field_name) ->
+      agg = ResourceInfo.public_aggregate(resource, field_name, config) ->
         {agg.type, agg.constraints || [], :aggregate}
 
       true ->
@@ -1239,7 +1244,7 @@ defmodule AshIntrospection.Rpc.FieldProcessing.FieldSelector do
           apply(resource_info_module, :interop_resource?, [resource])
         else
           # Default: check if it's an Ash resource
-          Ash.Resource.Info.resource?(resource)
+          ResourceInfo.runtime_resource?(resource, config)
         end
     end
   end

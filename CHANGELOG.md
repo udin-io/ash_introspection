@@ -14,6 +14,35 @@ and this project adheres to
 
 ## [Unreleased]
 
+### Added
+
+- `AshIntrospection.ResourceInfo`, the one module in `lib/` that calls
+  `Ash.Resource.Info` — all 64 call sites route through it. It reads an
+  optional `:manifest` key off the config map the pipeline and codegen already
+  thread, the same shape `:load_restrictions` uses. Omitting the key reads live
+  introspection exactly as before, so nothing changes for a caller that does
+  not pass one. Stage 1 of five for
+  [#23](https://github.com/udin-io/ash_introspection/issues/23); see
+  `docs/roadmap.md` for the rest.
+
+  `Ash.Resource.Info.resource?/1` and `Ash.Info.Manifest.has_resource?/2` are
+  not the same question, so the reader exposes both.
+  `ResourceInfo.runtime_resource?/2` falls back to live introspection for a
+  module the manifest does not carry — the request path needs that, because a
+  struct Ash handed back must still serialize as a resource.
+  `ResourceInfo.declared_resource?/2` treats absence as the answer, which is
+  what codegen wants.
+
+- An optional trailing `config` argument on six public functions, defaulting to
+  live introspection so no existing call breaks:
+  `TypeSystem.Introspection.is_embedded_resource?/2` and
+  `is_resource_instance_of?/2`, `TypeSystem.ResourceFields`' three lookups,
+  `Codegen.ActionIntrospection.action_input_type/3`, `get_required_inputs/3`,
+  `get_optional_inputs/3`, `action_returns_field_selectable_type?/2`,
+  `action_supports_field_selection?/2`, and
+  `Codegen.ValidationErrorTypes.classify_action_input_errors/3` and
+  `classify_resource_attribute_errors/2`.
+
 ## [0.4.0] - 2026-09-10
 
 Five breaking changes: a read action may no longer carry `identity`, a `null`

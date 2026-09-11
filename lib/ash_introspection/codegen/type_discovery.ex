@@ -59,8 +59,22 @@ defmodule AshIntrospection.Codegen.TypeDiscovery do
   - `{:argument, :argument_name}` - Action or calculation argument
   - `{:metadata, :metadata_name}` - Action metadata
   - `:returns` - Generic action return type
+
+  ## No `:manifest` here, deliberately
+
+  Every introspection read goes through `AshIntrospection.ResourceInfo`, like
+  the rest of `lib/`, but none of them is given the config map — they take the
+  reader's default, which is live `Ash.Resource.Info`. Threading a config
+  through this module's ten private traversal helpers would be work with a
+  known expiry date: issue #23's stage 4 deletes this module outright, because
+  `Ash.Info.Manifest.Generator.Reachability` and `Generator.TypeResolver`
+  already do its job and reach more than it does — accepted attributes, action
+  metadata and transitive relationship depth. Routing the calls keeps the
+  "one reader" invariant that makes the later stages greppable; threading the
+  config would not survive to use it.
   """
 
+  alias AshIntrospection.ResourceInfo
   alias AshIntrospection.TypeSystem.Introspection
 
   @type config :: %{
@@ -226,13 +240,13 @@ defmodule AshIntrospection.Codegen.TypeDiscovery do
 
   defp entrypoint_actions(resource, :all_actions) do
     resource
-    |> Ash.Resource.Info.actions()
+    |> ResourceInfo.actions()
     |> Enum.filter(&Map.get(&1, :public?, true))
   end
 
   defp entrypoint_actions(resource, action_names) when is_list(action_names) do
     action_names
-    |> Enum.map(&Ash.Resource.Info.action(resource, &1))
+    |> Enum.map(&ResourceInfo.action(resource, &1))
     |> Enum.reject(&is_nil/1)
   end
 
@@ -315,7 +329,7 @@ defmodule AshIntrospection.Codegen.TypeDiscovery do
   def find_referenced_embedded_resources(resource) do
     resource
     |> find_referenced_resources()
-    |> Enum.filter(&Ash.Resource.Info.embedded?/1)
+    |> Enum.filter(&ResourceInfo.embedded?/1)
   end
 
   @doc """
@@ -332,7 +346,7 @@ defmodule AshIntrospection.Codegen.TypeDiscovery do
   def find_referenced_non_embedded_resources(resource) do
     resource
     |> find_referenced_resources()
-    |> Enum.reject(&Ash.Resource.Info.embedded?/1)
+    |> Enum.reject(&ResourceInfo.embedded?/1)
   end
 
   @doc """
@@ -403,7 +417,7 @@ defmodule AshIntrospection.Codegen.TypeDiscovery do
       |> elem(0)
     end)
     |> Enum.reject(fn {resource, _path} ->
-      resource in rpc_resources or Ash.Resource.Info.embedded?(resource)
+      resource in rpc_resources or ResourceInfo.embedded?(resource)
     end)
     |> group_by_resource_with_paths()
   end
@@ -435,7 +449,7 @@ defmodule AshIntrospection.Codegen.TypeDiscovery do
       |> Enum.filter(has_extension?)
 
     Enum.reject(all_resources_with_extension, fn resource ->
-      Ash.Resource.Info.embedded?(resource) or resource in rpc_resources
+      ResourceInfo.embedded?(resource) or resource in rpc_resources
     end)
   end
 
@@ -610,7 +624,7 @@ defmodule AshIntrospection.Codegen.TypeDiscovery do
 
   defp extract_field_constrained_types_from_resource(resource, field_names_callback) do
     resource
-    |> Ash.Resource.Info.public_attributes()
+    |> ResourceInfo.public_attributes()
     |> Enum.filter(&has_field_constraints?/1)
     |> Enum.flat_map(&extract_field_constrained_type_info(&1, field_names_callback))
     |> Enum.filter(fn type_info -> type_info.instance_of != nil end)
@@ -716,7 +730,7 @@ defmodule AshIntrospection.Codegen.TypeDiscovery do
 
   defp get_related_resource(resource, relationship_path) do
     Enum.reduce_while(relationship_path, resource, fn rel_name, current_resource ->
-      case Ash.Resource.Info.relationship(current_resource, rel_name) do
+      case ResourceInfo.relationship(current_resource, rel_name) do
         nil -> {:halt, nil}
         relationship -> {:cont, relationship.destination}
       end
@@ -729,9 +743,9 @@ defmodule AshIntrospection.Codegen.TypeDiscovery do
     else
       visited = MapSet.put(visited, resource)
 
-      attributes = Ash.Resource.Info.public_attributes(resource)
-      calculations = Ash.Resource.Info.public_calculations(resource)
-      aggregates = Ash.Resource.Info.public_aggregates(resource)
+      attributes = ResourceInfo.public_attributes(resource)
+      calculations = ResourceInfo.public_calculations(resource)
+      aggregates = ResourceInfo.public_aggregates(resource)
 
       {attribute_resources, visited} =
         Enum.reduce(attributes, {[], visited}, fn attr, {acc, visited} ->
@@ -776,7 +790,7 @@ defmodule AshIntrospection.Codegen.TypeDiscovery do
                related_resource when not is_nil(related_resource) <-
                  get_related_resource(resource, agg.relationship_path),
                field_attr when not is_nil(field_attr) <-
-                 Ash.Resource.Info.attribute(related_resource, agg.field) do
+                 ResourceInfo.attribute(related_resource, agg.field) do
             agg_path =
               current_path ++
                 [{:aggregate, agg.name}, {:relationship_path, agg.relationship_path}]
@@ -817,7 +831,7 @@ defmodule AshIntrospection.Codegen.TypeDiscovery do
       Ash.Type.Struct ->
         instance_of = Keyword.get(constraints, :instance_of)
 
-        if instance_of && Ash.Resource.Info.resource?(instance_of) do
+        if instance_of && ResourceInfo.declared_resource?(instance_of) do
           resource_path = current_path
 
           {nested, new_visited} =
@@ -858,7 +872,7 @@ defmodule AshIntrospection.Codegen.TypeDiscovery do
 
       type when is_atom(type) ->
         cond do
-          Ash.Resource.Info.resource?(type) ->
+          ResourceInfo.declared_resource?(type) ->
             resource_path = current_path
 
             {nested, new_visited} =

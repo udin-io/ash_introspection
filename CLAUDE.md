@@ -119,6 +119,30 @@ only a module with a `.beam` file on disk can be loaded back. Unloading is
 global to the VM, so such a file is `async: false`. See
 `test/ash_introspection/lazy_module_loading_test.exs`.
 
+### `Ash.Resource.Info.embedded?/1` raises for anything that is not a resource
+
+**Symptom.** A classifier that looks total blows up on a plain module:
+
+```
+** (ArgumentError) `MyApp.SomeModule` is not a Spark DSL module.
+    (spark 2.7.2) lib/spark/dsl/extension.ex:158: Spark.Dsl.Extension.persisted!/3
+```
+
+**Why.** `embedded?/1` reads persisted Spark DSL state, so it is only defined
+for a Spark DSL module. `resource?/1` is the safe one — it answers `false` for
+any module, including one that does not exist. Measured 2026-09-11 on ash
+3.33.1: `Ash.Resource.Info.embedded?/1` raises for `Enum`, for `String`, for an
+`Ash.Type.NewType` such as `AshIntrospection.Test.CustomType`, and for an atom
+naming no module at all.
+
+**What we do.** Never call `embedded?/1` on a module you have not already
+established is a resource. `TypeSystem.Introspection.is_embedded_resource?/2`
+is the shape to copy: `runtime_resource?/2` first, `embedded?/2` second, `and`
+between them. `AshIntrospection.ResourceInfo.embedded?/2` preserves the raise
+deliberately, with or without a manifest — swallowing it would make a
+non-resource indistinguishable from a resource that is not embedded. See
+`test/ash_introspection/resource_info_test.exs`.
+
 ### A casing assertion cannot see double formatting
 
 **Symptom.** You suspect a value is being formatted twice, write a test that
@@ -488,8 +512,8 @@ mix hex.audit
 mix deps.audit
 ```
 
-`main` is at **379 tests + 1 doctest, 0 failures** (measured 2026-09-10 on the
-`release-0.4.0` branch, three tests above `7fb48e7`'s 376). A pull
+`main` is at **400 tests + 1 doctest, 0 failures** (measured 2026-09-11 on
+`issue-23-manifest-stage-1`, 21 tests above `74afafd`'s 379). A pull
 request that changes that number downward, or that leaves a compiler warning,
 is not finished. Never suppress a warning — fix the cause.
 

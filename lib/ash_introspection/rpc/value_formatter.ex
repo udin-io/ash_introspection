@@ -11,7 +11,7 @@ defmodule AshIntrospection.Rpc.ValueFormatter do
 
   The type and constraints parameters provide all context needed - no separate
   "resource" context is required because each type is self-describing:
-  - For Ash resources: field types come from `Ash.Resource.Info.attribute/2`
+  - For Ash resources: field types come from `AshIntrospection.ResourceInfo`
   - For TypedStructs: field types come from `constraints[:fields]`
   - For typed maps: field types come from `constraints[:fields]`
   - For unions: member type and constraints come from `constraints[:types][member]`
@@ -38,6 +38,7 @@ defmodule AshIntrospection.Rpc.ValueFormatter do
   """
 
   alias AshIntrospection.FieldFormatter
+  alias AshIntrospection.ResourceInfo
   alias AshIntrospection.TypeSystem.{Introspection, ResourceFields}
 
   @type direction :: :input | :output
@@ -81,11 +82,11 @@ defmodule AshIntrospection.Rpc.ValueFormatter do
         inner_constraints = Keyword.get(constraints, :items, [])
         format_array(value, inner_type, inner_constraints, direction, config)
 
-      is_atom(unwrapped_type) && Ash.Resource.Info.resource?(unwrapped_type) ->
+      is_atom(unwrapped_type) && ResourceInfo.runtime_resource?(unwrapped_type, config) ->
         format_resource(value, unwrapped_type, direction, config)
 
       unwrapped_type == Ash.Type.Struct &&
-          Introspection.is_resource_instance_of?(full_constraints) ->
+          Introspection.is_resource_instance_of?(full_constraints, config) ->
         instance_of = Keyword.get(full_constraints, :instance_of)
         format_resource(value, instance_of, direction, config)
 
@@ -221,7 +222,10 @@ defmodule AshIntrospection.Rpc.ValueFormatter do
 
     Enum.into(value, %{}, fn {key, field_value} ->
       internal_key = convert_resource_key(key, resource, direction, config)
-      {field_type, field_constraints} = ResourceFields.get_field_type_info(resource, internal_key)
+
+      {field_type, field_constraints} =
+        ResourceFields.get_field_type_info(resource, internal_key, config)
+
       formatted_value = format(field_value, field_type, field_constraints, direction, config)
 
       output_key =

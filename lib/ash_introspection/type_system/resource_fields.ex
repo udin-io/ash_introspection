@@ -15,13 +15,20 @@ defmodule AshIntrospection.TypeSystem.ResourceFields do
   - `get_public_field_type_info/2` - Looks up only public fields
 
   Both return `{type, constraints}` tuples, with `{nil, []}` for unknown fields.
+
+  Every lookup goes through `AshIntrospection.ResourceInfo`, so an optional
+  trailing `config` carrying a `:manifest` key answers from the manifest
+  instead. Omitting it reads live `Ash.Resource.Info`, which is what every
+  caller does today.
   """
+
+  alias AshIntrospection.ResourceInfo
 
   @doc """
   Gets the type and constraints for any field on a resource.
 
   Checks attributes, calculations, relationships, and aggregates in order.
-  Uses non-public Ash.Resource.Info functions to access all fields.
+  Reaches private fields as well as public ones.
 
   ## Examples
 
@@ -34,20 +41,21 @@ defmodule AshIntrospection.TypeSystem.ResourceFields do
       iex> get_field_type_info(MyApp.User, :unknown)
       {nil, []}
   """
-  @spec get_field_type_info(module(), atom()) :: {atom() | tuple() | nil, keyword()}
-  def get_field_type_info(resource, field_name) do
+  @spec get_field_type_info(module(), atom(), ResourceInfo.config()) ::
+          {atom() | tuple() | nil, keyword()}
+  def get_field_type_info(resource, field_name, config \\ %{}) do
     cond do
-      attr = Ash.Resource.Info.attribute(resource, field_name) ->
+      attr = ResourceInfo.attribute(resource, field_name, config) ->
         {attr.type, attr.constraints || []}
 
-      calc = Ash.Resource.Info.calculation(resource, field_name) ->
+      calc = ResourceInfo.calculation(resource, field_name, config) ->
         {calc.type, calc.constraints || []}
 
-      rel = Ash.Resource.Info.relationship(resource, field_name) ->
+      rel = ResourceInfo.relationship(resource, field_name, config) ->
         type = if rel.cardinality == :many, do: {:array, rel.destination}, else: rel.destination
         {type, []}
 
-      agg = Ash.Resource.Info.aggregate(resource, field_name) ->
+      agg = ResourceInfo.aggregate(resource, field_name, config) ->
         {agg.type, agg.constraints || []}
 
       true ->
@@ -69,12 +77,13 @@ defmodule AshIntrospection.TypeSystem.ResourceFields do
       iex> get_public_field_type_info(MyApp.User, :private_field)
       {nil, []}
   """
-  @spec get_public_field_type_info(module(), atom()) :: {atom() | tuple() | nil, keyword()}
-  def get_public_field_type_info(resource, field_name) do
-    with nil <- Ash.Resource.Info.public_attribute(resource, field_name),
-         nil <- Ash.Resource.Info.public_calculation(resource, field_name),
-         nil <- Ash.Resource.Info.public_aggregate(resource, field_name) do
-      case Ash.Resource.Info.public_relationship(resource, field_name) do
+  @spec get_public_field_type_info(module(), atom(), ResourceInfo.config()) ::
+          {atom() | tuple() | nil, keyword()}
+  def get_public_field_type_info(resource, field_name, config \\ %{}) do
+    with nil <- ResourceInfo.public_attribute(resource, field_name, config),
+         nil <- ResourceInfo.public_calculation(resource, field_name, config),
+         nil <- ResourceInfo.public_aggregate(resource, field_name, config) do
+      case ResourceInfo.public_relationship(resource, field_name, config) do
         nil ->
           {nil, []}
 
@@ -98,14 +107,15 @@ defmodule AshIntrospection.TypeSystem.ResourceFields do
       iex> get_aggregate_type_info(MyApp.User, :todo_count)
       {Ash.Type.Integer, []}
   """
-  @spec get_aggregate_type_info(module(), atom()) :: {atom() | nil, keyword()}
-  def get_aggregate_type_info(resource, field_name) do
-    case Ash.Resource.Info.aggregate(resource, field_name) do
+  @spec get_aggregate_type_info(module(), atom(), ResourceInfo.config()) ::
+          {atom() | nil, keyword()}
+  def get_aggregate_type_info(resource, field_name, config \\ %{}) do
+    case ResourceInfo.aggregate(resource, field_name, config) do
       nil ->
         {nil, []}
 
       agg ->
-        resolved_type = Ash.Resource.Info.aggregate_type(resource, agg)
+        resolved_type = ResourceInfo.aggregate_type(resource, agg, config)
         {resolved_type, []}
     end
   end

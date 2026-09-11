@@ -17,7 +17,15 @@ which come first. Numbers in parentheses are GitHub issues on
 
 ### Unreleased
 
-Nothing. 0.4.0 was cut on 2026-09-10.
+- **#23 stage 1 — one reader for introspection.** All 64 `Ash.Resource.Info`
+  call sites in `lib/` now route through `AshIntrospection.ResourceInfo`, which
+  reads an optional `:manifest` key off the config map. Omitting the key is
+  live introspection exactly as before, proved by comparing every read against
+  `Ash.Resource.Info` itself and by running the same RPC request twice.
+  `resource?/1` is split into `runtime_resource?/2` (live fallback, request
+  path) and `declared_resource?/2` (manifest is the answer, codegen). Additive:
+  no consumer change, and reversible by deleting the key. Four stages remain —
+  see below.
 
 ### 0.4.0 — 2026-09-10
 
@@ -231,23 +239,41 @@ merged commit on `main`.
 
 ## In progress
 
-Nothing is on a branch. The board is open work, not started work.
+- **#23 stage 2** has not started. Stage 1 is in Unreleased above.
 
 ## Next
 
 Ordered by what unblocks the most. #23 is first because it gates roughly a
 dozen other items.
 
-1. **#23 — adopt `Ash.Info.Manifest`.** Upstream replaced live introspection
-   with a precomputed Spark manifest in `ash` 3.32.3. This repo still calls
-   `Ash.Resource.Info` at ~66 sites, which is why upstream's type-discovery
-   fixes do not port cleanly. Blocks #24 and #25 and more, and it is where
-   the field-name cache declined in #26 would arrive for free, as upstream's
-   `Manifest.Custom.formatted_field_names`. It also
-   carries the remainder of #21: entrypoint scoping here branches on the action
-   kind, where upstream's `Reachability` walks each declared action's accepted
-   attributes and follows its relationships to their destinations. It does not
-   walk `load` statements — see T1 in [risks.md](risks.md) for the grep.
+1. **#23 — adopt `Ash.Info.Manifest`, stages 2 to 5.** Stage 1 shipped the
+   seam (above). The manifest module itself cannot live here: building one
+   needs a Spark DSL to declare entrypoints, and this library ships none — the
+   recorded reason #26 was declined. So it goes in `ash_kotlin_multiplatform`,
+   next to the DSL that already names the RPC actions. The remaining stages, in
+   the order that keeps the escape hatch open longest:
+
+   | Stage | Repo | Delivers | Release |
+   |---|---|---|---|
+   | 2 | this | `Manifest.Decorator.decorate/3` and `Manifest.Custom`: field and argument name maps, `formatted_field_names`, `return_classification`, per-relationship pagination | 0.4.x, additive |
+   | 3 | consumer | `use AshKotlinMultiplatform.Manifest`, its two transformers, the `8c07331` compile-time edges, an installer | consumer minor |
+   | 4 | this | delete `Codegen.TypeDiscovery` (1010 lines); codegen reads the manifest only | 0.5.0, breaking |
+   | 5 | this | make `:manifest` required in the request path; drop the live fallbacks except the runtime struct guards | 0.6.0, breaking |
+
+   Stage 4 is the point of no return. Stage 2 is where the field-name cache
+   declined in #26 arrives for free, as upstream's
+   `Manifest.Custom.formatted_field_names`. Stage 4 carries the remainder of
+   #21: entrypoint scoping here branches on the action kind, where upstream's
+   `Reachability` walks each declared action's accepted attributes and follows
+   its relationships to their destinations. It does not walk `load` statements
+   — see T1 in [risks.md](risks.md) for the grep.
+
+   Two traps the design surfaced and stage 3 must not inherit: `8c07331` is
+   not optional (without its injected `domain.module_info(:md5)` and
+   `Application.compile_env/3` edges the persisted manifest goes stale under
+   incremental compiles with no error), and `SpecCache` must not be ported —
+   upstream added it in `199f9cd` and deleted it in `b7104a8` because Spark's
+   persisted DSL state is already free at runtime.
 2. **Correctness fixes that need no manifest**: #40 (second `rescue` in
    `process_single_error` has no `catch` clause), #66 (a nested selection
    inside a tuple field returns `nil`, because the template entry carries no

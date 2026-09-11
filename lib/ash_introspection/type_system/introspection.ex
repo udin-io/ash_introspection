@@ -12,7 +12,16 @@ defmodule AshIntrospection.TypeSystem.Introspection do
 
   Used throughout the codebase for type checking, code generation, and runtime
   processing.
+
+  The two functions that ask whether a module is a resource —
+  `is_embedded_resource?/2` and `is_resource_instance_of?/2` — take an
+  optional trailing config and read through `AshIntrospection.ResourceInfo`.
+  Both use its runtime reading: a module the manifest does not carry falls back
+  to live introspection rather than being reclassified as a non-resource. See
+  that module's docs for why the fallback is not optional in the request path.
   """
+
+  alias AshIntrospection.ResourceInfo
 
   @doc """
   Checks if a module is an embedded Ash resource.
@@ -25,11 +34,14 @@ defmodule AshIntrospection.TypeSystem.Introspection do
       iex> AshIntrospection.TypeSystem.Introspection.is_embedded_resource?(MyApp.Accounts.User)
       false
   """
-  def is_embedded_resource?(module) when is_atom(module) do
-    Ash.Resource.Info.resource?(module) and Ash.Resource.Info.embedded?(module)
+  @spec is_embedded_resource?(term(), ResourceInfo.config()) :: boolean()
+  def is_embedded_resource?(module, config \\ %{})
+
+  def is_embedded_resource?(module, config) when is_atom(module) do
+    ResourceInfo.runtime_resource?(module, config) and ResourceInfo.embedded?(module, config)
   end
 
-  def is_embedded_resource?(_), do: false
+  def is_embedded_resource?(_, _), do: false
 
   @doc """
   Checks if a type is a primitive Ash type (not a complex or composite type).
@@ -343,14 +355,17 @@ defmodule AshIntrospection.TypeSystem.Introspection do
       iex> AshIntrospection.TypeSystem.Introspection.is_resource_instance_of?([])
       false
   """
-  def is_resource_instance_of?(constraints) when is_list(constraints) do
+  @spec is_resource_instance_of?(term(), ResourceInfo.config()) :: boolean()
+  def is_resource_instance_of?(constraints, config \\ %{})
+
+  def is_resource_instance_of?(constraints, config) when is_list(constraints) do
     case Keyword.get(constraints, :instance_of) do
       nil -> false
-      module -> is_atom(module) && Ash.Resource.Info.resource?(module)
+      module -> is_atom(module) && ResourceInfo.runtime_resource?(module, config)
     end
   end
 
-  def is_resource_instance_of?(_), do: false
+  def is_resource_instance_of?(_, _), do: false
 
   @doc """
   Checks if constraints include non-empty field definitions.
