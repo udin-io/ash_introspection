@@ -13,6 +13,29 @@ recorded nowhere in the repo. This page replaces ADRs; there is no `adr/`
 directory here and none should be created. A decision that no longer shapes the
 code is deleted, not archived, because git keeps the history.
 
+## 2026-09-11 — A failed error protocol gets a log line, not a wire id
+
+**Decided.** When `ErrorProtocol.to_error/1` raises, throws or exits, the
+private `protocol_failure/3` in `AshIntrospection.Rpc.Errors` returns the
+`"something went wrong"` fallback the raising case already returned and adds no
+identifier to it. The log line is the only link between the response the client
+holds and the failure that produced it, so it carries the implementation
+module, the kind and reason, the original error and the stacktrace. Issue #40,
+commit `99cdbd4`.
+
+**Why.** The fallback is the response shape consumers already receive. Adding
+an error id to it changes the wire for every client, and a generated Kotlin or
+TypeScript client is regenerated rather than migrated — the cost #14 and #34
+paid for renaming one key. The fix was worth taking on its own: before it, a
+throw or exit out of a protocol implementation escaped `to_errors/6` and took
+the request with it. Widening the catch is a strict improvement; widening the
+payload is a breaking release.
+
+**Cost.** An operator holding a client's "something went wrong" cannot join it
+to a log line by id. They match on time and on the action in the request. That
+is worse than an id and it is the price of leaving the wire alone; a future
+release that already breaks the error payload is the place to revisit it.
+
 ## 2026-09-11 — The case predicates walk bytes, quirks and all
 
 **Decided.** `FieldFormatter`'s `is_camel_case?/1`, `is_pascal_case?/1` and
