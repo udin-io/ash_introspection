@@ -69,7 +69,8 @@ defmodule AshIntrospection.Test.ManifestFixture do
     {Test.LoadRestrictions.Article, :read},
     {Test.LoadRestrictions.Author, :read},
     {Test.LoadRestrictions.Comment, :read},
-    {Test.RelPagination.Library, :read}
+    {Test.RelPagination.Library, :read},
+    {Test.Dossier, :read}
   ]
 
   @doc "The `{resource, action}` pairs the fixture manifest is generated from."
