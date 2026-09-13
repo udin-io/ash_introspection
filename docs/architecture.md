@@ -7,8 +7,8 @@ SPDX-License-Identifier: MIT
 # Architecture
 
 C4 views of `ash_introspection` as it stands on `main`, 0.4.0 plus the
-unreleased work through issue #23 stage 2, drawn from the code rather than from
-the README. It exists because issue #36 found no written
+unreleased work through issue #23 stage 4a, drawn from the code rather than
+from the README. It exists because issue #36 found no written
 account of the one relationship that confuses every new reader: `ash_typescript`
 is upstream and standalone, this library is the core extracted from it, and
 `ash_kotlin_multiplatform` is the only thing that depends on it. Use these
@@ -125,6 +125,7 @@ flowchart LR
         tdisc["Codegen.TypeDiscovery"]
         vet["Codegen.ValidationErrorTypes"]
         mcustom["Manifest.Custom ((NEW))<br/>the only reader of custom"]
+        tdent["manifest.entrypoints ((NEW))<br/>what codegen generates for"]
     end
 
     subgraph compile["ash_introspection: compile time only"]
@@ -172,7 +173,8 @@ flowchart LR
     tsi --> rinfo
     actint --> rinfo
     vet --> rinfo
-    tdisc --> rinfo
+    tdisc -->|"config threaded to every read ((NEW))"| rinfo
+    tdisc -->|"scopes discovery ((NEW))"| tdent
     rinfo -->|"live, or an Ash.Info.Manifest<br/>off the config map's :manifest key"| ash
     rinfo -->|"decorated reads"| mcustom
     actint -->|"return classification"| mcustom
@@ -189,10 +191,19 @@ config map it reads live introspection, which is what every caller does today.
 `lib/ash_introspection/resource_info.ex` and
 `lib/ash_introspection/manifest/decorator.ex`.
 
-`Manifest.Decorator` and `Manifest.Custom` are what #23 stage 2 added. The
-dashed arrow is the edge that does not exist yet: nothing in this repo calls
-`decorate/3` outside `test/support/manifest_fixture.ex`, and until stage 3
-builds a manifest in the consumer, every production read is still live.
+`Manifest.Decorator` and `Manifest.Custom` are what #23 stage 2 added. Stage 3
+shipped in `ash_kotlin_multiplatform` (its PR #75, `e5ad024`), so the dashed
+arrow is now real: a consumer transformer calls `decorate/3` and persists the
+result.
+
+`Codegen.TypeDiscovery` is what #23 stage 4a changed, and it is the first
+caller in this repo to read a manifest on a path a consumer runs. It took a
+config and ignored it before; now the config reaches all 14 of its
+introspection reads, and a config carrying `:manifest` takes its entrypoints
+from `manifest.entrypoints` rather than from a callback.
+`test/ash_introspection/manifest/codegen_differential_test.exs` compares the
+two paths 423 times, byte for byte. The module is still here on purpose: stage
+4b deletes it, and that is breaking.
 
 Measured 2026-09-09: `ash_kotlin_multiplatform` names `AshIntrospection` at 35
 call sites across 21 files. `Helpers` is the most used (10), then
@@ -304,15 +315,15 @@ Stage 4 has camelized everything around them. Both have regression tests —
 
 ## 6. What is not here
 
-- **No manifest module, and no manifest in production yet.** Stage 1 of issue
-  #23 added `AshIntrospection.ResourceInfo` and an optional `:manifest` config
-  key; stage 2 added the decorator that fills it and the reader that empties
-  it. Nothing builds a manifest: the manifest module needs a Spark DSL to
-  declare entrypoints, and #23 puts that DSL in `ash_kotlin_multiplatform`, not
-  here. So every read in production is still live, and stage 2's decoration is
-  exercised only by `test/support/manifest_fixture.ex`. Stages 3 to 5 are on
-  the roadmap — see [roadmap.md](roadmap.md) and
-  [decisions.md](decisions.md).
+- **No manifest module here, and no manifest on the request path yet.** Stage
+  1 of issue #23 added `AshIntrospection.ResourceInfo` and an optional
+  `:manifest` config key; stage 2 added the decorator that fills it and the
+  reader that empties it; stage 3 built the manifest itself in
+  `ash_kotlin_multiplatform`, because declaring entrypoints needs a Spark DSL
+  and this library ships none. Stage 4a made codegen read one. The request path
+  still does not: `Rpc.Pipeline` is handed whatever config the consumer builds,
+  and nothing in this repo puts a manifest on it. Stages 4b and 5 are on the
+  roadmap — see [roadmap.md](roadmap.md) and [decisions.md](decisions.md).
 - **No persistence.** `test/support/*.ex` uses `Ash.DataLayer.Ets`; there is no
   repo, no migration directory and no database setup step.
 - **No contract test with the consumer.** Nothing in either repo fails when the

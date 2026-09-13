@@ -179,3 +179,47 @@ defmodule AshIntrospection.Test.Document do
     end
   end
 end
+
+defmodule AshIntrospection.Test.DossierDomain do
+  @moduledoc false
+  use Ash.Domain
+
+  resources do
+    resource(AshIntrospection.Test.Dossier)
+  end
+end
+
+defmodule AshIntrospection.Test.Dossier do
+  @moduledoc """
+  The only fixture whose attribute names a **non-embedded** resource.
+
+  Every other discovery fixture reaches embedded resources, so two readers had
+  no coverage at all before this one: `find_field_constrained_types/2` needs an
+  attribute whose constraints carry both `:fields` and `:instance_of`, and
+  `find_non_rpc_referenced_resources_with_paths/2` needs a referenced resource
+  that is neither embedded nor an entrypoint of its own. `owner` is both, so a
+  discovery scoped to `Dossier` alone reports `Test.User` as referenced and not
+  exposed.
+  """
+  use Ash.Resource,
+    domain: AshIntrospection.Test.DossierDomain,
+    data_layer: Ash.DataLayer.Ets
+
+  attributes do
+    uuid_primary_key(:id)
+    attribute(:label, :string, public?: true)
+
+    attribute :owner, :struct do
+      public?(true)
+
+      constraints(
+        instance_of: AshIntrospection.Test.User,
+        fields: [id: [type: :uuid], name: [type: :string]]
+      )
+    end
+  end
+
+  actions do
+    defaults([:read, :destroy, create: :*, update: :*])
+  end
+end

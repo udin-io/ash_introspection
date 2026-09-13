@@ -24,9 +24,11 @@ the port is not mechanical: upstream replaced live `Ash.Resource.Info`
 introspection with `Ash.Info.Manifest` in `ash` 3.32.3, while this repo still
 does it live at 64 call sites (#23, measured at `74afafd`). Since stage 1 of
 #23 all 64 read through `AshIntrospection.ResourceInfo`, and since stage 2
-those reads answer out of a decorated manifest when one is supplied — but
-nothing supplies one yet, so every read in production is still live. Stage 3,
-in `ash_kotlin_multiplatform`, is what changes that.
+those reads answer out of a decorated manifest when one is supplied. Stage 3
+shipped in `ash_kotlin_multiplatform` (its PR #75, `e5ad024`), so a manifest is
+now built; stage 4a made `Codegen.TypeDiscovery` read one. The request path
+still does not — nothing in this repo puts a manifest on the pipeline config,
+so every RPC read in production is live.
 
 **Why it bites.** A bug fixed upstream stays live here, and it stays live in
 `ash_kotlin_multiplatform`, which is what a real user runs.
@@ -41,6 +43,16 @@ Re-porting each fix onto live introspection is the expensive path and it is the
 one we are on until #23 lands. Stages 1 and 2 shipped the seam and the
 decorator that fills it; stages 3 to 5 are on [roadmap.md](roadmap.md), and
 stage 4 is the one that closes the gap.
+
+**Two traversals now, not one.** Stage 4a left `Codegen.TypeDiscovery` in
+place reading a manifest, so until stage 4b deletes it this repo carries the
+hand-written traversal *and* the manifest that `Reachability` produced. They
+agree over `test/support/` — 423 byte-for-byte comparisons in
+`test/ash_introspection/manifest/codegen_differential_test.exs` — and nothing
+checks that they agree over a consumer's resources. A consumer whose resources
+reach further than the fixtures would find the disagreement at stage 4b, when
+the comparison is gone. Watch: run that test on every change to either path,
+and run the consumer's codegen against both configs before 4b lands.
 
 **A port can now be partial, which is new.** #21 landed the behaviour of
 upstream `437901f` by hand, because upstream's own version of that commit calls
@@ -97,11 +109,16 @@ yet and is not on the board.
 **One half of it now does exist, for one surface.** #23 stage 1 added
 `test/ash_introspection/resource_info_test.exs` and
 `test/ash_introspection/rpc/pipeline_manifest_parity_test.exs`, and stage 2
-added `test/ash_introspection/manifest/differential_test.exs`, which run live
-introspection and a decorated manifest against each other field by field,
-action by action and response by response. That is the differential test this
-page said was missing — for `AshIntrospection.ResourceInfo`, and for nothing
-else. It says nothing about whether the consumer's call sites still compile.
+added `test/ash_introspection/manifest/differential_test.exs`, and stage 4a
+added `test/ash_introspection/manifest/codegen_differential_test.exs`. Together
+they run live introspection and a decorated manifest against each other field
+by field, action by action, response by response, and now discovery result by
+discovery result — 423 byte-for-byte comparisons for codegen alone. That is
+the differential test this page said was missing — for
+`AshIntrospection.ResourceInfo` and `Codegen.TypeDiscovery`, and for nothing
+else. It says nothing about whether the consumer's call sites still compile,
+and `ash_kotlin_multiplatform` carries its own copy of the same traversal in
+`AshKotlinMultiplatform.Codegen.TypeDiscovery`, which no test here touches.
 
 Stage 2 is what those tests were for, and they earned it on the first run: they
 found `relationship/3` answering `nil` for a private `belongs_to`, a bug stage
@@ -160,8 +177,9 @@ verbatim — hold on the first function only.
 
 **Why it bites.** `ash_kotlin_multiplatform` calls the second one.
 `AshKotlinMultiplatform.Rpc.Runner.run_action/4` ends with
-`Pipeline.format_output(processed)` (`lib/ash_kotlin_multiplatform/rpc/runner.ex:157`),
-so the consumer's successful responses never see the typed path. Its clients
+`Pipeline.format_output(processed)`
+(`lib/ash_kotlin_multiplatform/rpc/runner.ex:157`), so the consumer's
+successful responses never see the typed path. Its clients
 still get `_id` rewritten to `id` inside an unconstrained map. The library is
 correct and the deployed behaviour is not, which is the worst shape a fix can
 take: a green suite here and no change downstream.
