@@ -46,6 +46,26 @@ One heading per lesson, each with the symptom and the reason. Add to this list
 whenever you learn something a future session would otherwise rediscover the
 hard way, and commit it with the work that taught it.
 
+### A manifest sorts entrypoints; a callback keeps declaration order
+
+**Symptom.** A differential test that ran `Codegen.TypeDiscovery` against a
+callback config and against a manifest config got the same resources back in a
+different order, with an empty set difference both ways.
+
+**Reason.** `Ash.Info.Manifest.Generator` sorts entrypoints by
+`{Module.split(e.resource), e.action.name}`
+(`deps/ash/lib/ash/info/manifest/generator.ex:239` and `:261`, ash 3.33.1). A
+`get_rpc_action_entrypoints` callback returns whatever the consumer's DSL
+declared. Discovery output is ordered by its entrypoints, so the order follows
+the source.
+
+**What to do.** Hold the entrypoint order constant when comparing the two
+paths — `AshIntrospection.Test.ManifestFixture.manifest_entrypoints/0` returns
+the fixture's pairs in the manifest's order for exactly this. Do not sort the
+callback path to match: that changes what a config with no `:manifest` key
+does. The divergence itself is pinned by one test in
+`codegen_differential_test.exs` and recorded in `docs/decisions.md`.
+
 ### `Igniter.update_all_elixir_files/2` reaches no file under `Igniter.Test`
 
 **Symptom.** A codemod test is green and asserts nothing. The task runs, the

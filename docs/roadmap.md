@@ -17,6 +17,27 @@ which come first. Numbers in parentheses are GitHub issues on
 
 ### Unreleased
 
+- **#23 stage 4a — codegen reads the manifest, and `Codegen.TypeDiscovery`
+  stays.** Every private traversal helper in
+  `AshIntrospection.Codegen.TypeDiscovery` now carries the config map, and
+  every public function takes one, so its 14 introspection reads answer out of
+  a manifest when the config has `:manifest` and live when it does not. With a
+  manifest, entrypoints come from `manifest.entrypoints` — neither callback is
+  required — and `declared_resource?/2` scopes the traversal, so a type
+  nobody exposed stops it. `get_rpc_resources` still wins wherever it is
+  supplied, because it answers what the consumer listed rather than what has an
+  entrypoint, and `find_resources_missing_from_rpc_config/2` stays live because
+  it asks what was *not* declared. The proof is
+  `test/ash_introspection/manifest/codegen_differential_test.exs`: 423
+  comparisons over 22 fixture resources and 23 entrypoints, each asserting the
+  two paths return the same term byte for byte. One divergence found and
+  recorded rather than smoothed over — the manifest sorts entrypoints and a
+  DSL declares them in its own order, so discovery output is reordered on
+  adoption; see [decisions.md](decisions.md). `Test.Dossier` is a new fixture:
+  the only one whose attribute names a non-embedded resource, which is what
+  three readers needed to stop comparing `[]` with `[]`. Additive and
+  reversible. The deletion of `Codegen.TypeDiscovery` is stage 4b and is
+  breaking.
 - **#23 stage 2 — one compile-time pass writes what this library reads.**
   `AshIntrospection.Manifest.Decorator.decorate/3` walks a generated
   `%Ash.Info.Manifest{}` once and writes under `custom.<namespace>` what the
@@ -293,16 +314,18 @@ merged commit on `main`.
 
 ## In progress
 
-- **#23 stage 3** has not started, and it is in `ash_kotlin_multiplatform`,
-  not here. Stages 1 and 2 are in Unreleased above.
+- **#23 stage 4b — delete `Codegen.TypeDiscovery`.** The read half (4a) is in
+  Unreleased above. Stage 3 shipped in `ash_kotlin_multiplatform` (its PR #75,
+  `e5ad024`), so a manifest is finally built somewhere; stage 4a is the first
+  thing to read one on a path a consumer runs.
 
 ## Next
 
 Ordered by what unblocks the most. #23 is first because it gates roughly a
 dozen other items.
 
-1. **#23 — adopt `Ash.Info.Manifest`, stages 3 to 5.** Stages 1 and 2 shipped
-   the seam and the decorator that fills it (above). The manifest module itself
+1. **#23 — adopt `Ash.Info.Manifest`, stages 4b and 5.** Stages 1, 2 and 4a
+   shipped here; stage 3 shipped in the consumer. The manifest module itself
    cannot live here: building one needs a Spark DSL to declare entrypoints, and
    this library ships none — the recorded reason #26 was declined. So it goes
    in `ash_kotlin_multiplatform`, next to the DSL that already names the RPC
@@ -312,23 +335,34 @@ dozen other items.
    |---|---|---|---|---|
    | 1 | this | `AshIntrospection.ResourceInfo` and the optional `:manifest` key | 0.4.x, additive | shipped |
    | 2 | this | `Manifest.Decorator.decorate/3` and `Manifest.Custom`: field and argument name maps, `formatted_field_names`, `return_classification`, per-relationship pagination | 0.4.x, additive | shipped |
-   | 3 | consumer | `use AshKotlinMultiplatform.Manifest`, its two transformers, the `8c07331` compile-time edges, an installer | consumer minor | next |
-   | 4 | this | delete `Codegen.TypeDiscovery` (1010 lines); codegen reads the manifest only | 0.5.0, breaking | |
+   | 3 | consumer | `use AshKotlinMultiplatform.Manifest`, its two transformers, the `8c07331` compile-time edges, an installer | consumer minor | shipped |
+   | 4a | this | codegen reads the manifest; `Codegen.TypeDiscovery` stays, proved byte-identical | 0.4.x, additive | shipped |
+   | 4b | this | delete `Codegen.TypeDiscovery` (1010 lines); codegen reads the manifest only | 0.5.0, breaking | next |
    | 5 | this | make `:manifest` required in the request path; drop the live fallbacks except the runtime struct guards | 0.6.0, breaking | |
 
-   **Stage 3 is the one that makes any of this run.** Nothing in this repo
-   builds a manifest, so stage 2's decorator has no caller in production: the
-   only thing that calls `decorate/3` today is
-   `test/support/manifest_fixture.ex`. Until the consumer declares a manifest
-   and decorates it, every read here is still live and stage 2 is inert.
+   **Stage 4 is split on purpose.** Reading a manifest and deleting the live
+   walk are two changes with different risk: the first is additive and
+   testable against the thing it replaces, the second is breaking and has
+   nothing left to compare against. 4a landed the reading path with a
+   differential test; 4b deletes the module once the reading path has been
+   exercised by a real consumer.
 
-   Stage 4 is the point of no return. Stage 2 is where the field-name cache
+   Stage 4b is the point of no return. Stage 2 is where the field-name cache
    declined in #26 arrived for free, as
-   `Manifest.Custom.formatted_field_names`. Stage 4 carries the remainder of
+   `Manifest.Custom.formatted_field_names`. Stage 4b carries the remainder of
    #21: entrypoint scoping here branches on the action kind, where upstream's
    `Reachability` walks each declared action's accepted attributes and follows
    its relationships to their destinations. It does not walk `load` statements
    — see T1 in [risks.md](risks.md) for the grep.
+
+   **What 4b still has to do**, beyond deleting the file: replace the
+   traversal's over-discovery with `Reachability`'s accepted-attribute walk
+   (the rest of #21); decide whether `find_resources_missing_from_rpc_config/2`
+   survives at all, since a manifest cannot answer what was never declared;
+   move `get_rpc_resources` from a callback to the manifest's entrypoints and
+   accept the warning change that follows; and move the consumer's own
+   `AshKotlinMultiplatform.Codegen.TypeDiscovery`, which is a second copy of
+   the same traversal against live introspection.
 
    Two traps the design surfaced and stage 3 must not inherit: `8c07331` is
    not optional (without its injected `domain.module_info(:md5)` and
