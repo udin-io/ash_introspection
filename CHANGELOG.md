@@ -14,6 +14,41 @@ and this project adheres to
 
 ## [Unreleased]
 
+### Changed
+
+- `AshIntrospection.Codegen.TypeDiscovery` reads a manifest. Every private
+  traversal helper now carries the config map and every public function takes
+  one, so its 14 introspection reads answer out of `config[:manifest]` when the
+  config has one and out of live `Ash.Resource.Info` when it does not. With a
+  manifest, entrypoints come from `manifest.entrypoints` — neither
+  `get_rpc_action_entrypoints` nor `get_rpc_resources` is required — and
+  `ResourceInfo.declared_resource?/2` scopes the traversal, so a type nobody
+  exposed stops it. `get_rpc_resources` still wins wherever it is supplied, and
+  `find_resources_missing_from_rpc_config/2` still scans domains live, because
+  it asks what was *not* declared. Additive: a config with no `:manifest` key
+  behaves exactly as before. Stage 4a of
+  [#23](https://github.com/udin-io/ash_introspection/issues/23); stage 4b
+  deletes the module and is breaking.
+
+  Seven public functions gained an optional trailing `config` argument:
+  `scan_rpc_resource/3`, `find_referenced_embedded_resources/2`,
+  `find_referenced_non_embedded_resources/2`, `find_referenced_resources/2`,
+  `find_struct_argument_resources/2`, `traverse_type/3` and
+  `traverse_fields/2`. Existing calls compile unchanged.
+
+  One behaviour difference is documented rather than corrected: a manifest
+  sorts its entrypoints and a DSL declares them in its own order, so codegen
+  output is reordered once a consumer passes `:manifest`. See
+  `docs/decisions.md`.
+
+### Added
+
+- `test/ash_introspection/manifest/codegen_differential_test.exs`. Runs every
+  public function of `Codegen.TypeDiscovery` against live introspection and
+  against a decorated manifest — 423 comparisons over 22 fixture resources and
+  23 entrypoints — and asserts each pair of results is the same term byte for
+  byte.
+
 ## [0.4.1] - 2026-09-11
 
 Additive. Stages 1 and 2 of
