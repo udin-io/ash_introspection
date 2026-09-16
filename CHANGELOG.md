@@ -20,9 +20,11 @@ and this project adheres to
   ([#78](https://github.com/udin-io/ash_introspection/issues/78)), clearing
   advisory EEF-CVE-2026-86338 (field policies not filtering nil forbidden
   calculations and aggregates, an information-disclosure oracle; affects
-  `>= 2.11.0-rc.0, < 3.33.4`). `mix igniter.upgrade ash@3.33.4` pinned the
-  dependency to `{:ash, "== 3.33.4"}` (was `"~> 3.33"`) and moved `reactor`
-  1.0.6 to 1.0.7 and `spark` 2.7.2 to 2.7.3 alongside it. No call site
+  `>= 2.11.0-rc.0, < 3.33.4`). `mix igniter.upgrade ash@3.33.4` moved
+  `reactor` 1.0.6 to 1.0.7 and `spark` 2.7.2 to 2.7.3 alongside it. The
+  dependency reads `{:ash, "~> 3.33 and >= 3.33.4"}` (was `"~> 3.33"`) — a
+  security floor, not a pin, so a consumer stays free to take 3.33.5 and
+  later without this library forcing an exact version on it. No call site
   changed; full suite green.
 
 ### Changed
