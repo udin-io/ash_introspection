@@ -14,6 +14,14 @@ and this project adheres to
 
 ## [Unreleased]
 
+## [0.4.2] - 2026-09-16
+
+Additive, and a security release. The `ash` floor rises to 3.33.4, the first
+release fixing EEF-CVE-2026-86338, and codegen reads a manifest when the config
+carries one (stage 4a of
+[#23](https://github.com/udin-io/ash_introspection/issues/23)). No breaking
+change, so no upgrade task is needed.
+
 ### Fixed
 
 - `ash` bumped from 3.33.1 to 3.33.4
