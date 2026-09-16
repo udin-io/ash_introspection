@@ -14,6 +14,17 @@ and this project adheres to
 
 ## [Unreleased]
 
+### Fixed
+
+- `ash` bumped from 3.33.1 to 3.33.4
+  ([#78](https://github.com/udin-io/ash_introspection/issues/78)), clearing
+  advisory EEF-CVE-2026-86338 (field policies not filtering nil forbidden
+  calculations and aggregates, an information-disclosure oracle; affects
+  `>= 2.11.0-rc.0, < 3.33.4`). `mix igniter.upgrade ash@3.33.4` pinned the
+  dependency to `{:ash, "== 3.33.4"}` (was `"~> 3.33"`) and moved `reactor`
+  1.0.6 to 1.0.7 and `spark` 2.7.2 to 2.7.3 alongside it. No call site
+  changed; full suite green.
+
 ### Changed
 
 - `AshIntrospection.Codegen.TypeDiscovery` reads a manifest. Every private

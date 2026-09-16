@@ -100,7 +100,7 @@ defmodule AshIntrospection.MixProject do
 
   defp deps do
     [
-      {:ash, "~> 3.33"},
+      {:ash, "== 3.33.4"},
       {:spark, "~> 2.6"},
       # Powers `mix ash_introspection.upgrade`. Dev and test only: the task
       # guards itself with `Code.ensure_loaded?(Igniter)`, and a consumer
