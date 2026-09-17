@@ -5,7 +5,7 @@
 defmodule AshIntrospection.MixProject do
   use Mix.Project
 
-  @version "0.5.0"
+  @version "0.5.1"
 
   @description """
   Shared core library for Ash interoperability with multiple languages.
