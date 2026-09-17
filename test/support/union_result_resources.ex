@@ -26,6 +26,32 @@ defmodule AshIntrospection.Test.ShelfSummary do
   end
 end
 
+defmodule AshIntrospection.Test.ShelfContent do
+  @moduledoc """
+  A NewType over `Test.Shelf`'s union. Its `:types` live on the NewType, so a
+  result typed from the action's raw `returns` sees no members until the
+  NewType is unwrapped.
+  """
+  @member_types [
+    summary: [type: AshIntrospection.Test.ShelfSummary],
+    counts: [
+      type: :map,
+      constraints: [
+        fields: [
+          book_count: [type: :integer],
+          top_title: [type: :string]
+        ]
+      ]
+    ],
+    note: [type: :string]
+  ]
+
+  use Ash.Type.NewType, subtype_of: :union, constraints: [types: @member_types]
+
+  @doc "The members, shared with `Test.Shelf`'s attribute and actions."
+  def member_types, do: @member_types
+end
+
 defmodule AshIntrospection.Test.Shelf do
   @moduledoc """
   Fixture for #84: union results that came back `nil`.
@@ -40,7 +66,8 @@ defmodule AshIntrospection.Test.Shelf do
   A generic action typed from `:badge` returns the wrong shape.
 
   `:pick_content` returns one union value, chosen by its `:member` argument.
-  `:all_content` returns one value of each member, in member order.
+  `:pick_wrapped_content` does the same through `Test.ShelfContent`, a
+  NewType. `:all_content` returns one value of each member, in member order.
 
   The `:counts` sample carries `internal_rank`, which `:counts` does not
   declare. A result typed from the action's own constraints drops it.
@@ -52,19 +79,7 @@ defmodule AshIntrospection.Test.Shelf do
     domain: AshIntrospection.Test.UnionResultDomain,
     data_layer: Ash.DataLayer.Ets
 
-  @member_types [
-    summary: [type: AshIntrospection.Test.ShelfSummary],
-    counts: [
-      type: :map,
-      constraints: [
-        fields: [
-          book_count: [type: :integer],
-          top_title: [type: :string]
-        ]
-      ]
-    ],
-    note: [type: :string]
-  ]
+  @member_types AshIntrospection.Test.ShelfContent.member_types()
 
   ets do
     private?(true)
@@ -93,6 +108,17 @@ defmodule AshIntrospection.Test.Shelf do
     action :pick_content, :union do
       constraints(types: @member_types)
 
+      argument(:member, :atom,
+        allow_nil?: false,
+        constraints: [one_of: [:summary, :counts, :note]]
+      )
+
+      run(fn input, _context ->
+        {:ok, AshIntrospection.Test.Shelf.sample(input.arguments.member)}
+      end)
+    end
+
+    action :pick_wrapped_content, AshIntrospection.Test.ShelfContent do
       argument(:member, :atom,
         allow_nil?: false,
         constraints: [one_of: [:summary, :counts, :note]]
