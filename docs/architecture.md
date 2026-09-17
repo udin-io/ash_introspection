@@ -286,7 +286,7 @@ sequenceDiagram
         A-->>S: records or Ash.Page
         S-->>K: {:ok, result}
         K->>S: process_result(result, request, config)
-        Note over S: applies the extraction template<br/>and redacts ForbiddenField / NotLoaded
+        Note over S: applies the extraction template<br/>and redacts ForbiddenField / NotLoaded<br/>types a generic action's result from<br/>action_returns, never the resource
         S-->>K: {:ok, filtered}
         K->>S: format_output_with_request(filtered, request, config)
         Note over S: camelizes keys, formats values by type

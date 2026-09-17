@@ -15,6 +15,20 @@ which come first. Numbers in parentheses are GitHub issues on
 
 ## Shipped
 
+### Unreleased — 0.5.1
+
+- **#84 — union results came back `null`.** Two causes, both in the request
+  path. `FieldSelector.process_nested_union_member/8` keyed a nested member
+  entry by its wire name, so `ResultProcessor` never matched it: a read or a
+  generic action selecting member fields returned `null`, and a list of three
+  unions came back with one. And `ResultProcessor.determine_data_type/3` typed
+  a generic action's top-level union from the owning resource's first union
+  attribute; it now reads `:action_returns`, which `Pipeline.process_result/3`
+  sets from the action. `get_union_constraints_from_resource/2` is deleted.
+  Additive. Found measuring `ash_kotlin_multiplatform` 0.2.0, which it blocked.
+  `Test.Shelf` carries the fixtures; the suite is 460 tests + 1 doctest. See
+  [decisions.md](decisions.md).
+
 ### 0.5.0 — 2026-09-17
 
 - **#23 stage 4b — delete `Codegen.TypeDiscovery`, breaking for 0.5.0.**
