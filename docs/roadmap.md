@@ -31,6 +31,14 @@ which come first. Numbers in parentheses are GitHub issues on
   naming the removed functions and where each answer now lives. Both test
   files that exercised the module went with it, 28 tests; the suite is 451
   tests + 1 doctest. See [decisions.md](decisions.md).
+### 0.4.2 — 2026-09-16
+
+- **#78 — the `ash` floor rises to 3.33.4.** `ash` moved from 3.33.1 to
+  3.33.4 (#79, `1d518ff`), the first release fixing EEF-CVE-2026-86338: field
+  policies did not filter nil forbidden calculations and aggregates, an
+  information-disclosure oracle. `reactor` moved to 1.0.7 and `spark` to 2.7.3
+  alongside it. The requirement reads `~> 3.33 and >= 3.33.4`, a security
+  floor rather than a pin. No call site changed.
 - **#23 stage 4a — codegen reads the manifest, and `Codegen.TypeDiscovery`
   stays.** Every private traversal helper in
   `AshIntrospection.Codegen.TypeDiscovery` now carries the config map, and
@@ -50,8 +58,11 @@ which come first. Numbers in parentheses are GitHub issues on
   adoption; see [decisions.md](decisions.md). `Test.Dossier` is a new fixture:
   the only one whose attribute names a non-embedded resource, which is what
   three readers needed to stop comparing `[]` with `[]`. Additive and
-  reversible. Released in 0.4.2; stage 4b, above, deleted the module and this
-  differential test with it.
+  reversible (#77, `d254c47`). Stage 4b, in Unreleased above, deleted the
+  module and this differential test with it.
+
+### 0.4.1 — 2026-09-11
+
 - **#23 stage 2 — one compile-time pass writes what this library reads.**
   `AshIntrospection.Manifest.Decorator.decorate/3` walks a generated
   `%Ash.Info.Manifest{}` once and writes under `custom.<namespace>` what the
@@ -301,7 +312,7 @@ each.
 - **Closed without a code change**: #26, which is in "Decided against" below
   with its measurement, and #39, whose two halves had both already landed —
   the README reflow in #51, the test-domain warning in `config/test.exs` in
-  #42. #61 was filed out of #26 and shipped in Unreleased above.
+  #42. #61 was filed out of #26 and shipped in 0.4.1 above.
 
 ### 0.3.0 — 2026-09-09
 
@@ -378,8 +389,8 @@ dozen other items.
    persisted DSL state is already free at runtime.
 2. **The one correctness fix left that needs no manifest**: #66 (a nested
    selection inside a tuple field returns `nil`, because the template entry
-   carries no tuple index — filed out of #35). #40 shipped in Unreleased
-   above.
+   carries no tuple index — filed out of #35). #40 shipped in 0.4.1, under
+   Shipped above.
 3. **#18 — the RPC test floor.** Coverage arrives with each fix by preference,
    but the harness and the fixtures are still a ticket of their own.
 4. **Upstream parity features**: #24 (relationship query envelopes), #25
