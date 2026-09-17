@@ -14,17 +14,21 @@ and this project adheres to
 
 ## [Unreleased]
 
-Breaking, for 0.5.0: `AshIntrospection.Codegen.TypeDiscovery` is gone (stage
-4b of [#23](https://github.com/udin-io/ash_introspection/issues/23)). Run the
-upgrade task before anything else:
+## [0.5.0] - 2026-09-17
+
+**Breaking.** `AshIntrospection.Codegen.TypeDiscovery` is deleted (stage 4b of
+[#23](https://github.com/udin-io/ash_introspection/issues/23)), and codegen
+reads the manifest only. Run the upgrade task before anything else:
 
 ```
 mix igniter.upgrade ash_introspection
 ```
 
-For 0.5.0 it rewrites nothing and prints a notice naming each removed function
-and where its answer now lives. To run it on its own:
-`mix ash_introspection.upgrade 0.4.2 0.5.0`.
+It rewrites nothing for 0.5.0 and prints a notice naming each removed
+function and where its answer now lives. To run it on its own:
+`mix ash_introspection.upgrade 0.4.2 0.5.0`. A consumer pinned to `~> 0.4`
+does not take this release; bumping to `~> 0.5` is a deliberate step in the
+consumer's own pull request.
 
 ### Removed
 
