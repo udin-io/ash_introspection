@@ -140,6 +140,22 @@ defmodule Mix.Tasks.AshIntrospection.UpgradeTest do
     end
   end
 
+  describe "0.5.0" do
+    test "names the removed module and its replacement, rewrites nothing" do
+      "TypeDiscovery.find_embedded_resources(:my_app, config)"
+      |> upgrade(from: "0.4.2", to: "0.5.0")
+      |> assert_unchanged("lib/my_app/rpc.ex")
+      |> assert_has_notice(&(&1 =~ "AshIntrospection.Codegen.TypeDiscovery"))
+      |> assert_has_notice(&(&1 =~ "manifest.types"))
+    end
+
+    test "does not fire when 0.5.0 falls outside the range" do
+      igniter = upgrade("error.code", from: "0.3.0", to: "0.4.0")
+
+      refute Enum.any?(igniter.notices, &(&1 =~ "Codegen.TypeDiscovery"))
+    end
+  end
+
   describe "version selection" do
     test "does not rewrite code when 0.3.0 falls outside the range" do
       "error.code"

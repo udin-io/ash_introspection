@@ -26,9 +26,10 @@ does it live at 64 call sites (#23, measured at `74afafd`). Since stage 1 of
 #23 all 64 read through `AshIntrospection.ResourceInfo`, and since stage 2
 those reads answer out of a decorated manifest when one is supplied. Stage 3
 shipped in `ash_kotlin_multiplatform` (its PR #75, `e5ad024`), so a manifest is
-now built; stage 4a made `Codegen.TypeDiscovery` read one. The request path
-still does not — nothing in this repo puts a manifest on the pipeline config,
-so every RPC read in production is live.
+now built, and since stage 4b the consumer's codegen reads its types straight
+off it: this repo's `Codegen.TypeDiscovery` is deleted. The request path does
+not read one — nothing in this repo puts a manifest on the pipeline config, so
+every RPC read in production is live.
 
 **Why it bites.** A bug fixed upstream stays live here, and it stays live in
 `ash_kotlin_multiplatform`, which is what a real user runs.
@@ -41,29 +42,30 @@ items #19 through #26 are all upstream-parity work.
 port the rest against the manifest instead of against live introspection.
 Re-porting each fix onto live introspection is the expensive path and it is the
 one we are on until #23 lands. Stages 1 and 2 shipped the seam and the
-decorator that fills it; stages 3 to 5 are on [roadmap.md](roadmap.md), and
-stage 4 is the one that closes the gap.
+decorator that fills it, stage 3 the consumer's manifest, and stage 4 moved
+codegen onto it. Stage 5, on [roadmap.md](roadmap.md), moves the request path
+and closes the gap.
 
-**Two traversals now, not one.** Stage 4a left `Codegen.TypeDiscovery` in
-place reading a manifest, so until stage 4b deletes it this repo carries the
-hand-written traversal *and* the manifest that `Reachability` produced. They
-agree over `test/support/` — 423 byte-for-byte comparisons in
-`test/ash_introspection/manifest/codegen_differential_test.exs` — and nothing
-checks that they agree over a consumer's resources. A consumer whose resources
-reach further than the fixtures would find the disagreement at stage 4b, when
-the comparison is gone. Watch: run that test on every change to either path,
-and run the consumer's codegen against both configs before 4b lands.
-
-**A port can now be partial, which is new.** #21 landed the behaviour of
+**A port was partial; the manifest closed it.** #21 landed the behaviour of
 upstream `437901f` by hand, because upstream's own version of that commit calls
-`Ash.Info.Manifest.Generator.Reachability` and there is nothing here to call.
-Discovery scopes to declared entrypoints by action kind: a read, create, update
-or destroy entrypoint keeps the whole resource in scope, a generic action keeps
-only what it names. Upstream is finer — it walks each action's accepted
-attributes and follows relationships to their destinations — so this repo
-still over-discovers for a resource whose read action exposes fields no client
-asks for. A partial port reads as a closed issue in the log and is not one; #23
-carries the rest.
+`Ash.Info.Manifest.Generator.Reachability` and there was nothing here to call.
+The deleted `Codegen.TypeDiscovery` scoped by action kind, where upstream walks
+each action's accepted attributes and follows relationships to their
+destinations. Since stage 4b nothing here discovers types: a consumer takes
+them from `Reachability` through the manifest, so the rest of #21 closed with
+the deletion. Two measurements, and they say different things:
+
+- Over this repo's fixtures, the deleted module and `manifest.types` found the
+  same 7 embedded resources, 0 different in either direction (2026-09-17, at
+  `5dc9e85`). Here the manifest is exactly as wide as what it replaced.
+- In `ash_kotlin_multiplatform` PR #86, the consumer's old one-level attribute
+  walk found 1 embedded resource over its fixtures and the manifest found 8.
+  Against that walk the manifest is wider, and correctly so.
+
+What remains: nothing here can compare the two any more, so a type the
+manifest omits is an upstream gap and is found only in the consumer. PR #86
+found one — an embedded resource reached only through a `first` aggregate —
+and pins it with a test.
 
 `Reachability` does **not** walk `load` statements, whatever an earlier version
 of this page said. `grep load
@@ -76,12 +78,13 @@ capability upstream does not have.
 
 ### T2 — One consumer, no contract test
 
-**The risk.** `ash_kotlin_multiplatform` depends on `ash_introspection ~> 0.3`
-(`mix.exs:102`, checked 2026-09-10) and calls it at 35 sites across 21 files
-(measured 2026-09-09). Nothing in either repo fails when the shared surface
-changes shape. The requirement admits every 0.3.x, so the consumer takes each
-release here without review — the opposite exposure to the `~> 0.2.0` pin an
-earlier version of this page described.
+**The risk.** `ash_kotlin_multiplatform` depends on `ash_introspection ~> 0.4`
+(`mix.exs:111`, checked 2026-09-17) and names `AshIntrospection` on 49 lines
+across 22 files of its `lib/` (grep at its `70671e8`). Nothing in either repo
+fails when the shared surface changes shape. The requirement admits every
+0.4.x, so the consumer takes each such release here without review. It
+excludes 0.5.0, which deletes `Codegen.TypeDiscovery`: that one needs a
+deliberate bump in a consumer pull request.
 
 **Why it bites.** The 0.3.0 rename of `code` to `type` is exactly the class of
 change a contract test catches and a version constraint does not. It shipped
@@ -109,16 +112,15 @@ yet and is not on the board.
 **One half of it now does exist, for one surface.** #23 stage 1 added
 `test/ash_introspection/resource_info_test.exs` and
 `test/ash_introspection/rpc/pipeline_manifest_parity_test.exs`, and stage 2
-added `test/ash_introspection/manifest/differential_test.exs`, and stage 4a
-added `test/ash_introspection/manifest/codegen_differential_test.exs`. Together
-they run live introspection and a decorated manifest against each other field
-by field, action by action, response by response, and now discovery result by
-discovery result — 423 byte-for-byte comparisons for codegen alone. That is
-the differential test this page said was missing — for
-`AshIntrospection.ResourceInfo` and `Codegen.TypeDiscovery`, and for nothing
-else. It says nothing about whether the consumer's call sites still compile,
-and `ash_kotlin_multiplatform` carries its own copy of the same traversal in
-`AshKotlinMultiplatform.Codegen.TypeDiscovery`, which no test here touches.
+added `test/ash_introspection/manifest/differential_test.exs`. Together they
+run live introspection and a decorated manifest against each other field by
+field, action by action, response by response. Stage 4a added a fourth for
+codegen, 423 byte-for-byte comparisons, and stage 4b deleted it with the
+module it compared. That is the differential test this page said was missing
+— for `AshIntrospection.ResourceInfo`, and for nothing else. It says nothing
+about whether the consumer's call sites still compile. The consumer's own copy
+of the traversal is gone too (its PR #83), and its codegen reads
+`manifest.types` (its PR #86).
 
 Stage 2 is what those tests were for, and they earned it on the first run: they
 found `relationship/3` answering `nil` for a private `belongs_to`, a bug stage

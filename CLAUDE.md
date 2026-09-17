@@ -46,26 +46,6 @@ One heading per lesson, each with the symptom and the reason. Add to this list
 whenever you learn something a future session would otherwise rediscover the
 hard way, and commit it with the work that taught it.
 
-### A manifest sorts entrypoints; a callback keeps declaration order
-
-**Symptom.** A differential test that ran `Codegen.TypeDiscovery` against a
-callback config and against a manifest config got the same resources back in a
-different order, with an empty set difference both ways.
-
-**Reason.** `Ash.Info.Manifest.Generator` sorts entrypoints by
-`{Module.split(e.resource), e.action.name}`
-(`deps/ash/lib/ash/info/manifest/generator.ex:239` and `:261`, ash 3.33.1). A
-`get_rpc_action_entrypoints` callback returns whatever the consumer's DSL
-declared. Discovery output is ordered by its entrypoints, so the order follows
-the source.
-
-**What to do.** Hold the entrypoint order constant when comparing the two
-paths — `AshIntrospection.Test.ManifestFixture.manifest_entrypoints/0` returns
-the fixture's pairs in the manifest's order for exactly this. Do not sort the
-callback path to match: that changes what a config with no `:manifest` key
-does. The divergence itself is pinned by one test in
-`codegen_differential_test.exs` and recorded in `docs/decisions.md`.
-
 ### `Igniter.update_all_elixir_files/2` reaches no file under `Igniter.Test`
 
 **Symptom.** A codemod test is green and asserts nothing. The task runs, the
@@ -115,10 +95,11 @@ for a module the VM has not loaded yet, so a consumer's domain or type that has
 not been touched in the current process silently takes the fallback path.
 
 **What we do.** Every check against a module we did not write is guarded. #49
-swept the library and guarded ten sites across `Rpc.Errors`,
+swept the library and guarded ten sites. Nine remain, across `Rpc.Errors`,
 `Rpc.ResultProcessor`, `Rpc.FieldProcessing.Atomizer`,
-`Rpc.FieldProcessing.FieldSelector`, `Rpc.Pipeline`, `TypeSystem.Introspection`
-and `Codegen.TypeDiscovery`. Grep for bare `function_exported?/3` before adding
+`Rpc.FieldProcessing.FieldSelector`, `Rpc.Pipeline` and
+`TypeSystem.Introspection`; the tenth went with `Codegen.TypeDiscovery` in
+0.5.0. Grep for bare `function_exported?/3` before adding
 another; `grep -rn 'function_exported?' lib | grep -v 'Code.ensure_loaded?'`
 should print only comment and continuation lines of guarded expressions.
 
@@ -524,13 +505,14 @@ at the top of every `.ex`, `.exs` and `.md` file. Markdown uses an HTML comment.
 **Symptom.** A change passes 281 tests here and breaks
 `ash_kotlin_multiplatform`.
 
-**Why.** `ash_kotlin_multiplatform` calls `AshIntrospection` at 35 sites across
-21 files (measured 2026-09-09) and there is no contract test between the two
-repos. Its `mix.exs` asks for `~> 0.3` (line 102, checked 2026-09-10), so it
-takes every 0.3.x release here unreviewed — **and stops at 0.4.0**, which
-`~> 0.3` excludes. That pin is the only thing keeping the 0.4.0 `identity`
-break off the consumer, so bumping it there is a deliberate step with the
-Swift regeneration in the same pull request, never a routine `mix deps.update`.
+**Why.** `ash_kotlin_multiplatform` names `AshIntrospection` on 49 lines
+across 22 files of its `lib/` (grep at its `70671e8`, 2026-09-17) and there is
+no contract test between the two repos. Its `mix.exs` asks for `~> 0.4` (line
+111, checked 2026-09-17), so it takes every 0.4.x release here unreviewed —
+**and stops at 0.5.0**, which `~> 0.4` excludes. 0.5.0 deletes
+`Codegen.TypeDiscovery`. The consumer already has zero callers of it, and
+bumping the requirement is still a deliberate step in a consumer pull request,
+never a routine `mix deps.update`.
 
 **What we do.** Before changing a public function on `Rpc.Pipeline`,
 `Rpc.Request`, `FieldFormatter`, `Helpers`, `TypeSystem.Introspection` or
@@ -559,11 +541,14 @@ mix hex.audit
 mix deps.audit
 ```
 
-`main` is at **406 tests + 1 doctest, 0 failures** (measured 2026-09-11 on
-`issue-61-formatter-predicates`, 6 tests above `6ada29f`'s 400, which was
-itself 21 above `74afafd`'s 379). A pull request that changes that number
-downward, or that leaves a compiler warning, is not finished. Never suppress a
-warning — fix the cause.
+`main` is at **451 tests + 1 doctest, 0 failures** (measured 2026-09-17 on
+`issue-23-stage-4b-delete-type-discovery`). That is 26 below `5dc9e85`'s 477,
+and the drop is deliberate: #23 stage 4b deleted `Codegen.TypeDiscovery` with
+its 14 unit tests and the 14-test differential suite that compared it against
+the manifest, and added 2 tests for the 0.5.0 upgrade notice. The 406 this
+page carried before was already stale. Any other pull request that changes the
+number downward, or that leaves a compiler warning, is not finished. Never
+suppress a warning — fix the cause.
 
 ## Markdown in this repo
 

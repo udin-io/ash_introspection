@@ -13,82 +13,62 @@ recorded nowhere in the repo. This page replaces ADRs; there is no `adr/`
 directory here and none should be created. A decision that no longer shapes the
 code is deleted, not archived, because git keeps the history.
 
-## 2026-09-13 — Stage 4 is two pull requests: read, then delete
+## 2026-09-17 — Delete `Codegen.TypeDiscovery`; codegen reads the manifest only
 
-**Decided.** Issue #23 stage 4 ships in two halves.
-`AshIntrospection.Codegen.TypeDiscovery` learns to read a manifest and stays
-where it is; a later, breaking pull request deletes it. This entry is the first
-half.
+**Decided.** 0.5.0 deletes `AshIntrospection.Codegen.TypeDiscovery`, 1109
+lines, with no replacement in this library. A client generator reads the types
+it needs from a generated `%Ash.Info.Manifest{}`: embedded resources are the
+`manifest.types` entries whose `kind` is `:embedded_resource`, and resources
+are `manifest.resources`. Five functions go with the module and have no
+replacement: `find_resources_missing_from_rpc_config/2`,
+`find_non_rpc_referenced_resources/2`,
+`find_non_rpc_referenced_resources_with_paths/2`,
+`build_missing_config_warning/3` and `build_non_rpc_references_warning/2`.
+Issue #23 stage 4b. `mix ash_introspection.upgrade` prints a notice for 0.5.0
+naming all of it.
 
-**Why.** Reading a manifest and deleting the live walk are two changes with
-different risk and different evidence. Reading is additive, and the thing it
-replaces is still standing next to it, so a differential test can prove the
-answers are the same:
-`test/ash_introspection/manifest/codegen_differential_test.exs` runs every
-public function of `TypeDiscovery` against live introspection and against a
-decorated manifest, 423 times, and asserts the results are the same term byte
-for byte. Deleting is breaking and has nothing left to compare against — the
-moment `TypeDiscovery` is gone, "the manifest answers correctly" is an
-assertion, not a measurement. Doing both at once would have spent the only
-oracle this migration gets.
+**Why now.** Stage 4 was split so the deletion would wait for evidence: a real
+consumer generating from the manifest. `ash_kotlin_multiplatform` PR #86
+(`70671e8`) moved its codegen onto `manifest.types`, and PR #83 deleted its own
+copy of the traversal. At `70671e8`, grep of its `lib/` and `test/` finds
+`TypeDiscovery` nowhere, and `mix xref callers
+AshIntrospection.Codegen.TypeDiscovery` returns nothing. Until this change
+`test/ash_introspection/manifest/codegen_differential_test.exs` compared the
+module's live and manifest answers 423 times, byte for byte, and they agreed.
 
-The timing matters too. Stage 3 shipped in `ash_kotlin_multiplatform` (its PR
-#75, `e5ad024`), so a manifest is finally built somewhere, and its own report
-noted that nothing read it outside its own tests. This is the change that makes
-that assumption load-bearing. Splitting the stage means it becomes load-bearing
-on a reversible release.
+**Why a wider answer is accepted.** Two measurements, and they say different
+things:
 
-**Two boundaries this half deliberately did not cross.**
-`get_rpc_resources` still wins wherever the config carries it, including
-alongside a manifest, because it answers a different question: what the
-consumer listed in its RPC block, not what has a declared entrypoint. A
-resource listed with no exposed action is in the first answer and not the
-second, and `find_resources_missing_from_rpc_config/2` and
-`find_non_rpc_referenced_resources/2` are warnings built on it — switching
-the source would have made them accuse a resource that was configured
-correctly. And `find_resources_missing_from_rpc_config/2` keeps scanning
-`Ash.Info.domains/1` live, because it asks which resources were *not* declared
-and a manifest carries only what was.
+- Over this repo's fixtures the module and `manifest.types` found the same 7
+  embedded resources, 0 different in either direction (measured 2026-09-17 at
+  `5dc9e85`).
+- In the consumer, its old one-level attribute walk found 1 embedded resource
+  over PR #86's fixtures and the manifest found 8. Before that PR the
+  generated Kotlin named three types it never declared.
 
-**Cost.** `TypeDiscovery` is now 1010 lines that read a manifest and will be
-deleted anyway, and until stage 4b lands the repo has two answers to "what does
-codegen generate for" that happen to agree. The threading itself widened seven
-public functions with an optional trailing `config`, which
-`ash_kotlin_multiplatform` sees as new arity. And the differential test's
-strength is its fixture set: it proves the two paths agree over
-`test/support/`, not over a consumer's resources.
+So the manifest is at least as wide as the deleted module here, and much wider
+than the consumer's own walk. `Reachability` follows action arguments,
+accepted attributes and relationships; a client that names a type has to
+declare it, so wider is the correct direction.
 
-## 2026-09-13 — A manifest sorts entrypoints, so discovery reorders
+**Why the warnings go.** They reported resources a consumer had not declared.
+A manifest carries only what was declared, so it cannot answer that, and
+keeping them would have kept a live `Ash.Info.domains/1` scan alive for two
+warnings no consumer calls.
 
-**Decided.** Adopting a manifest reorders codegen output, and that is accepted
-rather than corrected. `Ash.Info.Manifest.Generator` sorts entrypoints by
-resource module and then by action name
-(`deps/ash/lib/ash/info/manifest/generator.ex:239`, ash 3.33.1); a consumer's
-DSL declares them in whatever order it was written in. Discovery output is
-ordered by its entrypoints, so the same resource set comes back in a different
-order once a consumer passes `:manifest`. Issue #23 stage 4a.
+**What else this retires.** The 2026-09-13 decision that a manifest's sorted
+entrypoints reorder discovery output compared a manifest config with a
+callback config. With the module gone there is one order, the manifest's, and
+the consumer sorts embedded classes by module name.
 
-**Why the manifest's order is the right one.** Ash sorts for a stated reason —
-`Ash.Info.Manifest.Resource.all_fields/1` says sorting "ensures codegen output
-is deterministic across runs", because Erlang map iteration order is unstable
-above 32 keys. A declaration order is stable only while nobody edits the DSL,
-and a reordered `kotlin_rpc` block should not reorder a generated file.
-
-**Why it is not corrected on the live path.** Sorting the callback's answer too
-would make both paths agree, and would change what a config with no `:manifest`
-key does today. The compatibility guarantee of this stage is that such a config
-behaves exactly as before, and it is worth more than the symmetry.
-
-**How it is recorded rather than hidden.** The differential test hands the live
-path the entrypoints in the manifest's order, because the entrypoint order is
-an input to discovery and holding an input constant is what makes the rest of
-the file a test of the reader. One test, `"the manifest sorts entrypoints and a
-callback does not"`, asserts the divergence directly: the two orders differ,
-the two discovery results differ, and their sorts are equal.
-
-**Cost.** A consumer adopting a manifest sees a one-time diff in generated
-files with no behaviour change in them, which is exactly the kind of diff that
-gets skimmed. It should be landed on its own commit.
+**Cost.** Breaking, and the consumer's `~> 0.4` excludes 0.5.0, so it takes
+this release only through a deliberate bump. The differential test went with
+the module it compared, so "the manifest answers correctly" is now Ash's claim
+and not a measurement here. The suite drops 26 tests net, 477 to 451. The route
+fixtures in `test/support/discovery_resources.ex` stay as manifest inputs, but
+no test here names them. And an embedded resource reached only through a
+`first` aggregate is in neither the consumer's old answer nor the manifest; its
+PR #86 pins that upstream Ash gap with a test.
 
 ## 2026-09-11 — The decoration carries Ash's structs, it does not rebuild them
 
@@ -123,7 +103,7 @@ of its arguments cannot own a dependency graph. It also means the win is
 smaller than "stop introspecting": the request path stops *walking*, it does
 not stop *holding*. And moving to manifest-shaped return values later is a
 breaking change this stage deferred rather than avoided; it belongs with stage
-4, which deletes `Codegen.TypeDiscovery`.
+5, which makes the manifest required on the request path.
 
 ## 2026-09-11 — The `custom` namespace is a parameter, not a constant
 
@@ -275,8 +255,8 @@ site is unambiguously codegen — is written in the reader's moduledoc and
 nothing enforces it. Six public functions gained an optional trailing argument,
 which is additive but widens the surface `ash_kotlin_multiplatform` depends on.
 `Codegen.TypeDiscovery` routed its 14 reads and was handed no config, so it
-could not read a manifest even when one was supplied; stage 4a fixed that and
-the entry at the top of this page records what it cost. And the reader narrows
+could not read a manifest even when one was supplied; stage 4a threaded the
+config through, and stage 4b deleted the module in 0.5.0. And the reader narrows
 two return shapes
 the two sources cannot share — `relationship/3` and `identity_keys/3` return
 only the keys this library reads, so a future caller wanting

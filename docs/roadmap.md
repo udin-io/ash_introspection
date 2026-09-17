@@ -17,6 +17,28 @@ which come first. Numbers in parentheses are GitHub issues on
 
 ### Unreleased
 
+- **#23 stage 4b — delete `Codegen.TypeDiscovery`, breaking for 0.5.0.**
+  `AshIntrospection.Codegen.TypeDiscovery` is gone, all 1109 lines, and so are
+  `find_resources_missing_from_rpc_config/2`,
+  `find_non_rpc_referenced_resources/2` and its `_with_paths` variant, and the
+  two warning builders. A client generator reads its types from a generated
+  `%Ash.Info.Manifest{}` instead: `manifest.types` for embedded resources,
+  `manifest.resources` for resources. The consumer moved first —
+  `ash_kotlin_multiplatform` PR #86 (`70671e8`) — and grep and
+  `mix xref callers` found no callers there. Over this repo's fixtures the
+  module and `manifest.types` agreed, 7 embedded resources each and 0
+  different. `mix ash_introspection.upgrade` gains a 0.5.0 step: a notice
+  naming the removed functions and where each answer now lives. Both test
+  files that exercised the module went with it, 28 tests; the suite is 451
+  tests + 1 doctest. See [decisions.md](decisions.md).
+### 0.4.2 — 2026-09-16
+
+- **#78 — the `ash` floor rises to 3.33.4.** `ash` moved from 3.33.1 to
+  3.33.4 (#79, `1d518ff`), the first release fixing EEF-CVE-2026-86338: field
+  policies did not filter nil forbidden calculations and aggregates, an
+  information-disclosure oracle. `reactor` moved to 1.0.7 and `spark` to 2.7.3
+  alongside it. The requirement reads `~> 3.33 and >= 3.33.4`, a security
+  floor rather than a pin. No call site changed.
 - **#23 stage 4a — codegen reads the manifest, and `Codegen.TypeDiscovery`
   stays.** Every private traversal helper in
   `AshIntrospection.Codegen.TypeDiscovery` now carries the config map, and
@@ -36,8 +58,11 @@ which come first. Numbers in parentheses are GitHub issues on
   adoption; see [decisions.md](decisions.md). `Test.Dossier` is a new fixture:
   the only one whose attribute names a non-embedded resource, which is what
   three readers needed to stop comparing `[]` with `[]`. Additive and
-  reversible. The deletion of `Codegen.TypeDiscovery` is stage 4b and is
-  breaking.
+  reversible (#77, `d254c47`). Stage 4b, in Unreleased above, deleted the
+  module and this differential test with it.
+
+### 0.4.1 — 2026-09-11
+
 - **#23 stage 2 — one compile-time pass writes what this library reads.**
   `AshIntrospection.Manifest.Decorator.decorate/3` walks a generated
   `%Ash.Info.Manifest{}` once and writes under `custom.<namespace>` what the
@@ -117,8 +142,10 @@ each.
   `is_custom_typescript_type?/1`; `classify_ash_type/3` and
   `get_union_types/1`, which upstream had already dropped in `b6ddffd`; and
   the `normalize_value_for_json/1` alias in `ResultProcessor`.
-  `get_union_types_from_constraints/2` stays — it backs `TypeDiscovery`,
+  `get_union_types_from_constraints/2` stays — it backed `TypeDiscovery`,
   `ValidationErrorTypes` and three `ash_kotlin_multiplatform` call sites.
+  `TypeDiscovery` is gone since stage 4b; two consumer call sites remain at
+  its `70671e8`.
   `get_action_return_type_info/1` in `Rpc.Pipeline` collapsed into its one
   caller, `get_field_mapping_module/3`, which only ever used two of its six
   classification tags. `Rpc.Pipeline`'s moduledoc no longer claims a
@@ -241,7 +268,8 @@ each.
   from a warm one. Ten call sites across `Rpc.Errors`, `Rpc.ResultProcessor`,
   `Rpc.FieldProcessing.Atomizer`, `Rpc.FieldProcessing.FieldSelector`,
   `Rpc.Pipeline`, `TypeSystem.Introspection` and `Codegen.TypeDiscovery` are
-  now guarded. Nine landed in #52; the tenth, in `Rpc.Pipeline`, came with #44,
+  now guarded. Stage 4b of #23 deleted `Codegen.TypeDiscovery`, so nine
+  remain. Nine landed in #52; the tenth, in `Rpc.Pipeline`, came with #44,
   which owned that file at the time. That tenth site has no test: both of its
   outcomes converge on `{nil, []}` downstream, so nothing observable changes.
   See [`CLAUDE.md`](../CLAUDE.md).
@@ -284,7 +312,7 @@ each.
 - **Closed without a code change**: #26, which is in "Decided against" below
   with its measurement, and #39, whose two halves had both already landed —
   the README reflow in #51, the test-domain warning in `config/test.exs` in
-  #42. #61 was filed out of #26 and shipped in Unreleased above.
+  #42. #61 was filed out of #26 and shipped in 0.4.1 above.
 
 ### 0.3.0 — 2026-09-09
 
@@ -314,17 +342,14 @@ merged commit on `main`.
 
 ## In progress
 
-- **#23 stage 4b — delete `Codegen.TypeDiscovery`.** The read half (4a) is in
-  Unreleased above. Stage 3 shipped in `ash_kotlin_multiplatform` (its PR #75,
-  `e5ad024`), so a manifest is finally built somewhere; stage 4a is the first
-  thing to read one on a path a consumer runs.
+- Nothing. Stage 4b of #23 is in Unreleased above; stage 5 is next.
 
 ## Next
 
 Ordered by what unblocks the most. #23 is first because it gates roughly a
 dozen other items.
 
-1. **#23 — adopt `Ash.Info.Manifest`, stages 4b and 5.** Stages 1, 2 and 4a
+1. **#23 — adopt `Ash.Info.Manifest`, stage 5.** Stages 1, 2, 4a and 4b
    shipped here; stage 3 shipped in the consumer. The manifest module itself
    cannot live here: building one needs a Spark DSL to declare entrypoints, and
    this library ships none — the recorded reason #26 was declined. So it goes
@@ -337,32 +362,24 @@ dozen other items.
    | 2 | this | `Manifest.Decorator.decorate/3` and `Manifest.Custom`: field and argument name maps, `formatted_field_names`, `return_classification`, per-relationship pagination | 0.4.x, additive | shipped |
    | 3 | consumer | `use AshKotlinMultiplatform.Manifest`, its two transformers, the `8c07331` compile-time edges, an installer | consumer minor | shipped |
    | 4a | this | codegen reads the manifest; `Codegen.TypeDiscovery` stays, proved byte-identical | 0.4.x, additive | shipped |
-   | 4b | this | delete `Codegen.TypeDiscovery` (1010 lines); codegen reads the manifest only | 0.5.0, breaking | next |
-   | 5 | this | make `:manifest` required in the request path; drop the live fallbacks except the runtime struct guards | 0.6.0, breaking | |
+   | 4b | this | delete `Codegen.TypeDiscovery` (1109 lines); codegen reads the manifest only | 0.5.0, breaking | shipped |
+   | 5 | this | make `:manifest` required in the request path; drop the live fallbacks except the runtime struct guards; manifest-shaped return values in place of the captured Ash structs, deferred from stage 2 | 0.6.0, breaking | next |
 
    **Stage 4 is split on purpose.** Reading a manifest and deleting the live
    walk are two changes with different risk: the first is additive and
    testable against the thing it replaces, the second is breaking and has
    nothing left to compare against. 4a landed the reading path with a
-   differential test; 4b deletes the module once the reading path has been
-   exercised by a real consumer.
+   differential test; 4b deleted the module once consumer PR #86 generated
+   from the manifest.
 
-   Stage 4b is the point of no return. Stage 2 is where the field-name cache
-   declined in #26 arrived for free, as
-   `Manifest.Custom.formatted_field_names`. Stage 4b carries the remainder of
-   #21: entrypoint scoping here branches on the action kind, where upstream's
-   `Reachability` walks each declared action's accepted attributes and follows
-   its relationships to their destinations. It does not walk `load` statements
-   — see T1 in [risks.md](risks.md) for the grep.
-
-   **What 4b still has to do**, beyond deleting the file: replace the
-   traversal's over-discovery with `Reachability`'s accepted-attribute walk
-   (the rest of #21); decide whether `find_resources_missing_from_rpc_config/2`
-   survives at all, since a manifest cannot answer what was never declared;
-   move `get_rpc_resources` from a callback to the manifest's entrypoints and
-   accept the warning change that follows; and move the consumer's own
-   `AshKotlinMultiplatform.Codegen.TypeDiscovery`, which is a second copy of
-   the same traversal against live introspection.
+   Stage 2 is where the field-name cache declined in #26 arrived for free, as
+   `Manifest.Custom.formatted_field_names`. Stage 4b closed the remainder of
+   #21: the deleted module scoped entrypoints by action kind, and codegen now
+   takes its types from upstream's `Reachability`, which walks each declared
+   action's accepted attributes and follows its relationships to their
+   destinations. It does not walk `load` statements — see T1 in
+   [risks.md](risks.md) for the grep. The consumer deleted its own copy of the
+   traversal in its PR #83.
 
    Two traps the design surfaced and stage 3 must not inherit: `8c07331` is
    not optional (without its injected `domain.module_info(:md5)` and
@@ -372,8 +389,8 @@ dozen other items.
    persisted DSL state is already free at runtime.
 2. **The one correctness fix left that needs no manifest**: #66 (a nested
    selection inside a tuple field returns `nil`, because the template entry
-   carries no tuple index — filed out of #35). #40 shipped in Unreleased
-   above.
+   carries no tuple index — filed out of #35). #40 shipped in 0.4.1, under
+   Shipped above.
 3. **#18 — the RPC test floor.** Coverage arrives with each fix by preference,
    but the harness and the fixtures are still a ticket of their own.
 4. **Upstream parity features**: #24 (relationship query envelopes), #25
