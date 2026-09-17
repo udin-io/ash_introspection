@@ -15,7 +15,7 @@ which come first. Numbers in parentheses are GitHub issues on
 
 ## Shipped
 
-### Unreleased
+### 0.5.0 — 2026-09-17
 
 - **#23 stage 4b — delete `Codegen.TypeDiscovery`, breaking for 0.5.0.**
   `AshIntrospection.Codegen.TypeDiscovery` is gone, all 1109 lines, and so are
@@ -58,8 +58,8 @@ which come first. Numbers in parentheses are GitHub issues on
   adoption; see [decisions.md](decisions.md). `Test.Dossier` is a new fixture:
   the only one whose attribute names a non-embedded resource, which is what
   three readers needed to stop comparing `[]` with `[]`. Additive and
-  reversible (#77, `d254c47`). Stage 4b, in Unreleased above, deleted the
-  module and this differential test with it.
+  reversible (#77, `d254c47`). Stage 4b, in 0.5.0 above, deleted the module
+  and this differential test with it.
 
 ### 0.4.1 — 2026-09-11
 
@@ -342,7 +342,7 @@ merged commit on `main`.
 
 ## In progress
 
-- Nothing. Stage 4b of #23 is in Unreleased above; stage 5 is next.
+- Nothing. Stage 4b of #23 is in 0.5.0 above; stage 5 is next.
 
 ## Next
 

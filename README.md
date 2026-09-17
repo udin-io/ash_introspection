@@ -60,7 +60,7 @@ Add to your `mix.exs`:
 ```elixir
 def deps do
   [
-    {:ash_introspection, "~> 0.3"}
+    {:ash_introspection, "~> 0.5"}
   ]
 end
 ```
@@ -449,7 +449,7 @@ defmodule AshKotlin.MixProject do
   defp deps do
     [
       {:ash, "~> 3.0"},
-      {:ash_introspection, "~> 0.3"},
+      {:ash_introspection, "~> 0.5"},
       {:spark, "~> 2.0"}
     ]
   end
