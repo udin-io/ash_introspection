@@ -7,7 +7,7 @@ SPDX-License-Identifier: MIT
 # Architecture
 
 C4 views of `ash_introspection` as it stands on `main`, 0.4.0 plus the
-unreleased work through issue #23 stage 4a, drawn from the code rather than
+unreleased work through issue #23 stage 4b, drawn from the code rather than
 from the README. It exists because issue #36 found no written
 account of the one relationship that confuses every new reader: `ash_typescript`
 is upstream and standalone, this library is the core extracted from it, and
@@ -33,7 +33,7 @@ flowchart TB
     dev -->|"writes resources in"| app
     dev -->|"runs mix codegen task"| akm
     app -->|"declares domains and RPC actions for"| akm
-    akm -->|"hex dep: ash_introspection ~> 0.3"| ai
+    akm -->|"hex dep: ash_introspection ~> 0.4"| ai
     akm -->|"emits source files"| kclient
     kclient -->|"RPC request over HTTP"| app
     ai -->|"introspects at compile and run time"| ash
@@ -122,10 +122,8 @@ flowchart LR
         efmt["ErrorFormatter"]
         rinfo["ResourceInfo<br/>the only caller of Ash.Resource.Info"]
         rfields["TypeSystem.ResourceFields"]
-        tdisc["Codegen.TypeDiscovery"]
         vet["Codegen.ValidationErrorTypes"]
         mcustom["Manifest.Custom ((NEW))<br/>the only reader of custom"]
-        tdent["manifest.entrypoints ((NEW))<br/>what codegen generates for"]
     end
 
     subgraph compile["ash_introspection: compile time only"]
@@ -142,6 +140,7 @@ flowchart LR
     ccodegen --> actint
     ccodegen --> helpers
     ccodegen --> ff
+    ccodegen -->|"embedded types off manifest.types ((NEW))"| ash
 
     pipeline --> rproc
     pipeline --> vfmt
@@ -160,7 +159,6 @@ flowchart LR
     errs --> errb
     errs --> errh
     errs --> efmt
-    tdisc --> tsi
     vet --> tsi
     actint --> vet
     actint --> tsi
@@ -173,8 +171,6 @@ flowchart LR
     tsi --> rinfo
     actint --> rinfo
     vet --> rinfo
-    tdisc -->|"config threaded to every read ((NEW))"| rinfo
-    tdisc -->|"scopes discovery ((NEW))"| tdent
     rinfo -->|"live, or an Ash.Info.Manifest<br/>off the config map's :manifest key"| ash
     rinfo -->|"decorated reads"| mcustom
     actint -->|"return classification"| mcustom
@@ -196,14 +192,14 @@ shipped in `ash_kotlin_multiplatform` (its PR #75, `e5ad024`), so the dashed
 arrow is now real: a consumer transformer calls `decorate/3` and persists the
 result.
 
-`Codegen.TypeDiscovery` is what #23 stage 4a changed, and it is the first
-caller in this repo to read a manifest on a path a consumer runs. It took a
-config and ignored it before; now the config reaches all 14 of its
-introspection reads, and a config carrying `:manifest` takes its entrypoints
-from `manifest.entrypoints` rather than from a callback.
-`test/ash_introspection/manifest/codegen_differential_test.exs` compares the
-two paths 423 times, byte for byte. The module is still here on purpose: stage
-4b deletes it, and that is breaking.
+No module here finds the types a client needs. `Codegen.TypeDiscovery` did,
+until #23 stage 4b deleted it in 0.5.0: a consumer's codegen reads embedded
+types off `manifest.types` itself, which `ash_kotlin_multiplatform` has done
+since its PR #86 (`70671e8`). That is the consumer edge into `Ash` above.
+`ResourceInfo.declared_resource?/2` and
+`TypeSystem.Introspection.get_union_types_from_constraints/2` outlived it:
+`Codegen.ActionIntrospection` calls the first, and
+`Codegen.ValidationErrorTypes` and the consumer call the second.
 
 Measured 2026-09-09: `ash_kotlin_multiplatform` names `AshIntrospection` at 35
 call sites across 21 files. `Helpers` is the most used (10), then
@@ -320,10 +316,12 @@ Stage 4 has camelized everything around them. Both have regression tests —
   `:manifest` config key; stage 2 added the decorator that fills it and the
   reader that empties it; stage 3 built the manifest itself in
   `ash_kotlin_multiplatform`, because declaring entrypoints needs a Spark DSL
-  and this library ships none. Stage 4a made codegen read one. The request path
-  still does not: `Rpc.Pipeline` is handed whatever config the consumer builds,
-  and nothing in this repo puts a manifest on it. Stages 4b and 5 are on the
-  roadmap — see [roadmap.md](roadmap.md) and [decisions.md](decisions.md).
+  and this library ships none. Stage 4a made codegen read one, and stage 4b
+  deleted this library's codegen traversal, so a consumer reads
+  `manifest.types` itself. The request path still reads live: `Rpc.Pipeline`
+  is handed whatever config the consumer builds, and nothing in this repo puts
+  a manifest on it. Stage 5 is on the roadmap — see [roadmap.md](roadmap.md)
+  and [decisions.md](decisions.md).
 - **No persistence.** `test/support/*.ex` uses `Ash.DataLayer.Ets`; there is no
   repo, no migration directory and no database setup step.
 - **No contract test with the consumer.** Nothing in either repo fails when the
