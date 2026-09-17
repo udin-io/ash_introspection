@@ -14,6 +14,29 @@ and this project adheres to
 
 ## [Unreleased]
 
+### Fixed
+
+- A union value no longer comes back `null` when the caller selects member
+  fields ([#84](https://github.com/udin-io/ash_introspection/issues/84)).
+  Two causes:
+  - `FieldSelector` keyed a nested union member entry by its wire name, and
+    `ResultProcessor` matches members by atom. A read selecting a union
+    attribute with nested member fields returned `null`, and a list of unions
+    dropped the item.
+  - `ResultProcessor` typed a union a generic action returns from the owning
+    resource's first union attribute. It now reads the action's own return
+    constraints, through `{:array, _}` and a NewType, so a selection is
+    honoured and undeclared keys stay out. An empty template returns the
+    active member's declared fields.
+
+  Two visible changes:
+  - `FieldSelector.process/4` puts atom member keys in the extraction template
+    where it put strings.
+  - `ResultProcessor.process/4` reads a new `:action_returns` config key,
+    `{returns, constraints}`. `Pipeline.process_result/3` sets it for every
+    generic action. A direct caller that does not pass it gets untyped union
+    members.
+
 ## [0.5.0] - 2026-09-17
 
 **Breaking.** `AshIntrospection.Codegen.TypeDiscovery` is deleted (stage 4b of

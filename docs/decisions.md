@@ -13,6 +13,27 @@ recorded nowhere in the repo. This page replaces ADRs; there is no `adr/`
 directory here and none should be created. A decision that no longer shapes the
 code is deleted, not archived, because git keeps the history.
 
+## 2026-09-17 — A top-level union is typed by its action, with no fallback
+
+**Decided.** `ResultProcessor.determine_data_type/3` reads a top-level
+`%Ash.Union{}`'s members only from `config[:action_returns]`, which
+`Pipeline.process_result/3` sets for every generic action. The old lookup,
+`get_union_constraints_from_resource/2`, is deleted rather than kept as a
+fallback. Issue #84.
+
+**Why.** The old lookup read the owning resource's first union attribute,
+which has no relation to the action. In `Test.Shelf`, `:badge` comes first and
+names `:summary` as a string, so the action's embedded `:summary` member came
+back with every attribute and its `:counts` member with an undeclared key. A
+fallback to it is wrong whenever it answers at all, and it answers silently.
+
+**What it cost.** A caller of `ResultProcessor.process/4` that does not go
+through `Pipeline.process_result/3` and does not pass `:action_returns` now gets
+untyped union members: each member value normalised with no field selection.
+Before, it got the first attribute's types, which were right only when that
+attribute happened to match. `ash_kotlin_multiplatform` calls `process/4`
+nowhere in its `lib/` (grep at `41c6bef`). Named in the CHANGELOG.
+
 ## 2026-09-17 — Delete `Codegen.TypeDiscovery`; codegen reads the manifest only
 
 **Decided.** 0.5.0 deletes `AshIntrospection.Codegen.TypeDiscovery`, 1109

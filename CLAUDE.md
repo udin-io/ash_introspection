@@ -304,7 +304,7 @@ sites. See `test/ash_introspection/rpc/load_restrictions_test.exs`.
 through. Say so in anything you write about them; risk T5 in
 [`docs/risks.md`](docs/risks.md) explains why it matters.
 
-### A template entry has three shapes, each with its own reader — #35
+### A template entry has three shapes, each with its own reader — #35, #84
 
 **Symptom.** A field you selected is missing from the response, or arrives
 `nil`, and nothing errors. Selecting the same field a different way works.
@@ -325,13 +325,28 @@ name; `ResultProcessor` matches `{field_atom, nested} when is_atom(field_atom)`,
 so the field vanished from the response while the same field selected flat came
 back whole.
 
-**What we do.** Resolve the atom before you build an entry — never key a
-template from the wire name. And when you add a shape, add the clause that
-reads it in the same change; a shape nothing matches fails as missing data, not
-as an error. #66 is what is left of this: a nested entry carries no index, so
-`convert_tuple_to_map/2` cannot place a nested tuple field and the value comes
-back `nil`. See
-`test/ash_introspection/rpc/field_processing/field_selector_tuple_nested_test.exs`.
+#84 was the same mistake in unions, a week later:
+`process_nested_union_member/8` emitted `{"summary", nested}`, and
+`ResultProcessor.member_in_template?/2` compares against the atom in
+`%Ash.Union{type: ...}`. A union member selected with nested fields came back
+`nil`, on reads and generic actions alike, and a list dropped the item.
+
+**What we do.** A template key is always the resolved atom `internal_name`,
+never the wire name — grep the `template ++` and `template_acc ++` lines of
+`field_selector.ex` when you add one. And when you add a shape, add the clause
+that reads it in the same change; a shape nothing matches fails as missing
+data, not as an error. #66 is what is left of this: a nested entry carries no
+index, so `convert_tuple_to_map/2` cannot place a nested tuple field and the
+value comes back `nil`. See
+`test/ash_introspection/rpc/field_processing/field_selector_tuple_nested_test.exs`
+and `test/ash_introspection/rpc/pipeline_union_result_test.exs`.
+
+**A generic action's union is typed by the action.** Stage 3 is handed the
+owning resource, and a union at the top of a result is not a field on it. Read
+its members from `config[:action_returns]`, which `Pipeline.process_result/3`
+sets from `action.returns` and `action.constraints`. #84 found the old lookup
+reading the resource's first union attribute instead, so a member that
+attribute did not declare came back untyped.
 
 ### `a || b` yields `b` when both are falsy, so `||` erases one key — #45
 
@@ -541,11 +556,12 @@ mix hex.audit
 mix deps.audit
 ```
 
-`main` is at **451 tests + 1 doctest, 0 failures** (measured 2026-09-17 on
-`issue-23-stage-4b-delete-type-discovery`). That is 26 below `5dc9e85`'s 477,
-and the drop is deliberate: #23 stage 4b deleted `Codegen.TypeDiscovery` with
-its 14 unit tests and the 14-test differential suite that compared it against
-the manifest, and added 2 tests for the 0.5.0 upgrade notice. The 406 this
+`main` is at **460 tests + 1 doctest, 0 failures** (measured 2026-09-17 on
+`issue-84-union-results`). #84 added 9 to 0.5.0's 451. That 451 was 26 below
+`5dc9e85`'s 477, and the drop was deliberate: #23 stage 4b deleted
+`Codegen.TypeDiscovery` with its 14 unit tests and the 14-test differential
+suite that compared it against the manifest, and added 2 tests for the 0.5.0
+upgrade notice. The 406 this
 page carried before was already stale. Any other pull request that changes the
 number downward, or that leaves a compiler warning, is not finished. Never
 suppress a warning — fix the cause.

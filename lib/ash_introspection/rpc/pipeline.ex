@@ -162,10 +162,13 @@ defmodule AshIntrospection.Rpc.Pipeline do
             # and not named here is silently dropped before it reaches
             # `ResultProcessor` — which is how stage 3 would quietly keep
             # reading live introspection while stages 1 and 4 read a manifest.
-            processor_config = %{
-              field_names_callback: Map.get(config, :field_names_callback, :interop_field_names),
-              manifest: Map.get(config, :manifest)
-            }
+            processor_config =
+              %{
+                field_names_callback:
+                  Map.get(config, :field_names_callback, :interop_field_names),
+                manifest: Map.get(config, :manifest)
+              }
+              |> put_action_returns(request.action)
 
             filtered =
               if is_mutation_with_no_fields do
@@ -189,6 +192,15 @@ defmodule AshIntrospection.Rpc.Pipeline do
         {:ok, ResultProcessor.normalize_primitive(primitive_value)}
     end
   end
+
+  # A generic action's declared return type is the only place a union it
+  # returns can take its member types from. CRUD actions return records, whose
+  # fields `ResultProcessor` types from the resource. See #84.
+  defp put_action_returns(processor_config, %{type: :action} = action) do
+    Map.put(processor_config, :action_returns, {action.returns, action.constraints || []})
+  end
+
+  defp put_action_returns(processor_config, _action), do: processor_config
 
   # ---------------------------------------------------------------------------
   # Stage 4: Format Output

@@ -24,9 +24,15 @@ defmodule AshIntrospection.Rpc.ResultProcessor do
 
   ```elixir
   %{
-    field_names_callback: :interop_field_names  # or :typescript_field_names
+    field_names_callback: :interop_field_names,  # or :typescript_field_names
+    action_returns: {action.returns, action.constraints}
   }
   ```
+
+  `:action_returns` carries a generic action's declared return type. It is
+  the only source of member types for a union the action returns at the top
+  level: without it, each member comes back untyped. `Pipeline.process_result/3`
+  sets it for every generic action.
 
   ## Type-Driven Extraction
 
@@ -48,7 +54,8 @@ defmodule AshIntrospection.Rpc.ResultProcessor do
 
   @type config :: %{
           optional(:field_names_callback) => atom(),
-          optional(:manifest) => Ash.Info.Manifest.t() | ResourceInfo.Source.t() | nil
+          optional(:manifest) => Ash.Info.Manifest.t() | ResourceInfo.Source.t() | nil,
+          optional(:action_returns) => {Ash.Type.t(), keyword()}
         }
 
   @doc """
@@ -712,8 +719,9 @@ defmodule AshIntrospection.Rpc.ResultProcessor do
 
   This function infers type information from:
   1. The struct type of the data itself (if it's a struct)
-  2. The provided resource context
-  3. Falls back to nil for unknown types
+  2. `config[:action_returns]`, for a union a generic action returns
+  3. The provided resource context
+  4. Falls back to nil for unknown types
   """
   def determine_data_type(nil, resource, config) do
     if resource && ResourceInfo.runtime_resource?(resource, config) do
@@ -735,11 +743,7 @@ defmodule AshIntrospection.Rpc.ResultProcessor do
         {Ash.Type.Struct, [instance_of: data.__struct__]}
 
       match?(%Ash.Union{}, data) ->
-        if resource && ResourceInfo.runtime_resource?(resource, config) do
-          {Ash.Type.Union, get_union_constraints_from_resource(resource, config)}
-        else
-          {Ash.Type.Union, []}
-        end
+        {Ash.Type.Union, action_union_constraints(config)}
 
       is_list(data) && data != [] && Keyword.keyword?(data) ->
         {Ash.Type.Keyword, []}
@@ -758,23 +762,38 @@ defmodule AshIntrospection.Rpc.ResultProcessor do
     end
   end
 
-  defp get_union_constraints_from_resource(resource, config) do
-    attrs = ResourceInfo.attributes(resource, config)
+  # A top-level union's member types come from the generic action that returned
+  # it, never from the resource. This used to read the owning resource's first
+  # union attribute, which has nothing to do with the action: members it did
+  # not name came back untyped, so a selection was ignored and undeclared keys
+  # reached the client. See #84.
+  #
+  # `{:array, _}` is its own shape, with the element's constraints under
+  # `:items`; a NewType keeps its `:types` on itself until it is unwrapped.
+  # Anything that is not a union after both leaves the members untyped.
+  defp action_union_constraints(config) do
+    case Map.get(config, :action_returns) do
+      {{:array, inner}, constraints} ->
+        union_constraints(inner, Keyword.get(constraints, :items, []), config)
 
-    Enum.find_value(attrs, [], fn attr ->
-      case attr.type do
-        Ash.Type.Union ->
-          Keyword.get(attr.constraints, :types, []) |> then(&[types: &1])
+      {type, constraints} ->
+        union_constraints(type, constraints, config)
 
-        {:array, Ash.Type.Union} ->
-          items = Keyword.get(attr.constraints, :items, [])
-          Keyword.get(items, :types, []) |> then(&[types: &1])
-
-        _ ->
-          nil
-      end
-    end)
+      nil ->
+        []
+    end
   end
+
+  defp union_constraints(type, constraints, config) when is_atom(type) do
+    field_names_callback = Map.get(config, :field_names_callback, :interop_field_names)
+
+    case Introspection.unwrap_new_type(type, constraints, field_names_callback) do
+      {Ash.Type.Union, full_constraints} -> full_constraints
+      _ -> []
+    end
+  end
+
+  defp union_constraints(_type, _constraints, _config), do: []
 
   defp normalize_data(data) do
     case data do
