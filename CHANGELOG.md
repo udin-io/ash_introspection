@@ -14,6 +14,43 @@ and this project adheres to
 
 ## [Unreleased]
 
+Breaking, for 0.5.0: `AshIntrospection.Codegen.TypeDiscovery` is gone (stage
+4b of [#23](https://github.com/udin-io/ash_introspection/issues/23)). Run the
+upgrade task before anything else:
+
+```
+mix igniter.upgrade ash_introspection
+```
+
+For 0.5.0 it rewrites nothing and prints a notice naming each removed function
+and where its answer now lives. To run it on its own:
+`mix ash_introspection.upgrade 0.4.2 0.5.0`.
+
+### Removed
+
+- **Breaking.** `AshIntrospection.Codegen.TypeDiscovery`, all 1109 lines
+  ([#23](https://github.com/udin-io/ash_introspection/issues/23)). A client
+  generator reads its types from a generated `%Ash.Info.Manifest{}` instead:
+  embedded resources are the `manifest.types` entries whose `kind` is
+  `:embedded_resource`, and resources are `manifest.resources`.
+  `ash_kotlin_multiplatform` moved first, in its PR #86; at its `70671e8`
+  grep and `mix xref callers` find no caller. Over this repo's test fixtures
+  the module and `manifest.types` found the same 7 embedded resources.
+- **Breaking.** `find_resources_missing_from_rpc_config/2`,
+  `find_non_rpc_referenced_resources/2`,
+  `find_non_rpc_referenced_resources_with_paths/2`,
+  `build_missing_config_warning/3` and `build_non_rpc_references_warning/2`,
+  with the module and with no replacement. They reported resources a consumer
+  had not declared, and a manifest carries only what was declared.
+  `ResourceInfo.declared_resource?/2` and
+  `TypeSystem.Introspection.get_union_types_from_constraints/2` stay.
+
+### Added
+
+- A 0.5.0 step in the `ash_introspection.upgrade` task: a notice for the removal
+  above. It touches no file, because the replacement needs a generated
+  manifest that a call-site rewrite cannot build.
+
 ## [0.4.2] - 2026-09-16
 
 Additive, and a security release. The `ash` floor rises to 3.33.4, the first
