@@ -14,6 +14,19 @@ and this project adheres to
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-09-17
+
+Additive. A union value no longer comes back `null`, or drops from a list,
+when the caller selects member fields
+([#84](https://github.com/udin-io/ash_introspection/issues/84)) — for a read
+selecting a union member with nested fields and for a generic action
+returning a union. Two visible changes: `FieldSelector.process/4` puts atom
+member keys in the extraction template where it put strings, and
+`ResultProcessor.process/4` reads a new `:action_returns` config key that
+`Pipeline.process_result/3` now sets for every generic action, so a direct
+caller that does not pass it gets untyped union members. No breaking change,
+so no upgrade task is needed.
+
 ### Fixed
 
 - A union value no longer comes back `null` when the caller selects member

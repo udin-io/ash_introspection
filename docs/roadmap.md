@@ -15,7 +15,7 @@ which come first. Numbers in parentheses are GitHub issues on
 
 ## Shipped
 
-### Unreleased — 0.5.1
+### 0.5.1 — 2026-09-17
 
 - **#84 — union results came back `null`.** Two causes, both in the request
   path. `FieldSelector.process_nested_union_member/8` keyed a nested member
