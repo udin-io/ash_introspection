@@ -70,6 +70,18 @@ if Code.ensure_loaded?(Igniter) do
     #
     # Inventing a rewrite for any of these would guess. A notice at the moment
     # of upgrade is what a human can act on, so that is what ships.
+    #
+    # ## 0.5.0 — `Codegen.TypeDiscovery` removed
+    #
+    # The step is a notice again. The module walked resources live to find the
+    # types a client needs; a generated `%Ash.Info.Manifest{}` carries the same
+    # answer in `manifest.types` and `manifest.resources`. Moving a caller
+    # means building a manifest first, which is the consumer's DSL and compile
+    # edges, not a call-site rewrite. `ash_kotlin_multiplatform` had already
+    # moved (its PR #86) and `mix xref callers` found zero callers there before
+    # the deletion. The two warning builders and the functions behind them go
+    # with no replacement: a manifest carries only what was declared, so it
+    # cannot say what was not.
     @moduledoc false
 
     use Igniter.Mix.Task
@@ -137,6 +149,27 @@ if Code.ensure_loaded?(Igniter) do
         `get_union_types_from_constraints/2` is a different function and stays.
     """
 
+    @type_discovery_notice """
+    ash_introspection 0.5.0 removed `AshIntrospection.Codegen.TypeDiscovery`.
+    Nothing was rewritten: its replacement needs a generated manifest, which a
+    call-site rewrite cannot build. If you call it:
+
+      * `find_embedded_resources/2`, `scan_rpc_resources/2` and the
+        `find_referenced_*` and `traverse_*` functions - read a generated
+        `%Ash.Info.Manifest{}` instead. Embedded resources are the entries of
+        `manifest.types` whose `kind` is `:embedded_resource`; resources are
+        `manifest.resources`. `Ash.Info.Manifest.generate/1` builds one.
+      * `find_resources_missing_from_rpc_config/2`,
+        `find_non_rpc_referenced_resources/2`,
+        `find_non_rpc_referenced_resources_with_paths/2`,
+        `build_missing_config_warning/3` and
+        `build_non_rpc_references_warning/2` - no replacement. A manifest
+        carries only what was declared, so it cannot list what was not.
+
+    `ResourceInfo.declared_resource?/2` and
+    `TypeSystem.Introspection.get_union_types_from_constraints/2` stay.
+    """
+
     @impl Igniter.Mix.Task
     def info(_argv, _composing_task) do
       %Igniter.Mix.Task.Info{
@@ -153,7 +186,8 @@ if Code.ensure_loaded?(Igniter) do
 
       upgrades = %{
         "0.3.0" => [&rewrite_error_code_to_type/2],
-        "0.4.0" => [&notify_0_4_0_breaks/2]
+        "0.4.0" => [&notify_0_4_0_breaks/2],
+        "0.5.0" => [&notify_0_5_0_breaks/2]
       }
 
       Igniter.Upgrades.run(igniter, positional.from, positional.to, upgrades,
@@ -178,6 +212,12 @@ if Code.ensure_loaded?(Igniter) do
       igniter
       |> Igniter.add_notice(@identity_notice)
       |> Igniter.add_notice(@removed_functions_notice)
+    end
+
+    # Touches no file. See the 0.5.0 section of this module's comment.
+    @doc false
+    def notify_0_5_0_breaks(igniter, _opts) do
+      Igniter.add_notice(igniter, @type_discovery_notice)
     end
 
     # `Igniter.update_all_elixir_files/2` leans on `Igniter.include_glob/2` to
