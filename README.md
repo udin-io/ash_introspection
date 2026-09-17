@@ -50,8 +50,8 @@ rules and its traps.
   input/output
 - **Comprehensive Error Handling** - Standardized error responses with field
   paths and interpolation
-- **Code Generation Utilities** - Type discovery, action introspection, and
-  validation error classification
+- **Code Generation Utilities** - Action introspection and validation error
+  classification
 
 ## Installation
 
@@ -105,7 +105,6 @@ release breaks.
 │                                                             │
 │  ┌─────────────────────────────────────────────────────┐   │
 │  │  Code Generation                                    │   │
-│  │  • TypeDiscovery - Resource & type scanning         │   │
 │  │  • ActionIntrospection - Action analysis            │   │
 │  │  • ValidationErrorTypes - Error type classification │   │
 │  └─────────────────────────────────────────────────────┘   │
@@ -179,7 +178,6 @@ enable it in production.
 
 | Module | Description |
 |--------|-------------|
-| `AshIntrospection.Codegen.TypeDiscovery` | Recursive resource and type scanning |
 | `AshIntrospection.Codegen.ActionIntrospection` | Action pagination, input, and return type analysis |
 | `AshIntrospection.Codegen.ValidationErrorTypes` | Validation error type classification |
 
@@ -349,21 +347,27 @@ modules.
 
 ## Code Generation Utilities
 
-### Type Discovery
+### Finding the types to generate
 
-Scan resources to find all referenced types:
+This library does not scan for types. Read them from a generated
+`Ash.Info.Manifest`, which walks every entrypoint you declare. Until 0.5.0,
+`AshIntrospection.Codegen.TypeDiscovery` did this scan.
 
 ```elixir
-alias AshIntrospection.Codegen.TypeDiscovery
+{:ok, manifest} =
+  Ash.Info.Manifest.generate(
+    otp_app: :my_app,
+    action_entrypoints: [{MyApp.Post, :read}, {MyApp.Post, :create}]
+  )
 
-# Find all resources referenced by RPC resources
-{:ok, resources} = TypeDiscovery.scan_rpc_resources(rpc_resources, domain)
+# Resources reachable from the entrypoints
+resources = Enum.map(manifest.resources, & &1.module)
 
-# Find embedded resources
-embedded = TypeDiscovery.find_embedded_resources(resources, domain)
-
-# Find types with field constraints
-typed_structs = TypeDiscovery.find_field_constrained_types(resources, domain)
+# Embedded resources
+embedded =
+  manifest.types
+  |> Enum.filter(&(&1.kind == :embedded_resource))
+  |> Enum.map(& &1.module)
 ```
 
 ### Action Introspection
@@ -520,13 +524,15 @@ Generate types and RPC functions:
 
 ```elixir
 defmodule AshKotlin.Codegen.Generator do
-  alias AshIntrospection.Codegen.{TypeDiscovery, ActionIntrospection}
+  alias AshIntrospection.Codegen.ActionIntrospection
   alias AshKotlin.Codegen.TypeMapper
 
-  def generate(domain, rpc_config) do
-    # Discover all types
-    {:ok, resources} = TypeDiscovery.scan_rpc_resources(rpc_config.resources, domain)
-    embedded = TypeDiscovery.find_embedded_resources(resources, domain)
+  def generate(%Ash.Info.Manifest{} = manifest, rpc_config) do
+    # The manifest already walked every type the entrypoints reach
+    embedded =
+      manifest.types
+      |> Enum.filter(&(&1.kind == :embedded_resource))
+      |> Enum.map(& &1.module)
 
     # Generate data classes
     type_definitions = Enum.map(embedded, &generate_data_class/1)
