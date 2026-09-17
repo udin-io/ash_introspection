@@ -34,8 +34,8 @@ defmodule AshIntrospection.Manifest.Decorator do
   paginates, and an entrypoint lookup keyed by client-facing name.
 
   Changing those return types is a separate, breaking decision. It belongs to
-  the stage that deletes `AshIntrospection.Codegen.TypeDiscovery`, not to this
-  additive one. See `docs/decisions.md`.
+  issue #23 stage 5, which makes the manifest required on the request path, not
+  to this additive one. See `docs/decisions.md`.
 
   ## What is written where
 

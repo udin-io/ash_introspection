@@ -78,38 +78,6 @@ defmodule AshIntrospection.Test.ManifestFixture do
   def entrypoints, do: @entrypoints
 
   @doc """
-  The same pairs, in the order the generated manifest carries them.
-
-  `Ash.Info.Manifest.Generator` sorts entrypoints by resource name and then by
-  action name (`deps/ash/lib/ash/info/manifest/generator.ex`), so this is not
-  `entrypoints/0`. A differential test comparing live discovery against
-  manifest discovery has to hold the entrypoint order constant, because
-  discovery output is ordered by its entrypoints — see `docs/decisions.md`.
-  """
-  @spec manifest_entrypoints() :: [{module(), atom()}]
-  def manifest_entrypoints,
-    do: Enum.map(manifest().entrypoints, &{&1.resource, &1.action.name})
-
-  @doc """
-  A prepared, decorated config carrying a manifest built from `entrypoints`
-  alone.
-
-  Not cached: each caller varies the entrypoint set, which is the input.
-  """
-  @spec scoped_config([{module(), atom()}]) :: map()
-  def scoped_config(entrypoints) do
-    {:ok, manifest} =
-      Ash.Info.Manifest.generate(otp_app: :ash_introspection, action_entrypoints: entrypoints)
-
-    %{
-      manifest:
-        manifest
-        |> Decorator.decorate(@default_namespace, decorator_config())
-        |> AshIntrospection.ResourceInfo.prepare()
-    }
-  end
-
-  @doc """
   The resource modules that appear in the fixture manifest's `resources` list.
 
   Read off the generated manifest rather than listed by hand, so a fixture

@@ -65,7 +65,6 @@ defmodule AshIntrospection.MixProject do
           AshIntrospection.Rpc.DefaultErrorHandler
         ],
         "Code Generation": [
-          AshIntrospection.Codegen.TypeDiscovery,
           AshIntrospection.Codegen.ActionIntrospection,
           AshIntrospection.Codegen.ValidationErrorTypes
         ],

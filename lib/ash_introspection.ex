@@ -50,7 +50,6 @@ defmodule AshIntrospection do
   │                                                             │
   │  ┌─────────────────────────────────────────────────────┐   │
   │  │  Code Generation                                    │   │
-  │  │  • TypeDiscovery - Resource & type scanning         │   │
   │  │  • ActionIntrospection - Action analysis            │   │
   │  │  • ValidationErrorTypes - Error type classification │   │
   │  └─────────────────────────────────────────────────────┘   │
@@ -125,10 +124,8 @@ defmodule AshIntrospection do
 
   ### Code Generation
 
-  Modules for type discovery and action analysis:
-
-  - `AshIntrospection.Codegen.TypeDiscovery` - Recursive scanning of resources
-    and types for code generation, with cycle detection and path tracking
+  Modules for action analysis. The types a client needs come from a generated
+  `Ash.Info.Manifest`, not from this library:
 
   - `AshIntrospection.Codegen.ActionIntrospection` - Analysis of action
     characteristics including pagination, input requirements, and return types

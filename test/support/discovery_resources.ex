@@ -138,10 +138,13 @@ end
 
 defmodule AshIntrospection.Test.Document do
   @moduledoc """
-  The entrypoint resource for the type-discovery tests.
+  A fixture entrypoint resource whose embedded types each hang off one route:
+  a NewType-wrapped union, a calculation argument, action metadata, a generic
+  action argument and a generic action return.
 
-  Every embedded type it can reach is reachable through exactly one route, so a
-  discovery test names both the type it expects and the defect that hides it.
+  `AshIntrospection.Test.ManifestFixture` declares four of its actions, so the
+  fixture manifest carries each of those types. No test here names them since
+  `Codegen.TypeDiscovery` was removed in 0.5.0; they stay as manifest inputs.
   """
   use Ash.Resource,
     domain: AshIntrospection.Test.DiscoveryDomain,
@@ -193,13 +196,9 @@ defmodule AshIntrospection.Test.Dossier do
   @moduledoc """
   The only fixture whose attribute names a **non-embedded** resource.
 
-  Every other discovery fixture reaches embedded resources, so two readers had
-  no coverage at all before this one: `find_field_constrained_types/2` needs an
-  attribute whose constraints carry both `:fields` and `:instance_of`, and
-  `find_non_rpc_referenced_resources_with_paths/2` needs a referenced resource
-  that is neither embedded nor an entrypoint of its own. `owner` is both, so a
-  discovery scoped to `Dossier` alone reports `Test.User` as referenced and not
-  exposed.
+  `owner` is a `:struct` whose constraints carry both `:fields` and
+  `:instance_of`, so the fixture manifest walks from `Dossier` into
+  `Test.User` through an attribute.
   """
   use Ash.Resource,
     domain: AshIntrospection.Test.DossierDomain,
