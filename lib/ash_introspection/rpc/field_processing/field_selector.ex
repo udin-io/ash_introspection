@@ -915,15 +915,19 @@ defmodule AshIntrospection.Rpc.FieldProcessing.FieldSelector do
         config
       )
 
+    # `internal_name`, never `member_name`. `ResultProcessor` matches a union
+    # member entry against the atom `%Ash.Union{type: ...}` carries, so the
+    # wire name never matched and the value came back `nil`. #35 was the same
+    # mistake in tuples; see #84.
     if nested_load != [] do
       # Unobservable for the same reason as the embedded branch of
       # process_nested_resource_field/6; see the note there.
       check_load_allowed!(path, internal_name, config)
 
       {load_acc ++ [{internal_name, nested_load}],
-       template_acc ++ [{member_name, nested_template}]}
+       template_acc ++ [{internal_name, nested_template}]}
     else
-      {load_acc, template_acc ++ [{member_name, nested_template}]}
+      {load_acc, template_acc ++ [{internal_name, nested_template}]}
     end
   end
 
