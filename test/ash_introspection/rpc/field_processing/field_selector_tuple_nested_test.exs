@@ -142,6 +142,22 @@ defmodule AshIntrospection.Rpc.FieldProcessing.FieldSelectorTupleNestedTest do
       assert data == %{"meta" => %{"origin" => %{"lat" => 30.0}, "zoom" => 12}}
     end
 
+    # The second positional gap: a tuple-typed field selected flat reached
+    # `ResultProcessor` with an empty template, so nothing carried its
+    # positions and every inner field came back `nil`. The inner tuple now
+    # gets the full positional template built from its `fields` constraint.
+    test "a tuple-typed field selected flat returns every inner value" do
+      assert %{"data" => data} = response(["label", "span"], :get_tile_deep)
+
+      assert data == %{
+               "label" => "north-west",
+               "span" => %{
+                 "from" => %{"x" => 1.5, "y" => 2.5},
+                 "to" => %{"x" => 3.5, "y" => 4.5}
+               }
+             }
+    end
+
     test "the flat selection keeps working beside a nested one" do
       assert %{"data" => data} = response(["label", "meta"], :get_tile_deep)
 

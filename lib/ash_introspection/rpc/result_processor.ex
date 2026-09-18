@@ -512,6 +512,18 @@ defmodule AshIntrospection.Rpc.ResultProcessor do
     end
   end
 
+  # A tuple-typed field selected flat arrives with no template, and a tuple
+  # can only be read by position. Build the full positional template from the
+  # `fields` constraint, as `select_tuple_fields/4` does for an empty request.
+  # With `[]` here every element was skipped and every field came back `nil`.
+  # See #66.
+  defp extract_typed_map_value(value, constraints, [], config) when is_tuple(value) do
+    case FieldExtractor.tuple_template(Keyword.get(constraints, :fields, [])) do
+      [] -> normalize_primitive(value)
+      template -> extract_typed_map_value(value, constraints, template, config)
+    end
+  end
+
   defp extract_typed_map_value(value, constraints, template, config) when is_tuple(value) do
     normalized = FieldExtractor.normalize_for_extraction(value, template)
     extract_typed_map_value(normalized, constraints, template, config)

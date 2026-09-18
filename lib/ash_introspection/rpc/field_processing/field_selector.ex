@@ -34,6 +34,7 @@ defmodule AshIntrospection.Rpc.FieldProcessing.FieldSelector do
 
   alias AshIntrospection.FieldFormatter
   alias AshIntrospection.ResourceInfo
+  alias AshIntrospection.Rpc.FieldExtractor
   alias AshIntrospection.Rpc.FieldProcessing.Validation
   alias AshIntrospection.Rpc.LoadRestrictions
   alias AshIntrospection.TypeSystem.Introspection
@@ -705,12 +706,7 @@ defmodule AshIntrospection.Rpc.FieldProcessing.FieldSelector do
     field_names = Enum.map(field_specs, &elem(&1, 0))
 
     if requested_fields == [] do
-      template =
-        field_names
-        |> Enum.with_index()
-        |> Enum.map(fn {name, index} -> %{field_name: name, index: index} end)
-
-      {[], [], template}
+      {[], [], FieldExtractor.tuple_template(field_specs)}
     else
       Validation.check_for_duplicates(requested_fields, path, config)
 

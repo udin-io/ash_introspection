@@ -102,13 +102,39 @@ defmodule AshIntrospection.Rpc.FieldExtractor do
   # Handles non-map data gracefully (shouldn't happen if normalized properly)
   def extract_field(_data, _field_atom), do: nil
 
+  @doc """
+  Builds the positional template for every field of a tuple type.
+
+  `field_specs` is the `:fields` constraint of an `Ash.Type.Tuple`, whose
+  order is the tuple's element order. This is the template a tuple gets when
+  nothing selected its fields: `FieldSelector.select_tuple_fields/4` uses it
+  for an empty request, and `ResultProcessor` uses it for a tuple-typed field
+  that was selected flat, which otherwise reaches the extractor with no
+  template and no way to place any element (issue 66).
+
+  ## Examples
+
+      iex> tuple_template(latitude: [type: :float], longitude: [type: :float])
+      [%{field_name: :latitude, index: 0}, %{field_name: :longitude, index: 1}]
+
+      iex> tuple_template([])
+      []
+  """
+  def tuple_template(field_specs) do
+    field_specs
+    |> Enum.with_index()
+    |> Enum.map(fn {{name, _spec}, index} -> %{field_name: name, index: index} end)
+  end
+
   # Private: Convert tuple to map using extraction template
   #
   # The extraction template for tuples contains field metadata including the
   # positional index for each field. This allows us to map tuple positions
   # to named fields.
   #
-  # Template format: [%{field_name: atom, index: integer}, ...]
+  # Template format: [%{field_name: atom, index: integer}, ...]. A nested
+  # entry carries a third key, `nested: [...]`, which this function ignores:
+  # it places the element, and `ResultProcessor` applies the nested template.
   defp convert_tuple_to_map(tuple, extraction_template) do
     Enum.reduce(extraction_template, %{}, fn
       %{field_name: field_name, index: index}, acc ->
