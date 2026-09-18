@@ -14,6 +14,38 @@ and this project adheres to
 
 ## [Unreleased]
 
+Additive; ships as 0.5.2. A nested selection inside a tuple field no longer
+comes back `null`, and a tuple-typed field selected flat no longer comes back
+as a map of `null`s
+([#66](https://github.com/udin-io/ash_introspection/issues/66)). One visible
+change: `FieldSelector.process/4` puts a map,
+`%{field_name: atom, index: n, nested: [...]}`, in the extraction template
+where it put a `{atom, nested}` 2-tuple for a nested tuple field. No breaking
+change, so no upgrade task is needed.
+
+One neighbour stays open, pinned in
+`field_selector_tuple_nested_test.exs`: a nested selection on a tuple inside
+a generic action's top-level map result is ignored and every element is
+returned, because that map is untyped (the typed map path reads atom keys
+only, and Ash hands a `run` result back uncast).
+
+### Fixed
+
+- A nested selection inside a tuple field returned `null`
+  ([#66](https://github.com/udin-io/ash_introspection/issues/66)). Three
+  causes:
+  - `FieldSelector` emitted a nested tuple entry with no tuple index, and
+    `FieldExtractor` places only an entry that carries one. The entry now
+    carries `:index` and `:nested`, and `ResultProcessor` reads both.
+  - `ResultProcessor.determine_data_type/3` typed a generic action's
+    top-level tuple as `{Ash.Type.Tuple, []}`, so a tuple two levels down came
+    back raw. It reads `:action_returns` now, as #84 made it do for a union.
+  - A tuple-typed field selected flat reached the extractor with an empty
+    template, so every element was skipped: `["label", "span"]` returned
+    `span: {from: null, to: null}`. `FieldExtractor.tuple_template/1` builds
+    the positional template from the `fields` constraint, for
+    `FieldSelector`'s empty request and for this case alike.
+
 ## [0.5.1] - 2026-09-17
 
 Additive. A union value no longer comes back `null`, or drops from a list,

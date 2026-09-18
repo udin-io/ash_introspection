@@ -304,7 +304,7 @@ sites. See `test/ash_introspection/rpc/load_restrictions_test.exs`.
 through. Say so in anything you write about them; risk T5 in
 [`docs/risks.md`](docs/risks.md) explains why it matters.
 
-### A template entry has three shapes, each with its own reader — #35, #84
+### A template entry has four shapes, each with its own reader — #35, #84, #66
 
 **Symptom.** A field you selected is missing from the response, or arrives
 `nil`, and nothing errors. Selecting the same field a different way works.
@@ -315,8 +315,14 @@ only some of them:
 | Entry | Meaning | Matched by |
 | --- | --- | --- |
 | `:name` | a plain field | `ResultProcessor`, every extractor |
-| `{:name, nested}` | a nested selection | `ResultProcessor`, atom key only |
+| `{:name, nested}` | a nested selection in a keyed container | `ResultProcessor`, atom key only |
 | `%{field_name: :name, index: n}` | a tuple position | `FieldExtractor.convert_tuple_to_map/2` and `ResultProcessor` |
+| `%{field_name: :name, index: n, nested: [...]}` | a nested selection in a tuple | `FieldExtractor` places it, `ResultProcessor` recurses with `:nested` |
+
+A tuple is the only container read by position, so only its entries carry an
+index, and they carry it whether or not they also carry a nested template.
+`FieldExtractor.tuple_template/1` builds the full positional list from a
+`fields` constraint; use it wherever a tuple has no template of its own.
 
 Every consumer ends its `case` with a catch-all that returns the accumulator
 untouched, so an entry no clause matches is dropped in silence. In #35 the
@@ -333,13 +339,23 @@ back whole.
 
 **What we do.** A template key is always the resolved atom `internal_name`,
 never the wire name — grep the `template ++` and `template_acc ++` lines of
-`field_selector.ex` when you add one. And when you add a shape, add the clause
-that reads it in the same change; a shape nothing matches fails as missing
-data, not as an error. #66 is what is left of this: a nested entry carries no
-index, so `convert_tuple_to_map/2` cannot place a nested tuple field and the
-value comes back `nil`. See
+`field_selector.ex` when you add one. A tuple entry is always a map with
+`:index`, never a `{atom, nested}` 2-tuple. And when you add a shape, add the
+clause that reads it in the same change; a shape nothing matches fails as
+missing data, not as an error. #66 was the third of the family: a nested
+tuple entry carried no index, so `convert_tuple_to_map/2` could not place it
+and the value came back `nil`. See
 `test/ash_introspection/rpc/field_processing/field_selector_tuple_nested_test.exs`
 and `test/ash_introspection/rpc/pipeline_union_result_test.exs`.
+
+**A top-level map from a generic action is untyped, on purpose.**
+`ResultProcessor.determine_data_type/3` answers `{nil, []}` for it, because
+Ash hands a `run` result back uncast (ash 3.33.1,
+`deps/ash/lib/ash/actions/action.ex:243`) and the typed map path reads atom
+keys only, which is what #62 was about. The cost is that a tuple inside such
+a map has no field types: a nested selection on it is ignored and the client
+gets every element. Pinned in `field_selector_tuple_nested_test.exs`; the
+fix is a typed map path that reads string keys too, not a typed top-level map.
 
 **A generic action's union is typed by the action.** Stage 3 is handed the
 owning resource, and a union at the top of a result is not a field on it. Read
@@ -347,6 +363,23 @@ its members from `config[:action_returns]`, which `Pipeline.process_result/3`
 sets from `action.returns` and `action.constraints`. #84 found the old lookup
 reading the resource's first union attribute instead, so a member that
 attribute did not declare came back untyped.
+
+### A failing async test's diff makes the atom-safety batch flaky
+
+**Symptom.** A batch case in
+`test/ash_introspection/rpc/field_processing/field_selector_atom_safety_test.exs`
+fails by 4 to 10 atoms, on a different case each run, only while some other
+file has a failing test with a large diff. Alone, the file passes every time.
+
+**Why.** That module is `async: false`, so it runs after every async module —
+but ExUnit's CLI formatter renders each failure in its own process when the
+event arrives, and rendering a big map diff loads modules, which mints atoms
+while the batch is counting. Measured 2026-09-18 over six seeds: 2 of 6 runs
+failed with one failing test in `field_selector_tuple_nested_test.exs`, 0 of
+6 with it green.
+
+**What we do.** Fix the red test. Do not chase the atom count, and do not
+loosen the batch assertion.
 
 ### `a || b` yields `b` when both are falsy, so `||` erases one key — #45
 
@@ -556,8 +589,10 @@ mix hex.audit
 mix deps.audit
 ```
 
-`main` is at **460 tests + 1 doctest, 0 failures** (measured 2026-09-17 on
-`issue-84-union-results`). #84 added 9 to 0.5.0's 451. That 451 was 26 below
+`main` is at **470 tests + 8 doctests, 0 failures** (measured 2026-09-18 on
+`issue-66-nested-tuple-selection`). #66 added 10 tests to 0.5.1's 460 and 7
+doctests to its 1, the first to run `FieldExtractor`'s examples. #84 had added
+9 to 0.5.0's 451. That 451 was 26 below
 `5dc9e85`'s 477, and the drop was deliberate: #23 stage 4b deleted
 `Codegen.TypeDiscovery` with its 14 unit tests and the 14-test differential
 suite that compared it against the manifest, and added 2 tests for the 0.5.0

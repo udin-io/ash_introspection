@@ -137,8 +137,10 @@ describes the pipeline. `mix test` on the #23 stage 2 branch reports 463 tests
 and 1 doctest (2026-09-11), and whole modules (`value_formatter.ex`,
 `field_extractor.ex`, `atomizer.ex`) are still exercised only incidentally.
 
-**Why it bites.** #66, the one correctness bug still open, touches code that
-has no behavioural test around it, so a fix can break a neighbour silently.
+**Why it bites.** #66 landed on code with no behavioural test around it, and
+its fix found three causes where the issue named one; its neighbour checks
+found a fourth that stays open. `field_extractor.ex` got its first tests there
+(7 doctests), so a fix can still break a neighbour silently elsewhere.
 `lib/ash_introspection/rpc/errors.ex` is the shape to copy instead: #12 and #40
 each landed with a test file for the failure they fixed, and
 `errors_protocol_failure_test.exs` covers a raise, a throw and an exit out of an

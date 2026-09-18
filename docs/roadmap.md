@@ -15,6 +15,25 @@ which come first. Numbers in parentheses are GitHub issues on
 
 ## Shipped
 
+### Unreleased — ships as 0.5.2
+
+- **#66 — a nested selection inside a tuple field came back `null`.** Three
+  causes, one family with #35 and #84. `FieldSelector.select_tuple_fields/4`
+  emitted a nested entry as `{atom, nested}` with no tuple index, and
+  `FieldExtractor.convert_tuple_to_map/2` places only an entry that carries
+  one; the entry is now `%{field_name:, index:, nested:}` and
+  `ResultProcessor` reads `:nested`. `determine_data_type/3` typed a generic
+  action's top-level tuple `{Ash.Type.Tuple, []}`, so a tuple two levels down
+  came back raw; it reads `:action_returns` now, through the lookup #84 added
+  for unions. And a tuple-typed field selected flat reached the extractor with
+  an empty template, so every element came back `null`;
+  `FieldExtractor.tuple_template/1` builds the positional template from the
+  `fields` constraint. Additive. `Test.MapTile` grew `:get_tile_deep`,
+  `:list_tiles`, `:get_tile_map` and `:pick_tile`; the suite is 470 tests +
+  8 doctests. One neighbour stays open and is pinned: a nested selection on a
+  tuple inside a generic action's top-level map result is ignored. See
+  [decisions.md](decisions.md).
+
 ### 0.5.1 — 2026-09-17
 
 - **#84 — union results came back `null`.** Two causes, both in the request
@@ -177,8 +196,8 @@ each.
   three answers to one request. `test/support/tuple_selection_resources.ex` is
   the first tuple fixture with a nested-selectable field; `Test.Post.get_bounds`
   carries two floats, so the branch had no coverage at all. The value still
-  does not survive, because a nested entry carries no tuple index: that is #66,
-  pinned by an assertion in the new test.
+  did not survive, because a nested entry carried no tuple index: that was
+  #66, shipped under Unreleased above.
 - **Read the calculation envelope keys by presence, not truthiness** (#45,
   `14d806e`). `get_args_and_fields/1` kept the
   `Map.get(m, :args) || Map.get(m, "args")` shape that #15 removed from
@@ -401,10 +420,12 @@ dozen other items.
    incremental compiles with no error), and `SpecCache` must not be ported —
    upstream added it in `199f9cd` and deleted it in `b7104a8` because Spark's
    persisted DSL state is already free at runtime.
-2. **The one correctness fix left that needs no manifest**: #66 (a nested
-   selection inside a tuple field returns `nil`, because the template entry
-   carries no tuple index — filed out of #35). #40 shipped in 0.4.1, under
-   Shipped above.
+2. **A tuple inside a generic action's top-level map result ignores a nested
+   selection** and returns every element (found by #66's neighbour checks, no
+   issue yet). The map is typed `{nil, []}` because Ash hands a `run` result
+   back uncast and the typed map path reads atom keys only (#62); the fix is a
+   typed path that reads string keys too. #40 shipped in 0.4.1 and #66 under
+   Unreleased, both above.
 3. **#18 — the RPC test floor.** Coverage arrives with each fix by preference,
    but the harness and the fixtures are still a ticket of their own.
 4. **Upstream parity features**: #24 (relationship query envelopes), #25

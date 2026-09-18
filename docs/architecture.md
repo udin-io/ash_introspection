@@ -153,6 +153,7 @@ flowchart LR
     fsel --> fval
     fsel --> rfields
     fsel --> tsi
+    fsel -->|"tuple_template/1"| fext
     rproc --> fext
     rproc --> vfmt
     errs --> errp
