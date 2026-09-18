@@ -281,9 +281,17 @@ defmodule AshIntrospection.Rpc.ResultProcessor do
                 config
               )
 
-            # Tuple metadata (for tuple fields in templates)
-            %{field_name: field_name, index: _index} ->
-              extract_resource_field(normalized, resource, field_name, acc, config)
+            # Tuple metadata (for tuple fields in templates). A nested tuple
+            # entry carries `:nested` beside `:index`; see #66.
+            %{field_name: field_name, index: _index} = entry ->
+              extract_resource_nested_field(
+                normalized,
+                resource,
+                field_name,
+                Map.get(entry, :nested, []),
+                acc,
+                config
+              )
 
             _ ->
               acc
@@ -482,20 +490,37 @@ defmodule AshIntrospection.Rpc.ResultProcessor do
 
               Map.put(acc, field_atom, extracted)
 
-            # Handle tuple field metadata
-            %{field_name: field_name, index: _index} ->
+            # Tuple field metadata. A nested tuple entry carries `:nested`
+            # beside `:index`, because a nested entry with no index cannot be
+            # placed by `FieldExtractor.convert_tuple_to_map/2`; see #66.
+            %{field_name: field_name, index: _index} = entry ->
               field_value = Map.get(normalized, field_name)
+              nested_template = Map.get(entry, :nested, [])
 
               {field_type, field_constraints} =
                 Introspection.get_field_spec_type(field_specs, field_name)
 
-              extracted = extract_value(field_value, field_type, field_constraints, [], config)
+              extracted =
+                extract_value(field_value, field_type, field_constraints, nested_template, config)
+
               Map.put(acc, field_name, extracted)
 
             _ ->
               acc
           end
         end)
+    end
+  end
+
+  # A tuple-typed field selected flat arrives with no template, and a tuple
+  # can only be read by position. Build the full positional template from the
+  # `fields` constraint, as `select_tuple_fields/4` does for an empty request.
+  # With `[]` here every element was skipped and every field came back `nil`.
+  # See #66.
+  defp extract_typed_map_value(value, constraints, [], config) when is_tuple(value) do
+    case FieldExtractor.tuple_template(Keyword.get(constraints, :fields, [])) do
+      [] -> normalize_primitive(value)
+      template -> extract_typed_map_value(value, constraints, template, config)
     end
   end
 
@@ -743,13 +768,17 @@ defmodule AshIntrospection.Rpc.ResultProcessor do
         {Ash.Type.Struct, [instance_of: data.__struct__]}
 
       match?(%Ash.Union{}, data) ->
-        {Ash.Type.Union, action_union_constraints(config)}
+        {Ash.Type.Union, action_constraints_for(Ash.Type.Union, config)}
 
       is_list(data) && data != [] && Keyword.keyword?(data) ->
         {Ash.Type.Keyword, []}
 
+      # A tuple at the top of a result is a generic action's return value,
+      # and only the action knows its field types. With `[]` here every
+      # field of the tuple was untyped, so a nested tuple came back raw and
+      # a nested map lost its field types. See #66.
       is_tuple(data) ->
-        {Ash.Type.Tuple, []}
+        {Ash.Type.Tuple, action_constraints_for(Ash.Type.Tuple, config)}
 
       is_map(data) && not is_struct(data) ->
         {nil, []}
@@ -762,38 +791,40 @@ defmodule AshIntrospection.Rpc.ResultProcessor do
     end
   end
 
-  # A top-level union's member types come from the generic action that returned
-  # it, never from the resource. This used to read the owning resource's first
-  # union attribute, which has nothing to do with the action: members it did
-  # not name came back untyped, so a selection was ignored and undeclared keys
-  # reached the client. See #84.
+  # A top-level union's member types, or a top-level tuple's field types, come
+  # from the generic action that returned it, never from the resource. The
+  # union lookup used to read the owning resource's first union attribute,
+  # which has nothing to do with the action: members it did not name came
+  # back untyped, so a selection was ignored and undeclared keys reached the
+  # client. See #84. The tuple lookup did not exist, so a nested tuple field
+  # came back raw. See #66.
   #
   # `{:array, _}` is its own shape, with the element's constraints under
-  # `:items`; a NewType keeps its `:types` on itself until it is unwrapped.
-  # Anything that is not a union after both leaves the members untyped.
-  defp action_union_constraints(config) do
+  # `:items`; a NewType keeps its constraints on itself until it is unwrapped.
+  # Anything that is not `expected_type` after both leaves the value untyped.
+  defp action_constraints_for(expected_type, config) do
     case Map.get(config, :action_returns) do
       {{:array, inner}, constraints} ->
-        union_constraints(inner, Keyword.get(constraints, :items, []), config)
+        constraints_if_type(inner, Keyword.get(constraints, :items, []), expected_type, config)
 
       {type, constraints} ->
-        union_constraints(type, constraints, config)
+        constraints_if_type(type, constraints, expected_type, config)
 
       nil ->
         []
     end
   end
 
-  defp union_constraints(type, constraints, config) when is_atom(type) do
+  defp constraints_if_type(type, constraints, expected_type, config) when is_atom(type) do
     field_names_callback = Map.get(config, :field_names_callback, :interop_field_names)
 
     case Introspection.unwrap_new_type(type, constraints, field_names_callback) do
-      {Ash.Type.Union, full_constraints} -> full_constraints
+      {^expected_type, full_constraints} -> full_constraints
       _ -> []
     end
   end
 
-  defp union_constraints(_type, _constraints, _config), do: []
+  defp constraints_if_type(_type, _constraints, _expected_type, _config), do: []
 
   defp normalize_data(data) do
     case data do

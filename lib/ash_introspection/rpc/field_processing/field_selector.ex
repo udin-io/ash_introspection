@@ -34,6 +34,7 @@ defmodule AshIntrospection.Rpc.FieldProcessing.FieldSelector do
 
   alias AshIntrospection.FieldFormatter
   alias AshIntrospection.ResourceInfo
+  alias AshIntrospection.Rpc.FieldExtractor
   alias AshIntrospection.Rpc.FieldProcessing.Validation
   alias AshIntrospection.Rpc.LoadRestrictions
   alias AshIntrospection.TypeSystem.Introspection
@@ -705,12 +706,7 @@ defmodule AshIntrospection.Rpc.FieldProcessing.FieldSelector do
     field_names = Enum.map(field_specs, &elem(&1, 0))
 
     if requested_fields == [] do
-      template =
-        field_names
-        |> Enum.with_index()
-        |> Enum.map(fn {name, index} -> %{field_name: name, index: index} end)
-
-      {[], [], template}
+      {[], [], FieldExtractor.tuple_template(field_specs)}
     else
       Validation.check_for_duplicates(requested_fields, path, config)
 
@@ -739,11 +735,19 @@ defmodule AshIntrospection.Rpc.FieldProcessing.FieldSelector do
                 select_fields(field_type, field_constraints, nested_fields, new_path, config)
 
               # `field_atom`, never `field_name`. `ResultProcessor` matches a
-              # nested template entry as `{atom, nested}`, so the raw wire name
-              # fell through its catch-all and the field vanished from the
+              # nested template entry by atom, so the raw wire name fell
+              # through its catch-all and the field vanished from the
               # response, while the same field asked for flat came back. See
               # #35.
-              {select, load, template ++ [{field_atom, nested_template}]}
+              #
+              # A map, never `{field_atom, nested_template}`. A tuple field is
+              # found by position, and `FieldExtractor.convert_tuple_to_map/2`
+              # only places an entry that carries `:index`. The 2-tuple shape
+              # carried none, so the field came back `nil`. See #66.
+              index = Enum.find_index(field_names, &(&1 == field_atom))
+
+              {select, load,
+               template ++ [%{field_name: field_atom, index: index, nested: nested_template}]}
             else
               throw({:unknown_field, field_atom, "tuple", path})
             end
@@ -768,7 +772,9 @@ defmodule AshIntrospection.Rpc.FieldProcessing.FieldSelector do
                 {_nested_select, _nested_load, nested_template} =
                   select_fields(field_type, field_constraints, nested_fields, new_path, config)
 
-                {s, l, t ++ [{field_atom, nested_template}]}
+                # A map with `:index`, for the reason given in the `{:nested,
+                # ...}` branch above. See #66.
+                {s, l, t ++ [%{field_name: field_atom, index: index, nested: nested_template}]}
               else
                 {s, l, t ++ [%{field_name: field_atom, index: index}]}
               end

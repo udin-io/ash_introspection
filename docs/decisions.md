@@ -13,6 +13,30 @@ recorded nowhere in the repo. This page replaces ADRs; there is no `adr/`
 directory here and none should be created. A decision that no longer shapes the
 code is deleted, not archived, because git keeps the history.
 
+## 2026-09-18 — A tuple template entry is a map that carries its index
+
+**Decided.** Every entry `FieldSelector` emits for a tuple field is a map,
+`%{field_name: atom, index: n}`, with `nested: [...]` added when the field was
+selected with inner fields. A tuple is the only container read by position,
+so its entries are the only ones that carry one, and they carry it whether or
+not they also carry a nested template. `FieldExtractor` places the element;
+`ResultProcessor` applies `:nested`. Issue #66.
+
+**Why.** #35, #84 and #66 are one family: a producer in `FieldSelector`
+emitted an entry no consumer matched, and every consumer ends its `case` with
+a catch-all that drops the entry in silence, so the field arrived missing or
+`nil` with no error. #35 was a string key in a tuple entry, #84 a string key
+in a union member entry, #66 a tuple entry with no index. The rule that
+closes the family: a template key is the resolved atom, a tuple entry is a map
+with `:index`, and a new shape lands with its reader in the same commit.
+
+**What it cost.** `FieldSelector.process/4` returns a map where it returned a
+`{atom, nested}` 2-tuple, for a nested tuple field only. The consumer passes
+the template through unread (`ash_kotlin_multiplatform` `runner.ex:188-205`
+at `16c3717`), so 0.5.2 is additive. The alternative — reading positions from
+the `fields` constraint inside `ResultProcessor` and leaving `index` unread —
+was rejected: it keeps a public key nothing reads.
+
 ## 2026-09-17 — A top-level union is typed by its action, with no fallback
 
 **Decided.** `ResultProcessor.determine_data_type/3` reads a top-level
