@@ -83,7 +83,8 @@ defmodule AshIntrospection.Rpc.Pipeline do
           optional(:get_original_field_name) => (module(), String.t() -> atom() | nil),
           optional(:format_field_for_client) => (atom(), module() | nil, atom() -> String.t()),
           optional(:not_found_error?) => boolean(),
-          optional(:manifest) => Ash.Info.Manifest.t() | ResourceInfo.Source.t() | nil
+          optional(:manifest) => Ash.Info.Manifest.t() | ResourceInfo.Source.t() | nil,
+          optional(:manifest_namespace) => atom() | nil
         }
 
   # ---------------------------------------------------------------------------
@@ -98,6 +99,13 @@ defmodule AshIntrospection.Rpc.Pipeline do
   """
   @spec execute_ash_action(Request.t(), config()) :: {:ok, term()} | {:error, term()}
   def execute_ash_action(%Request{} = request, config \\ %{}) do
+    # Prepare the manifest once per stage. `ResourceInfo.source/1` rebuilds the
+    # lookup maps on every read it is handed a bare `%Ash.Info.Manifest{}`, and
+    # one stage reads dozens of times. `normalize_config/1` also folds
+    # `:manifest_namespace` into the prepared source, so the rebuilt config maps
+    # below carry the namespace by carrying `:manifest`.
+    config = ResourceInfo.normalize_config(config)
+
     opts = [
       actor: request.actor,
       tenant: request.tenant,
@@ -138,6 +146,9 @@ defmodule AshIntrospection.Rpc.Pipeline do
   """
   @spec process_result(term(), Request.t(), config()) :: {:ok, term()} | {:error, term()}
   def process_result(ash_result, %Request{} = request, config \\ %{}) do
+    # Prepared once here; see the note in `execute_ash_action/2`.
+    config = ResourceInfo.normalize_config(config)
+
     case ash_result do
       {:error, error} ->
         {:error, error}
@@ -157,16 +168,20 @@ defmodule AshIntrospection.Rpc.Pipeline do
             resource_for_mapping =
               get_field_mapping_module(request.action, request.resource, config)
 
-            # `:manifest` rides along explicitly. This map is built from
-            # scratch rather than passed through, so a key added to `config`
-            # and not named here is silently dropped before it reaches
-            # `ResultProcessor` — which is how stage 3 would quietly keep
-            # reading live introspection while stages 1 and 4 read a manifest.
+            # `:manifest` and `:manifest_namespace` ride along explicitly. This
+            # map is built from scratch rather than passed through, so a key
+            # added to `config` and not named here is silently dropped before it
+            # reaches `ResultProcessor` — which is how stage 3 read live
+            # introspection for a manifest decorated under any namespace but the
+            # default, with nothing at the reader able to tell. The `:manifest`
+            # copied here is the source `normalize_config/1` prepared above, so
+            # no read rebuilds its lookup maps.
             processor_config =
               %{
                 field_names_callback:
                   Map.get(config, :field_names_callback, :interop_field_names),
-                manifest: Map.get(config, :manifest)
+                manifest: Map.get(config, :manifest),
+                manifest_namespace: Map.get(config, :manifest_namespace)
               }
               |> put_action_returns(request.action)
 
@@ -236,6 +251,8 @@ defmodule AshIntrospection.Rpc.Pipeline do
   """
   @spec format_output_with_request(term(), Request.t(), config()) :: term()
   def format_output_with_request(filtered_result, %Request{} = request, config \\ %{}) do
+    # Prepared once here; see the note in `execute_ash_action/2`.
+    config = ResourceInfo.normalize_config(config)
     formatter = Map.get(config, :output_field_formatter, :camel_case)
     format_output_data(filtered_result, formatter, request, config)
   end
@@ -827,13 +844,22 @@ defmodule AshIntrospection.Rpc.Pipeline do
     )
   end
 
+  # The same rebuild-drops-keys trap as `processor_config` in
+  # `process_result/3`: `ValueFormatter` types every field it formats through
+  # `ResourceFields.get_field_type_info/3`, so a config without `:manifest`
+  # makes stage 4 read live introspection while the rest of the request reads
+  # the manifest. `:manifest` here is what `normalize_config/1` prepared at the
+  # entry point, and `:manifest_namespace` rides along for the one caller that
+  # is not an entry point — `format_output/2`, which is handed a raw config.
   defp value_formatter_config(formatter, config) do
     %{
       input_field_formatter: Map.get(config, :input_field_formatter, :camel_case),
       output_field_formatter: formatter,
       field_names_callback: Map.get(config, :field_names_callback, :interop_field_names),
       get_original_field_name: Map.get(config, :get_original_field_name),
-      format_field_for_client: Map.get(config, :format_field_for_client)
+      format_field_for_client: Map.get(config, :format_field_for_client),
+      manifest: Map.get(config, :manifest),
+      manifest_namespace: Map.get(config, :manifest_namespace)
     }
   end
 
