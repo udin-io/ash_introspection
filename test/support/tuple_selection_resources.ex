@@ -50,5 +50,45 @@ defmodule AshIntrospection.Test.MapTile do
 
       run(fn _input, _context -> {:ok, {"north-west", %{x: 1.5, y: 2.5}}} end)
     end
+
+    # #66: two levels down. `:span` is a tuple of two tuples, so a nested
+    # entry has to carry its index at every depth; `:meta` is a map holding a
+    # map, so the same request shape can be checked where no index is needed.
+    action :get_tile_deep, :tuple do
+      constraints(
+        fields: [
+          label: [type: :string],
+          span: [
+            type: :tuple,
+            constraints: [
+              fields: [
+                from: [
+                  type: :tuple,
+                  constraints: [fields: [x: [type: :float], y: [type: :float]]]
+                ],
+                to: [type: :tuple, constraints: [fields: [x: [type: :float], y: [type: :float]]]]
+              ]
+            ]
+          ],
+          meta: [
+            type: :map,
+            constraints: [
+              fields: [
+                origin: [
+                  type: :map,
+                  constraints: [fields: [lat: [type: :float], lng: [type: :float]]]
+                ],
+                zoom: [type: :integer]
+              ]
+            ]
+          ]
+        ]
+      )
+
+      run(fn _input, _context ->
+        {:ok,
+         {"north-west", {{1.5, 2.5}, {3.5, 4.5}}, %{origin: %{lat: 30.0, lng: 31.2}, zoom: 12}}}
+      end)
+    end
   end
 end

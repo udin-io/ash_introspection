@@ -39,9 +39,9 @@ defmodule AshIntrospection.Rpc.FieldProcessing.FieldSelectorTupleNestedTest do
   alias AshIntrospection.Test.MapTile
   alias AshIntrospection.Test.TupleSelectionDomain
 
-  defp select(requested_fields) do
+  defp select(requested_fields, action \\ :get_tile) do
     assert {:ok, {select, load, template}} =
-             FieldSelector.process(MapTile, :get_tile, requested_fields)
+             FieldSelector.process(MapTile, action, requested_fields)
 
     {select, load, template}
   end
@@ -51,14 +51,14 @@ defmodule AshIntrospection.Rpc.FieldProcessing.FieldSelectorTupleNestedTest do
     template
   end
 
-  defp response(requested_fields) do
-    {select, load, template} = select(requested_fields)
+  defp response(requested_fields, action \\ :get_tile) do
+    {select, load, template} = select(requested_fields, action)
 
     request =
       %{
         domain: TupleSelectionDomain,
         resource: MapTile,
-        action: Ash.Resource.Info.action(MapTile, :get_tile),
+        action: Ash.Resource.Info.action(MapTile, action),
         rpc_action: %{},
         input: %{},
         context: %{},
@@ -108,15 +108,46 @@ defmodule AshIntrospection.Rpc.FieldProcessing.FieldSelectorTupleNestedTest do
     end
   end
 
-  describe "the gap this fix does not close (#66)" do
-    # A nested template entry has no tuple index, so
-    # `FieldExtractor.convert_tuple_to_map/2` cannot place the field and the
-    # value is lost. Before #35 the key was a string and the field vanished
-    # from the response; now it is present and `nil`. Change this assertion
-    # when #66 lands — do not delete it.
-    test "the value does not survive: the field comes back nil" do
+  describe "the gap #35 left open, closed by #66" do
+    # Before #35 the key was a string and the field vanished from the
+    # response; after #35 it was present and `nil`, because a nested entry
+    # carried no tuple index and `FieldExtractor.convert_tuple_to_map/2` can
+    # only place a field it has an index for. #66 carries the index.
+    test "the value survives: the field comes back with the selected key" do
       assert %{"data" => data} = response(["label", %{"corner" => ["x"]}])
-      assert data == %{"label" => "north-west", "corner" => nil}
+      assert data == %{"label" => "north-west", "corner" => %{"x" => 1.5}}
+    end
+  end
+
+  describe "a nested selection inside a tuple (#66)" do
+    test "the multi-entry spelling returns the same value" do
+      assert %{"data" => data} = response([%{"corner" => ["y"], "label" => nil}])
+      assert data == %{"label" => "north-west", "corner" => %{"y" => 2.5}}
+    end
+
+    test "a tuple inside a tuple carries its index at both depths" do
+      fields = ["label", %{"span" => [%{"from" => ["x"]}, %{"to" => ["y"]}]}]
+      assert %{"data" => data} = response(fields, :get_tile_deep)
+
+      assert data == %{
+               "label" => "north-west",
+               "span" => %{"from" => %{"x" => 1.5}, "to" => %{"y" => 4.5}}
+             }
+    end
+
+    test "a map inside a map inside a tuple returns the innermost value" do
+      fields = [%{"meta" => [%{"origin" => ["lat"]}, "zoom"]}]
+      assert %{"data" => data} = response(fields, :get_tile_deep)
+      assert data == %{"meta" => %{"origin" => %{"lat" => 30.0}, "zoom" => 12}}
+    end
+
+    test "the flat selection keeps working beside a nested one" do
+      assert %{"data" => data} = response(["label", "meta"], :get_tile_deep)
+
+      assert data == %{
+               "label" => "north-west",
+               "meta" => %{"origin" => %{"lat" => 30.0, "lng" => 31.2}, "zoom" => 12}
+             }
     end
   end
 end
