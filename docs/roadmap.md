@@ -15,7 +15,7 @@ which come first. Numbers in parentheses are GitHub issues on
 
 ## Shipped
 
-### Unreleased — ships as 0.5.2
+### 0.5.2 — 2026-09-18
 
 - **#66 — a nested selection inside a tuple field came back `null`.** Three
   causes, one family with #35 and #84. `FieldSelector.select_tuple_fields/4`
@@ -197,7 +197,7 @@ each.
   the first tuple fixture with a nested-selectable field; `Test.Post.get_bounds`
   carries two floats, so the branch had no coverage at all. The value still
   did not survive, because a nested entry carried no tuple index: that was
-  #66, shipped under Unreleased above.
+  #66, shipped under 0.5.2 above.
 - **Read the calculation envelope keys by presence, not truthiness** (#45,
   `14d806e`). `get_args_and_fields/1` kept the
   `Map.get(m, :args) || Map.get(m, "args")` shape that #15 removed from

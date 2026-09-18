@@ -14,14 +14,18 @@ and this project adheres to
 
 ## [Unreleased]
 
-Additive; ships as 0.5.2. A nested selection inside a tuple field no longer
-comes back `null`, and a tuple-typed field selected flat no longer comes back
-as a map of `null`s
-([#66](https://github.com/udin-io/ash_introspection/issues/66)). One visible
-change: `FieldSelector.process/4` puts a map,
+## [0.5.2] - 2026-09-18
+
+Additive. A nested selection inside a tuple field no longer comes back
+`null`, and a tuple-typed field selected flat no longer comes back as a map
+of `null`s
+([#66](https://github.com/udin-io/ash_introspection/issues/66), PR #88). One
+visible change: `FieldSelector.process/4` puts a map,
 `%{field_name: atom, index: n, nested: [...]}`, in the extraction template
-where it put a `{atom, nested}` 2-tuple for a nested tuple field. No breaking
-change, so no upgrade task is needed.
+where it put a `{atom, nested}` 2-tuple for a nested tuple field.
+`FieldExtractor.tuple_template/1` is new and public, building the positional
+template from a tuple's `fields` constraint. No breaking change, so no
+upgrade task is needed.
 
 One neighbour stays open, pinned in
 `field_selector_tuple_nested_test.exs`: a nested selection on a tuple inside
