@@ -27,9 +27,12 @@ does it live at 64 call sites (#23, measured at `74afafd`). Since stage 1 of
 those reads answer out of a decorated manifest when one is supplied. Stage 3
 shipped in `ash_kotlin_multiplatform` (its PR #75, `e5ad024`), so a manifest is
 now built, and since stage 4b the consumer's codegen reads its types straight
-off it: this repo's `Codegen.TypeDiscovery` is deleted. The request path does
-not read one — nothing in this repo puts a manifest on the pipeline config, so
-every RPC read in production is live.
+off it: this repo's `Codegen.TypeDiscovery` is deleted. Since stage 5a's PR 1
+the request path reads the manifest it is handed at every stage: the two config
+maps rebuilt mid-request carry `:manifest` and `:manifest_namespace`, and no
+request-path read drops the config. The consumer still passes none — its
+`build_config/0` has no `:manifest` key — so every RPC read in production is
+still live until stage 5a's PR 4 lands in `ash_kotlin_multiplatform`.
 
 **Why it bites.** A bug fixed upstream stays live here, and it stays live in
 `ash_kotlin_multiplatform`, which is what a real user runs.
@@ -43,8 +46,9 @@ port the rest against the manifest instead of against live introspection.
 Re-porting each fix onto live introspection is the expensive path and it is the
 one we are on until #23 lands. Stages 1 and 2 shipped the seam and the
 decorator that fills it, stage 3 the consumer's manifest, and stage 4 moved
-codegen onto it. Stage 5, on [roadmap.md](roadmap.md), moves the request path
-and closes the gap.
+codegen onto it. Stage 5a, on [roadmap.md](roadmap.md), closes the gap: PR 1
+makes this library read the manifest it is given, PR 4 hands it one from the
+consumer, and PR 6 requires it.
 
 **A port was partial; the manifest closed it.** #21 landed the behaviour of
 upstream `437901f` by hand, because upstream's own version of that commit calls

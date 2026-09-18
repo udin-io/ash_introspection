@@ -183,10 +183,22 @@ flowchart LR
 `ResourceInfo` is the seam issue #23 stage 1 added. Every `Ash.Resource.Info`
 call in `lib/` goes through it — 64 of them, measured at `74afafd` — so a
 later stage changes one module rather than nine. With no `:manifest` key on the
-config map it reads live introspection, which is what every caller does today.
+config map it reads live introspection, which is what every caller gets today
+because nothing here puts a manifest on the config.
 `grep -rn 'Ash\.Resource\.Info\.' lib` should match nothing outside
 `lib/ash_introspection/resource_info.ex` and
 `lib/ash_introspection/manifest/decorator.ex`.
+
+Since #23 stage 5a's PR 1 a manifest on the config reaches every request-path
+read. `execute_ash_action/2`, `process_result/3` and
+`format_output_with_request/3` each call `ResourceInfo.normalize_config/1` once,
+which prepares the lookup maps and folds `:manifest_namespace` into the
+prepared source; the two config maps `Rpc.Pipeline` rebuilds mid-request — the
+stage-3 processor config and `value_formatter_config/2` — copy that prepared
+source rather than rebuilding it. Two reads stay deliberately config-free:
+`action_returns_resource?/1` in `Rpc.Pipeline` and the two runtime struct
+guards in `Rpc.ResultProcessor`, which ask only whether a module Ash handed
+back is a resource — an answer a manifest cannot change.
 
 `Manifest.Decorator` and `Manifest.Custom` are what #23 stage 2 added. Stage 3
 shipped in `ash_kotlin_multiplatform` (its PR #75, `e5ad024`), so the dashed
@@ -214,8 +226,11 @@ practice even when the version number says otherwise.
 The second flow worth reading in order. It runs once, when the consumer's
 manifest module compiles, and everything it writes is read by the request path
 without touching `Ash.Resource.Info` again. The consumer half is stage 3 of
-issue #23 and does not exist yet, which is why the first two messages are
-dashed.
+issue #23 and shipped in `ash_kotlin_multiplatform` (its PR #75, `e5ad024`), so
+the first two messages happen there rather than here — hence the dashes. The
+last one, the config map carrying `:manifest`, is stage 5a's PR 4: this library
+reads such a config at every stage since PR 1, and the consumer does not yet
+build one.
 
 ```mermaid
 sequenceDiagram
@@ -226,7 +241,7 @@ sequenceDiagram
     participant I as Ash.Resource.Info
     participant P as Request path
 
-    Note over T: stage 3, not built yet
+    Note over T: stage 3, in the consumer
     T-->>G: generate(otp_app, action_entrypoints)
     G-->>T: %Ash.Info.Manifest{}
     T->>D: decorate(manifest, namespace, config)
@@ -312,17 +327,19 @@ Stage 4 has camelized everything around them. Both have regression tests —
 
 ## 6. What is not here
 
-- **No manifest module here, and no manifest on the request path yet.** Stage
-  1 of issue #23 added `AshIntrospection.ResourceInfo` and an optional
+- **No manifest module here, and nothing here puts one on the request path.**
+  Stage 1 of issue #23 added `AshIntrospection.ResourceInfo` and an optional
   `:manifest` config key; stage 2 added the decorator that fills it and the
   reader that empties it; stage 3 built the manifest itself in
   `ash_kotlin_multiplatform`, because declaring entrypoints needs a Spark DSL
   and this library ships none. Stage 4a made codegen read one, and stage 4b
   deleted this library's codegen traversal, so a consumer reads
-  `manifest.types` itself. The request path still reads live: `Rpc.Pipeline`
-  is handed whatever config the consumer builds, and nothing in this repo puts
-  a manifest on it. Stage 5 is on the roadmap — see [roadmap.md](roadmap.md)
-  and [decisions.md](decisions.md).
+  `manifest.types` itself. Stage 5a's PR 1 made the request path read the
+  manifest it is handed — see §3 — but `Rpc.Pipeline` is still handed the
+  config the consumer builds, and the consumer builds one with no `:manifest`
+  key, so production requests read live. PR 4 changes that in the consumer and
+  PR 6 makes the key required here, breaking, in 0.6.0. See
+  [roadmap.md](roadmap.md) and [decisions.md](decisions.md).
 - **No persistence.** `test/support/*.ex` uses `Ash.DataLayer.Ets`; there is no
   repo, no migration directory and no database setup step.
 - **No contract test with the consumer.** Nothing in either repo fails when the

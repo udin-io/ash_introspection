@@ -375,14 +375,22 @@ merged commit on `main`.
 
 ## In progress
 
-- Nothing. Stage 4b of #23 is in 0.5.0 above; stage 5 is next.
+- **#23 stage 5a, PR 1 of 4 — the request path reads the manifest it is
+  given.** The stage-3 processor config and `value_formatter_config/2` carry
+  `:manifest` and `:manifest_namespace` instead of dropping them, the three
+  request entry points prepare the manifest once per stage, and seven reads
+  that passed no config now pass it. Additive, for 0.5.3; the suite is 477
+  tests + 8 doctests. PR 2 (decorate every relationship) and PR 6 (require the
+  manifest, breaking, 0.6.0) follow here; PR 4 puts a manifest on the request
+  path in `ash_kotlin_multiplatform`. Stage 5b, manifest-shaped return values,
+  moved to [#83](https://github.com/udin-io/ash_introspection/issues/83).
 
 ## Next
 
 Ordered by what unblocks the most. #23 is first because it gates roughly a
 dozen other items.
 
-1. **#23 — adopt `Ash.Info.Manifest`, stage 5.** Stages 1, 2, 4a and 4b
+1. **#23 — adopt `Ash.Info.Manifest`, stage 5a.** Stages 1, 2, 4a and 4b
    shipped here; stage 3 shipped in the consumer. The manifest module itself
    cannot live here: building one needs a Spark DSL to declare entrypoints, and
    this library ships none — the recorded reason #26 was declined. So it goes
@@ -396,7 +404,11 @@ dozen other items.
    | 3 | consumer | `use AshKotlinMultiplatform.Manifest`, its two transformers, the `8c07331` compile-time edges, an installer | consumer minor | shipped |
    | 4a | this | codegen reads the manifest; `Codegen.TypeDiscovery` stays, proved byte-identical | 0.4.x, additive | shipped |
    | 4b | this | delete `Codegen.TypeDiscovery` (1109 lines); codegen reads the manifest only | 0.5.0, breaking | shipped |
-   | 5 | this | make `:manifest` required in the request path; drop the live fallbacks except the runtime struct guards; manifest-shaped return values in place of the captured Ash structs, deferred from stage 2 | 0.6.0, breaking | next |
+   | 5a PR 1 | this | every request-path read gets the manifest: both config rebuilds carry `:manifest` and `:manifest_namespace`, the entry points prepare it once | 0.5.3, additive | in review |
+   | 5a PR 2 | this | decorate every relationship, private included, so `relationship/3` needs no live fallback | 0.5.3, additive | next |
+   | 5a PR 4 | consumer | a manifest on the request path; `Runner` resolves actions through `rpc_action_lookup` | consumer minor | next |
+   | 5a PR 6 | this | make `:manifest` required at the four entry points; a carried but undecorated resource raises; drop the manifest-miss live reads | 0.6.0, breaking | next |
+   | 5b | this | manifest-shaped return values in place of the captured Ash structs, deferred from stage 2 ([#83](https://github.com/udin-io/ash_introspection/issues/83)) | 0.6.x | next |
 
    **Stage 4 is split on purpose.** Reading a manifest and deleting the live
    walk are two changes with different risk: the first is additive and

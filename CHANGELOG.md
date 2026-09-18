@@ -14,6 +14,29 @@ and this project adheres to
 
 ## [Unreleased]
 
+### Fixed
+
+- A request carrying a manifest still read live introspection in two of its
+  stages ([#23](https://github.com/udin-io/ash_introspection/issues/23) stage
+  5a, PR 1). Two config maps are rebuilt from scratch mid-request, and neither
+  named every manifest key:
+  - `value_formatter_config/2` named neither `:manifest` nor
+    `:manifest_namespace`, so stage 4 typed every field it formatted off
+    `Ash.Resource.Info`.
+  - The stage-3 processor config named `:manifest` but not
+    `:manifest_namespace`, so a manifest decorated under any namespace other
+    than `:ash_introspection` read live there too.
+
+  Both rebuilds now carry both keys. `execute_ash_action/2`,
+  `process_result/3` and `format_output_with_request/3` prepare the manifest
+  once per stage with `ResourceInfo.normalize_config/1` instead of leaving each
+  read to rebuild its lookup maps, and seven reads that passed no config at all
+  now pass it. `Rpc.Pipeline`'s config type gained `:manifest_namespace`.
+
+  Additive: a config with no `:manifest` key behaves exactly as before, and the
+  consumer still puts none on the request path — that is stage 5a's PR 4, in
+  `ash_kotlin_multiplatform`.
+
 ## [0.5.2] - 2026-09-18
 
 Additive. A nested selection inside a tuple field no longer comes back
