@@ -90,16 +90,17 @@ defmodule AshIntrospection.Rpc.FieldProcessing.FieldSelectorTupleNestedTest do
   end
 
   describe "a nested selection on a tuple field" do
-    test "keys its template from the resolved atom, not the wire name" do
-      assert [{:corner, [:x, :y]}] = template([%{"corner" => ["x", "y"]}])
+    test "keys its template from the resolved atom and carries the index" do
+      assert [%{field_name: :corner, index: 1, nested: [:x, :y]}] =
+               template([%{"corner" => ["x", "y"]}])
     end
 
     test "keys it the same way the multi-entry spelling does" do
       single = template([%{"corner" => ["x"]}])
       multi = template([%{"corner" => ["x"], "label" => nil}])
 
-      assert [{:corner, [:x]}] = single
-      assert {:corner, [:x]} in multi
+      assert [%{field_name: :corner, index: 1, nested: [:x]}] = single
+      assert %{field_name: :corner, index: 1, nested: [:x]} in multi
     end
 
     test "still rejects a nested field the tuple field does not have" do
