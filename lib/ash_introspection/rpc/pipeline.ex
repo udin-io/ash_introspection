@@ -99,11 +99,11 @@ defmodule AshIntrospection.Rpc.Pipeline do
   """
   @spec execute_ash_action(Request.t(), config()) :: {:ok, term()} | {:error, term()}
   def execute_ash_action(%Request{} = request, config \\ %{}) do
-    # Prepare the manifest once per stage. `ResourceInfo.source/1` rebuilds the
-    # lookup maps on every read it is handed a bare `%Ash.Info.Manifest{}`, and
-    # one stage reads dozens of times. `normalize_config/1` also folds
-    # `:manifest_namespace` into the prepared source, so the rebuilt config maps
-    # below carry the namespace by carrying `:manifest`.
+    # Prepare the manifest once per stage. Handed a bare `%Ash.Info.Manifest{}`,
+    # `ResourceInfo.source/1` rebuilds the lookup maps on every read, and one
+    # stage reads dozens of times. `normalize_config/1` also folds
+    # `:manifest_namespace` into the prepared source, so the config maps rebuilt
+    # further down carry the namespace by carrying `:manifest`.
     config = ResourceInfo.normalize_config(config)
 
     opts = [

@@ -55,6 +55,7 @@ defmodule AshIntrospection.Rpc.ResultProcessor do
   @type config :: %{
           optional(:field_names_callback) => atom(),
           optional(:manifest) => Ash.Info.Manifest.t() | ResourceInfo.Source.t() | nil,
+          optional(:manifest_namespace) => atom() | nil,
           optional(:action_returns) => {Ash.Type.t(), keyword()}
         }
 

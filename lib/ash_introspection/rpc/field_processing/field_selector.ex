@@ -48,7 +48,8 @@ defmodule AshIntrospection.Rpc.FieldProcessing.FieldSelector do
           optional(:is_interop_resource?) => (module() -> boolean()),
           optional(:get_original_field_name) => (module(), term() -> atom() | nil),
           optional(:load_restrictions) => term(),
-          optional(:manifest) => Ash.Info.Manifest.t() | ResourceInfo.Source.t() | nil
+          optional(:manifest) => Ash.Info.Manifest.t() | ResourceInfo.Source.t() | nil,
+          optional(:manifest_namespace) => atom() | nil
         }
 
   # ---------------------------------------------------------------------------
