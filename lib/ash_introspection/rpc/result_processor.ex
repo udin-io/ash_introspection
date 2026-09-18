@@ -215,7 +215,7 @@ defmodule AshIntrospection.Rpc.ResultProcessor do
 
       # Ash.Type.Struct with resource instance_of
       unwrapped_type == Ash.Type.Struct &&
-          Introspection.is_resource_instance_of?(full_constraints) ->
+          Introspection.is_resource_instance_of?(full_constraints, config) ->
         instance_of = Keyword.get(full_constraints, :instance_of)
         extract_resource_value(value, instance_of, template, config)
 

@@ -31,6 +31,8 @@ defmodule AshIntrospection.Rpc.PipelineTamperedManifestTest do
   alias AshIntrospection.Test.Account
   alias AshIntrospection.Test.Dossier
   alias AshIntrospection.Test.DossierDomain
+  alias AshIntrospection.Test.EmbeddedUnscoped
+  alias AshIntrospection.Test.Ledger
   alias AshIntrospection.Test.ManifestFixture
   alias AshIntrospection.Test.RpcDomain
   alias AshIntrospection.Test.User
@@ -95,6 +97,18 @@ defmodule AshIntrospection.Rpc.PipelineTamperedManifestTest do
         end)
       end)
     end)
+  end
+
+  # A lie about where a module lives in the manifest. An embedded resource is
+  # carried under `types` with `kind: :embedded_resource`; listed under
+  # `resources` instead, `ResourceInfo.embedded?/2` answers `false` without
+  # asking `Ash.Resource.Info`.
+  defp declare_resource(manifest, module) do
+    %{
+      manifest
+      | resources: [%Ash.Info.Manifest.Resource{module: module} | manifest.resources],
+        types: Enum.reject(manifest.types, &(&1.module == module))
+    }
   end
 
   defp prepared(manifest), do: %{manifest: ResourceInfo.prepare(manifest)}
@@ -279,6 +293,39 @@ defmodule AshIntrospection.Rpc.PipelineTamperedManifestTest do
       refute response["data"]["embedding"] == @embedding
       assert %{data: data, dimensions: 3} = response["data"]["embedding"]
       assert is_binary(data)
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # Classification
+  # ---------------------------------------------------------------------------
+
+  describe "an embedded attribute the tampered manifest declares a resource" do
+    test "stage 1 classifies it as the manifest says" do
+      assert EmbeddedUnscoped in ManifestFixture.embedded_modules(),
+             "the fixture manifest does not carry EmbeddedUnscoped as an embedded type"
+
+      honest = decorated_config()
+      tampered = prepared(declare_resource(decorated(), EmbeddedUnscoped))
+
+      assert ResourceInfo.embedded?(EmbeddedUnscoped, honest)
+      refute ResourceInfo.embedded?(EmbeddedUnscoped, tampered)
+
+      # An embedded attribute demands a nested selection and accepts one.
+      assert {:error, {:requires_field_selection, :embedded_resource, :trail, []}} =
+               FieldSelector.process(Ledger, :read, [:id, :trail], honest)
+
+      assert {:ok, {[:id, :trail], [], [:id, {:trail, [:note]}]}} =
+               FieldSelector.process(Ledger, :read, [:id, %{"trail" => ["note"]}], honest)
+
+      # Told it is a declared resource rather than an embedded one, stage 1
+      # classifies it as a plain attribute: the flat select it refused is
+      # allowed, and the nested selection it accepted is refused.
+      assert {:ok, {[:id, :trail], [], [:id, :trail]}} =
+               FieldSelector.process(Ledger, :read, [:id, :trail], tampered)
+
+      assert {:error, {:field_does_not_support_nesting, :trail, []}} =
+               FieldSelector.process(Ledger, :read, [:id, %{"trail" => ["note"]}], tampered)
     end
   end
 
