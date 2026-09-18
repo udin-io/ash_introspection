@@ -166,5 +166,47 @@ defmodule AshIntrospection.Rpc.FieldProcessing.FieldSelectorTupleNestedTest do
                "meta" => %{"origin" => %{"lat" => 30.0, "lng" => 31.2}, "zoom" => 12}
              }
     end
+
+    test "a tuple-typed field selected flat one level down returns its elements" do
+      assert %{"data" => data} = response([%{"span" => ["from"]}], :get_tile_deep)
+      assert data == %{"span" => %{"from" => %{"x" => 1.5, "y" => 2.5}}}
+    end
+  end
+
+  # The same tuple reached through the other containers. A list is asserted
+  # on every element: a first record that is right and a second that is not
+  # is invisible to List.first/1 (see #57 in CLAUDE.md).
+  describe "the tuple index through neighbouring containers (#66)" do
+    test "an array of tuples places the nested field in every element" do
+      assert %{"data" => data} = response([%{"corner" => ["x"]}, "label"], :list_tiles)
+
+      assert data == [
+               %{"label" => "north-west", "corner" => %{"x" => 1.5}},
+               %{"label" => "south-east", "corner" => %{"x" => 3.5}}
+             ]
+    end
+
+    # The gap this fix does not close, filed out of #66. A map at the top of
+    # a generic action's result is typed `{nil, []}` by
+    # `ResultProcessor.determine_data_type/3`, because Ash hands the `run`
+    # result back uncast and the typed map path reads atom keys only (#62).
+    # So a tuple inside it has no field types, its nested template is
+    # ignored, and stage 4 formats the whole tuple: the client gets every
+    # element instead of the one it asked for. Change this assertion when
+    # that ticket lands; do not delete it.
+    test "a tuple inside a map ignores the nested selection and returns every element" do
+      assert %{"data" => data} = response(["name", %{"span" => ["y"]}], :get_tile_map)
+      assert data == %{"name" => "north-west", "span" => %{"x" => 1.5, "y" => 2.5}}
+    end
+
+    test "a tuple inside a map selected flat returns every element" do
+      assert %{"data" => data} = response(["name", "span"], :get_tile_map)
+      assert data == %{"name" => "north-west", "span" => %{"x" => 1.5, "y" => 2.5}}
+    end
+
+    test "a tuple as a union member returns the nested value" do
+      assert %{"data" => data} = response([%{"point" => ["x"]}], :pick_tile)
+      assert data == %{"point" => %{"x" => 1.5}}
+    end
   end
 end
