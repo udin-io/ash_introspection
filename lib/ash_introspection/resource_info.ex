@@ -66,8 +66,8 @@ defmodule AshIntrospection.ResourceInfo do
   |---|---|
   | `runtime_resource?/2`, `declared_resource?/2`, `embedded?/2` | the manifest as ash generates it |
   | `primary_key/2`, `identity_keys/3` | the manifest as ash generates it |
-  | `relationship/3`, `public_relationship/3` | the manifest as ash generates it |
   | `public_field_names/2` | the manifest as ash generates it |
+  | `relationship/3`, `public_relationship/3` | `custom.<namespace>` when decorated, else the manifest |
   | every `attribute`, `calculation`, `aggregate`, `action` reader | `custom.<namespace>`, written by `AshIntrospection.Manifest.Decorator` |
   | `aggregate_type/3`, `authorize_bulk_strategy/2` | `custom.<namespace>` |
 
@@ -79,12 +79,18 @@ defmodule AshIntrospection.ResourceInfo do
   identical rather than approximated. `test/ash_introspection/manifest/`
   proves that field for field.
 
-  **A manifest is not a complete list of relationships.**
-  `Ash.Info.Manifest.Generator.generate/1` defaults
-  `:include_private_relationships?` to `false`, so `relationship/3` falls back
-  to live on a miss — a private `belongs_to` is absent from the manifest and
-  present in `Ash.Resource.Info`. `public_relationship/3` does not fall back:
-  every public relationship is carried, so a miss there is the answer.
+  **A manifest is not a complete list of relationships, so they are
+  decorated.** `Ash.Info.Manifest.Generator.generate/1` defaults
+  `:include_private_relationships?` to `false`, and `%Ash.Info.Manifest{}`
+  records no build options (`deps/ash/lib/ash/info/manifest.ex:40`), so nothing
+  on a manifest says whether its relationships are all of them. The decorator
+  lists them live at compile time and stores a record for each, private ones
+  included; `relationship/3` reads that and needs no live fallback for a
+  decorated resource. `public_relationship/3` reads the record's `public?`,
+  which is the only source for that answer —
+  `%Ash.Info.Manifest.Relationship{}` carries no visibility, so a manifest
+  built with private relationships hands one back indistinguishable from a
+  public one.
 
   **An undecorated manifest still reads live for the second group.** A
   resource the decorator skipped — a module it could not load at decoration
@@ -96,10 +102,12 @@ defmodule AshIntrospection.ResourceInfo do
   Where the native return values differ, this module returns a narrow map with
   only the keys its call sites read, and both sources build it. `relationship/3`
   is the case: live returns `%Ash.Resource.Relationships.HasOne{}` and friends,
-  the manifest returns `%Ash.Info.Manifest.Relationship{}`. Callers here read
-  `:destination` and `:cardinality` and nothing else, so that is what comes
-  back. `identity_keys/3` is the same narrowing over `%Ash.Resource.Identity{}`
-  versus the manifest's `%{keys: [...]}`.
+  the manifest returns `%Ash.Info.Manifest.Relationship{}`, and the decoration
+  stores `AshIntrospection.Manifest.Custom.relationship_record/0`. Callers here
+  read `:destination` and `:cardinality` and nothing else, so that is what comes
+  back, plus the `:name` they were keyed by. `identity_keys/3` is the same
+  narrowing over `%Ash.Resource.Identity{}` versus the manifest's
+  `%{keys: [...]}`.
 
   ## Not `:resource_info_module`
 
@@ -315,38 +323,47 @@ defmodule AshIntrospection.ResourceInfo do
   The relationship `name` on `resource`, narrowed to `:name`, `:destination`
   and `:cardinality`, or `nil`.
 
-  A miss on the manifest falls back to live introspection, because a manifest
-  is not a complete list of relationships:
+  A decorated resource answers on its own:
+  `AshIntrospection.Manifest.Decorator` lists relationships live at compile
+  time, so its records cover every relationship the module declares and a miss
+  is the answer.
+
+  Undecorated, a miss on the manifest falls back to live introspection, because
+  a manifest is not a complete list of relationships:
   `Ash.Info.Manifest.Generator.generate/1` defaults
   `:include_private_relationships?` to `false`
   (`deps/ash/lib/ash/info/manifest/generator.ex:50`), so a private `belongs_to`
   is absent from a manifest built with the defaults while
-  `Ash.Resource.Info.relationship/2` still answers for it.
+  `Ash.Resource.Info.relationship/2` still answers for it. That fallback is what
+  the decoration removes, and issue #23 stage 5a PR 6 deletes.
   """
   @spec relationship(module(), atom(), config()) :: relationship() | nil
   def relationship(resource, name, config \\ %{}) do
-    case manifest_resource(config, resource) do
-      nil ->
-        narrow_relationship(Ash.Resource.Info.relationship(resource, name))
+    case decorated(config, resource) do
+      {decorated_resource, namespace} ->
+        narrow_relationship(Custom.relationship(decorated_resource, name, namespace))
 
-      manifest_resource ->
-        case Ash.Info.Manifest.Resource.get_relationship(manifest_resource, name) do
-          nil -> narrow_relationship(Ash.Resource.Info.relationship(resource, name))
-          found -> narrow_relationship(found)
-        end
+      nil ->
+        undecorated_relationship(config, resource, name)
     end
   end
 
   @doc """
   The public relationship `name` on `resource`, narrowed like `relationship/3`.
 
-  The manifest carries only public relationships, so both sources agree.
+  A decorated resource answers from the stored `public?` flag. The manifest's
+  own relationship map cannot: `%Ash.Info.Manifest.Relationship{}` records no
+  visibility, so a manifest built with `include_private_relationships?: true`
+  carries private relationships that are indistinguishable from public ones.
   """
   @spec public_relationship(module(), atom(), config()) :: relationship() | nil
   def public_relationship(resource, name, config \\ %{}) do
-    case manifest_resource(config, resource) do
-      nil -> narrow_relationship(Ash.Resource.Info.public_relationship(resource, name))
-      resource -> narrow_relationship(Ash.Info.Manifest.Resource.get_relationship(resource, name))
+    case decorated(config, resource) do
+      {decorated_resource, namespace} ->
+        narrow_relationship(Custom.public_relationship(decorated_resource, name, namespace))
+
+      nil ->
+        undecorated_public_relationship(config, resource, name)
     end
   end
 
@@ -620,6 +637,32 @@ defmodule AshIntrospection.ResourceInfo do
       {manifest_resource, namespace}
     else
       _ -> nil
+    end
+  end
+
+  # The relationship readings for a resource the decorator did not reach: no
+  # manifest, a manifest that does not carry the module, or one that carries it
+  # bare. Unchanged from before the records existed.
+  defp undecorated_relationship(config, resource, name) do
+    case manifest_resource(config, resource) do
+      nil ->
+        narrow_relationship(Ash.Resource.Info.relationship(resource, name))
+
+      manifest_resource ->
+        case Ash.Info.Manifest.Resource.get_relationship(manifest_resource, name) do
+          nil -> narrow_relationship(Ash.Resource.Info.relationship(resource, name))
+          found -> narrow_relationship(found)
+        end
+    end
+  end
+
+  defp undecorated_public_relationship(config, resource, name) do
+    case manifest_resource(config, resource) do
+      nil ->
+        narrow_relationship(Ash.Resource.Info.public_relationship(resource, name))
+
+      manifest_resource ->
+        narrow_relationship(Ash.Info.Manifest.Resource.get_relationship(manifest_resource, name))
     end
   end
 

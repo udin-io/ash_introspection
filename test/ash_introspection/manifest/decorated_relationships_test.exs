@@ -31,6 +31,7 @@ defmodule AshIntrospection.Manifest.DecoratedRelationshipsTest do
   alias AshIntrospection.ResourceInfo
   alias AshIntrospection.Test
   alias AshIntrospection.Test.ManifestFixture
+  alias AshIntrospection.Test.ManifestTamper
 
   @default_namespace Custom.default_namespace()
 
@@ -100,5 +101,98 @@ defmodule AshIntrospection.Manifest.DecoratedRelationshipsTest do
       assert Ash.Info.Manifest.Resource.get_relationship(decoration(Test.Address), :user) == nil,
              "the fixture manifest carries the private relationship, so decorating it proves nothing"
     end
+  end
+
+  # ---------------------------------------------------------------------------
+  # The reader
+  # ---------------------------------------------------------------------------
+
+  describe "relationship/3 reads the decoration" do
+    test "a tampered destination beats the manifest's own relationship" do
+      tampered = tamper(&ManifestTamper.retarget(&1, &2, Test.User, :address, Test.Account))
+
+      assert ResourceInfo.relationship(Test.User, :address, tampered).destination == Test.Account
+
+      assert ResourceInfo.relationship(Test.User, :address, decorated_config()).destination ==
+               Test.Address
+    end
+
+    test "a tampered destination beats live introspection for a private relationship" do
+      tampered = tamper(&ManifestTamper.retarget(&1, &2, Test.Address, :user, Test.Account))
+
+      assert ResourceInfo.relationship(Test.Address, :user, tampered).destination == Test.Account
+
+      assert ResourceInfo.relationship(Test.Address, :user, decorated_config()).destination ==
+               Test.User
+    end
+
+    test "the narrow map drops public?, so the return shape is unchanged" do
+      assert ResourceInfo.relationship(Test.Address, :user, decorated_config()) == %{
+               name: :user,
+               destination: Test.User,
+               cardinality: :one
+             }
+    end
+  end
+
+  describe "public_relationship/3 reads the decoration" do
+    test "a relationship the decoration marks private is refused" do
+      tampered = tamper(&ManifestTamper.hide_relationship(&1, &2, Test.User, :address))
+
+      assert ResourceInfo.public_relationship(Test.User, :address, tampered) == nil
+
+      # The private reader still answers, so the tamper changed visibility and
+      # not the record's presence.
+      assert ResourceInfo.relationship(Test.User, :address, tampered).destination == Test.Address
+
+      assert ResourceInfo.public_relationship(Test.User, :address, decorated_config()) == %{
+               name: :address,
+               destination: Test.Address,
+               cardinality: :one
+             }
+    end
+
+    test "a manifest built with private relationships still refuses one" do
+      # This is the answer the manifest alone gets wrong.
+      # `%Ash.Info.Manifest.Relationship{}` carries no `public?`, so reading the
+      # manifest's own relationship map hands a private `belongs_to` back as
+      # public whenever the manifest was built with
+      # `include_private_relationships?: true` — which is what the consumer
+      # does (`ash_kotlin_multiplatform` `build_manifest.ex:69`).
+      config = %{manifest: ResourceInfo.prepare(with_private_relationships())}
+
+      assert Ash.Info.Manifest.Resource.get_relationship(
+               ResourceInfo.decoration(Test.Address, config) |> elem(0),
+               :user
+             ),
+             "the manifest was not built with private relationships, so this proves nothing"
+
+      assert ResourceInfo.public_relationship(Test.Address, :user, config) == nil
+
+      assert ResourceInfo.relationship(Test.Address, :user, config) == %{
+               name: :user,
+               destination: Test.User,
+               cardinality: :one
+             }
+    end
+  end
+
+  defp tamper(fun) do
+    %{manifest: ResourceInfo.prepare(fun.(ManifestFixture.decorated(), @default_namespace))}
+  end
+
+  defp with_private_relationships do
+    {:ok, manifest} =
+      Ash.Info.Manifest.generate(
+        otp_app: :ash_introspection,
+        action_entrypoints: ManifestFixture.entrypoints(),
+        include_private_relationships?: true
+      )
+
+    AshIntrospection.Manifest.Decorator.decorate(
+      manifest,
+      @default_namespace,
+      ManifestFixture.decorator_config()
+    )
   end
 end

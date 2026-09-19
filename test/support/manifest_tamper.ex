@@ -16,7 +16,8 @@ defmodule AshIntrospection.Test.ManifestTamper do
 
   Each function edits **every** place the decoration records the value, because
   a reader may take any of them. `AshIntrospection.Manifest.Decorator` writes an
-  attribute into two lists and both key forms of the `by_name` map.
+  attribute into two lists and both key forms of the `by_name` map, and a
+  relationship record into both key forms of its own `by_name` entry.
   """
 
   @doc """
@@ -61,6 +62,20 @@ defmodule AshIntrospection.Test.ManifestTamper do
     end)
   end
 
+  @doc "Points one decorated relationship at `destination`."
+  @spec retarget(Ash.Info.Manifest.t(), atom(), module(), atom(), module()) ::
+          Ash.Info.Manifest.t()
+  def retarget(manifest, namespace, module, name, destination) do
+    update_relationship(manifest, namespace, module, name, &%{&1 | destination: destination})
+  end
+
+  @doc "Marks one decorated relationship private."
+  @spec hide_relationship(Ash.Info.Manifest.t(), atom(), module(), atom()) ::
+          Ash.Info.Manifest.t()
+  def hide_relationship(manifest, namespace, module, name) do
+    update_relationship(manifest, namespace, module, name, &%{&1 | public?: false})
+  end
+
   @doc """
   Moves `module` from the manifest's `types` into its `resources`.
 
@@ -76,6 +91,10 @@ defmodule AshIntrospection.Test.ManifestTamper do
       | resources: [%Ash.Info.Manifest.Resource{module: module} | manifest.resources],
         types: Enum.reject(manifest.types, &(&1.module == module))
     }
+  end
+
+  defp update_relationship(manifest, namespace, module, name, fun) do
+    update_payload(manifest, namespace, module, &update_by_name(&1, :relationships, name, fun))
   end
 
   # Both key forms, mirroring what the decorator writes.
