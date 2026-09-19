@@ -48,7 +48,10 @@ defmodule AshIntrospection.Rpc.ValueFormatter do
           optional(:output_field_formatter) => atom(),
           optional(:field_names_callback) => atom(),
           optional(:get_original_field_name) => (module(), String.t() -> atom() | nil),
-          optional(:format_field_for_client) => (atom(), module() | nil, atom() -> String.t())
+          optional(:format_field_for_client) => (atom(), module() | nil, atom() -> String.t()),
+          optional(:manifest) =>
+            Ash.Info.Manifest.t() | AshIntrospection.ResourceInfo.Source.t() | nil,
+          optional(:manifest_namespace) => atom() | nil
         }
 
   @doc """

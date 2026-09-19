@@ -48,7 +48,8 @@ defmodule AshIntrospection.Rpc.FieldProcessing.FieldSelector do
           optional(:is_interop_resource?) => (module() -> boolean()),
           optional(:get_original_field_name) => (module(), term() -> atom() | nil),
           optional(:load_restrictions) => term(),
-          optional(:manifest) => Ash.Info.Manifest.t() | ResourceInfo.Source.t() | nil
+          optional(:manifest) => Ash.Info.Manifest.t() | ResourceInfo.Source.t() | nil,
+          optional(:manifest_namespace) => atom() | nil
         }
 
   # ---------------------------------------------------------------------------
@@ -476,7 +477,7 @@ defmodule AshIntrospection.Rpc.FieldProcessing.FieldSelector do
     cond do
       attr = ResourceInfo.public_attribute(resource, field_name, config) ->
         constraints = attr.constraints || []
-        category = classify_attribute_category(attr.type, constraints)
+        category = classify_attribute_category(attr.type, constraints, config)
         {attr.type, constraints, category}
 
       rel = ResourceInfo.public_relationship(resource, field_name, config) ->
@@ -489,7 +490,7 @@ defmodule AshIntrospection.Rpc.FieldProcessing.FieldSelector do
         category =
           cond do
             has_any_arguments?(calc) -> :calculation_with_args
-            requires_nested_selection_simple?(calc.type, constraints) -> :calculation_complex
+            requires_nested_selection?(calc.type, constraints, config) -> :calculation_complex
             true -> :calculation
           end
 
@@ -503,7 +504,7 @@ defmodule AshIntrospection.Rpc.FieldProcessing.FieldSelector do
     end
   end
 
-  defp classify_attribute_category(type, constraints) do
+  defp classify_attribute_category(type, constraints, config) do
     {unwrapped_type, unwrapped_constraints} =
       case type do
         {:array, inner} ->
@@ -517,7 +518,7 @@ defmodule AshIntrospection.Rpc.FieldProcessing.FieldSelector do
       end
 
     cond do
-      is_atom(unwrapped_type) && Introspection.is_embedded_resource?(unwrapped_type) ->
+      is_atom(unwrapped_type) && Introspection.is_embedded_resource?(unwrapped_type, config) ->
         :embedded_resource
 
       unwrapped_type == Ash.Type.Tuple && Keyword.has_key?(unwrapped_constraints, :fields) ->
@@ -878,7 +879,7 @@ defmodule AshIntrospection.Rpc.FieldProcessing.FieldSelector do
 
   defp union_member_requires_selection?(member_type, member_constraints, config) do
     cond do
-      is_atom(member_type) && Introspection.is_embedded_resource?(member_type) ->
+      is_atom(member_type) && Introspection.is_embedded_resource?(member_type, config) ->
         true
 
       Keyword.has_key?(member_constraints, :fields) &&
@@ -909,7 +910,7 @@ defmodule AshIntrospection.Rpc.FieldProcessing.FieldSelector do
     member_config = Keyword.get(union_types, internal_name)
     member_type = Keyword.get(member_config, :type)
     member_constraints = Keyword.get(member_config, :constraints, [])
-    member_return_type = union_member_to_type_spec(member_type, member_constraints)
+    member_return_type = union_member_to_type_spec(member_type, member_constraints, config)
     new_path = path ++ [internal_name]
 
     {_nested_select, nested_load, nested_template} =
@@ -948,10 +949,10 @@ defmodule AshIntrospection.Rpc.FieldProcessing.FieldSelector do
     FieldFormatter.parse_input_field(name, formatter)
   end
 
-  defp union_member_to_type_spec(member_type, member_constraints) do
+  defp union_member_to_type_spec(member_type, member_constraints, config) do
     case member_type do
       type when is_atom(type) and type != :map ->
-        if Introspection.is_embedded_resource?(type) do
+        if Introspection.is_embedded_resource?(type, config) do
           {type, []}
         else
           {type, member_constraints}
@@ -1146,10 +1147,11 @@ defmodule AshIntrospection.Rpc.FieldProcessing.FieldSelector do
       end
 
     cond do
-      is_atom(unwrapped_type) && Introspection.is_embedded_resource?(unwrapped_type) ->
+      is_atom(unwrapped_type) && Introspection.is_embedded_resource?(unwrapped_type, config) ->
         true
 
-      unwrapped_type == Ash.Type.Struct && Introspection.is_resource_instance_of?(constraints) ->
+      unwrapped_type == Ash.Type.Struct &&
+          Introspection.is_resource_instance_of?(constraints, config) ->
         true
 
       unwrapped_type == Ash.Type.Union ->
@@ -1167,11 +1169,6 @@ defmodule AshIntrospection.Rpc.FieldProcessing.FieldSelector do
       true ->
         false
     end
-  end
-
-  # Simplified version without config for internal use
-  defp requires_nested_selection_simple?(type, type_constraints) do
-    requires_nested_selection?(type, type_constraints, %{})
   end
 
   defp get_field_specs(constraints) do

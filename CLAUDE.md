@@ -364,6 +364,45 @@ sets from `action.returns` and `action.constraints`. #84 found the old lookup
 reading the resource's first union attribute instead, so a member that
 attribute did not declare came back untyped.
 
+### A config map rebuilt from scratch drops every key it does not name
+
+**Symptom.** A request carries a manifest, every `ResourceInfo` reader is
+manifest-backed, and one stage still answers from live introspection. Nothing
+errors, and the parity test is green.
+
+**Why.** Two places mid-request build a new config map instead of passing the
+one they were handed: the stage-3 processor config at `pipeline.ex:165` —
+where #84's `put_action_returns` already sits — and `value_formatter_config/2`
+at `pipeline.ex:830`. A key on the pipeline config that a rebuild does not
+name never reaches `ResourceInfo`. At `1ed750e` the first named `:manifest`
+but not `:manifest_namespace`, and the second named neither, so stage 4 read
+live for every request and stage 3 read live for every namespace but the
+default. Same family as the `FieldSelector` template shapes: the value is
+dropped in silence and the answer is still plausible.
+
+**What we do.** Both rebuilds copy both manifest keys, and the three request
+entry points normalize once with `ResourceInfo.normalize_config/1` rather than
+leaving `ResourceInfo.source/1` to rebuild the lookup maps on every read. When
+you add a config key the readers use, check both rebuilds:
+
+```
+grep -n 'field_names_callback: Map.get' lib/ash_introspection/rpc/pipeline.ex
+```
+
+**Proving a manifest is read means tampering with it, never comparing parity.**
+`Manifest.Decorator` captures the live structs, so the two sources agree by
+construction: `test/ash_introspection/rpc/pipeline_manifest_parity_test.exs`
+passes whether or not a stage ever opens the manifest, which is how stage 4's
+drop survived every release since the `:manifest` key landed in 0.4.x. Retype
+one decorated attribute and assert the response follows the lie —
+`Test.Account`'s `:embedding` retyped off `Ash.Type.Vector` reaches the client
+as the packed binary instead of a list of numbers, and `Test.Dossier`'s
+`:owner` retyped off `:struct` comes back whole instead of selected. A tamper
+needs the same care as any other test here: listing an embedded resource under
+`manifest.resources` changes nothing until it is also dropped from
+`manifest.types`, because `ResourceInfo.embedded?/2` reads the types first. See
+`test/ash_introspection/rpc/pipeline_tampered_manifest_test.exs`.
+
 ### A failing async test's diff makes the atom-safety batch flaky
 
 **Symptom.** A batch case in
@@ -589,8 +628,10 @@ mix hex.audit
 mix deps.audit
 ```
 
-`main` is at **470 tests + 8 doctests, 0 failures** (measured 2026-09-18 on
-`issue-66-nested-tuple-selection`). #66 added 10 tests to 0.5.1's 460 and 7
+The branch for #23 stage 5a PR 1 is at **477 tests + 8 doctests, 0 failures**
+(measured 2026-09-18 on `issue-23-stage-5a-manifest-request-path`); it added 7
+tests to `main`'s **470 + 8**, all in
+`pipeline_tampered_manifest_test.exs`. #66 added 10 tests to 0.5.1's 460 and 7
 doctests to its 1, the first to run `FieldExtractor`'s examples. #84 had added
 9 to 0.5.0's 451. That 451 was 26 below
 `5dc9e85`'s 477, and the drop was deliberate: #23 stage 4b deleted
