@@ -14,7 +14,37 @@ and this project adheres to
 
 ## [Unreleased]
 
+### Added
+
+- `Manifest.Decorator` stores a record for every relationship a resource
+  declares, private ones included, and `Manifest.Custom.relationship/3` and
+  `Manifest.Custom.public_relationship/3` read it back
+  ([#23](https://github.com/udin-io/ash_introspection/issues/23) stage 5a,
+  PR 2). The record carries `name`, `destination`, `cardinality` and `public?`:
+  the two keys the request path reads off a relationship, the name it is keyed
+  by, and the visibility a manifest does not record.
+
+  `ResourceInfo.relationship/3` reads the record and needs no live fallback for
+  a decorated resource. It had one with no manifest equivalent. A manifest
+  built with the default `include_private_relationships?: false` carries no
+  private relationship, and `%Ash.Info.Manifest{}` records no build options, so
+  nothing on it distinguished a resource with no private relationships from a
+  manifest built without them; every private relationship read live in silence.
+  The decorator lists them live once, at compile time, instead.
+
 ### Fixed
+
+- `ResourceInfo.public_relationship/3` answered a private relationship as
+  public when the manifest carried it, which is every manifest built with
+  `include_private_relationships?: true` — how `ash_kotlin_multiplatform`
+  builds its own (`build_manifest.ex:69`).
+  `%Ash.Info.Manifest.Relationship{}` records no visibility, so the manifest's
+  relationship map cannot answer the question; the reader now takes `public?`
+  off the decorated record. The two callers are on the request path
+  (`FieldSelector` field classification and
+  `ResourceFields.get_public_field_type_info/3`), and no consumer puts a
+  manifest there yet, so this was latent rather than shipped — it would have
+  gone live with stage 5a's PR 4.
 
 - A request carrying a manifest still read live introspection in two of its
   stages ([#23](https://github.com/udin-io/ash_introspection/issues/23) stage

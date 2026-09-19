@@ -187,7 +187,9 @@ config map it reads live introspection, which is what every caller gets today
 because nothing here puts a manifest on the config.
 `grep -rn 'Ash\.Resource\.Info\.' lib` should match nothing outside
 `lib/ash_introspection/resource_info.ex` and
-`lib/ash_introspection/manifest/decorator.ex`.
+`lib/ash_introspection/manifest/decorator.ex` — plus seven doc references in
+`lib/ash_introspection/manifest/custom.ex`, which name the live function each
+reader mirrors and call none of them.
 
 Since #23 stage 5a's PR 1 a manifest on the config reaches every request-path
 read. `execute_ash_action/2`, `process_result/3` and
@@ -199,6 +201,14 @@ source rather than rebuilding it. Two reads stay deliberately config-free:
 `action_returns_resource?/1` in `Rpc.Pipeline` and the two runtime struct
 guards in `Rpc.ResultProcessor`, which ask only whether a module Ash handed
 back is a resource — an answer a manifest cannot change.
+
+PR 2 closed the one read that a manifest could not replace at all.
+`relationship/3` fell back to live introspection on a manifest miss, and a miss
+was unreadable: nothing on `%Ash.Info.Manifest{}` says whether it was built with
+private relationships. The decorator now stores a narrowed record for every
+relationship, so that read comes out of `custom.<namespace>` too. Three
+manifest-miss live reads remain, and PR 6 deletes them: `primary_key/2`,
+`identity_keys/3` and the undecorated branch of the two relationship readers.
 
 `Manifest.Decorator` and `Manifest.Custom` are what #23 stage 2 added. Stage 3
 shipped in `ash_kotlin_multiplatform` (its PR #75, `e5ad024`), so the dashed
@@ -251,7 +261,10 @@ sequenceDiagram
         I-->>D: the live structs
         D->>D: format field and argument names per built-in formatter
         D->>D: classify each action's return type
-        loop each relationship on it
+        D->>I: relationships, private ones included
+        I-->>D: the live structs
+        D->>D: narrow each to name, destination, cardinality, public?
+        loop each relationship the manifest carries
             D->>R: relationship_pagination/3, relationship_read_action/3
             R->>I: relationship, primary_action, action
             I-->>R: the read behind it
@@ -262,9 +275,16 @@ sequenceDiagram
     D-->>T: the manifest with custom.namespace populated
     Note over T: persisted in the consumer's Spark DSL state
     T-->>P: config map carrying :manifest
-    P->>R: attribute, action, aggregate_type, relationship_pagination, ...
+    P->>R: attribute, action, relationship, aggregate_type, ...
     R-->>P: read out of custom.namespace, no Ash.Resource.Info call
 ```
+
+The two relationship payloads are not redundant. The narrowed records are
+listed live, so they cover every relationship the module declares, and
+`relationship/3` needs no live fallback for a decorated resource — stage 5a's
+PR 2. The pagination payload rides on the `%Ash.Info.Manifest.Relationship{}`
+the manifest carries, which a private relationship has none of unless the
+manifest was built with `include_private_relationships?: true`.
 
 A module the decorator cannot load is **skipped**, not guessed at:
 `Code.ensure_loaded?/1` guards every read, per the repo-wide rule from #49, and

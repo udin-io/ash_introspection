@@ -40,7 +40,9 @@ defmodule AshIntrospection.Manifest.Custom do
 
   Attribute, calculation, aggregate and action entries are the live Ash
   structs, captured at decoration time. See the decorator's moduledoc for why
-  they are not rebuilt from `%Ash.Info.Manifest.Field{}`.
+  they are not rebuilt from `%Ash.Info.Manifest.Field{}`. Relationships are the
+  exception: they are narrowed to `t:relationship_record/0`, because every call
+  site reads two keys off one.
   """
   @type resource_payload :: %{
           attributes: [Ash.Resource.Attribute.t()],
@@ -48,7 +50,7 @@ defmodule AshIntrospection.Manifest.Custom do
           public_calculations: [Ash.Resource.Calculation.t()],
           public_aggregates: [Ash.Resource.Aggregate.t()],
           actions: [Ash.Resource.Actions.action()],
-          by_name: %{atom() => %{(atom() | String.t()) => struct()}},
+          by_name: %{atom() => %{(atom() | String.t()) => struct() | relationship_record()}},
           aggregate_types: %{atom() => term()},
           return_classifications: %{atom() => term()},
           authorize_bulk_strategy: :error | :filter,
@@ -58,6 +60,20 @@ defmodule AshIntrospection.Manifest.Custom do
           argument_name_mappings: %{atom() => %{atom() => String.t()}},
           reverse_argument_name_mappings: %{atom() => %{String.t() => atom()}},
           formatted_argument_names: %{atom() => %{{atom(), atom()} => String.t()}}
+        }
+
+  @typedoc """
+  One relationship, narrowed to what the request path reads off one.
+
+  `AshIntrospection.ResourceInfo.relationship/3` narrows it once more, dropping
+  `public?` — that key is here so `public_relationship/3` has something to
+  filter on.
+  """
+  @type relationship_record :: %{
+          name: atom(),
+          destination: module(),
+          cardinality: :one | :many,
+          public?: boolean()
         }
 
   @typedoc "The decoration map written on a `%Ash.Info.Manifest.Relationship{}`."
@@ -432,7 +448,43 @@ defmodule AshIntrospection.Manifest.Custom do
 
   # ---------------------------------------------------------------------------
   # Relationships
+  #
+  # The narrowed records are read off the **resource**, not off a
+  # `%Manifest.Relationship{}`: a private relationship has no such struct in a
+  # manifest built with the defaults, and it is exactly the case these records
+  # exist to answer. The pagination readers below take the struct, because #24
+  # asks that question only of a relationship a client can select.
   # ---------------------------------------------------------------------------
+
+  @doc """
+  The relationship named `name` on a decorated resource, or `nil`.
+
+  Complete: the decorator lists relationships live, so a private relationship
+  the manifest itself does not carry is here too. That is the point of storing
+  them — `%Ash.Info.Manifest{}` records no build options, so a reader cannot
+  tell a manifest built without private relationships from a resource that has
+  none.
+
+  `name` may be an atom or a string, like `attribute/3`. A `nil` means "no such
+  relationship" for a decorated resource and "read live" for an undecorated one;
+  `decorated?/2` separates the two.
+  """
+  @spec relationship(Manifest.Resource.t() | nil, atom() | String.t(), atom()) ::
+          relationship_record() | nil
+  def relationship(resource, name, namespace \\ @default_namespace),
+    do: by_name(resource, namespace, :relationships, name)
+
+  @doc """
+  The relationship named `name` if it is public, or `nil`.
+
+  Reads the stored `public?` flag rather than the manifest's own relationship
+  map, which carries private relationships when the manifest was built with
+  `include_private_relationships?: true`.
+  """
+  @spec public_relationship(Manifest.Resource.t() | nil, atom() | String.t(), atom()) ::
+          relationship_record() | nil
+  def public_relationship(resource, name, namespace \\ @default_namespace),
+    do: only_public(relationship(resource, name, namespace))
 
   @doc """
   How the read behind a decorated `:many` relationship paginates.
