@@ -13,6 +13,7 @@ defmodule AshIntrospection.Rpc.PipelineTamperedManifestTest do
   stage ever opens the manifest. The only way to separate the two sources is to
   make them disagree — tamper with one decorated payload and assert the
   response follows the tampered copy.
+  `AshIntrospection.Test.ManifestTamper` writes the lies.
 
   Each test varies the config of **one** stage and runs the others honestly, so
   a failure names the stage that stopped reading.
@@ -34,82 +35,13 @@ defmodule AshIntrospection.Rpc.PipelineTamperedManifestTest do
   alias AshIntrospection.Test.EmbeddedUnscoped
   alias AshIntrospection.Test.Ledger
   alias AshIntrospection.Test.ManifestFixture
+  alias AshIntrospection.Test.ManifestTamper
   alias AshIntrospection.Test.RpcDomain
   alias AshIntrospection.Test.User
 
   @default_namespace Custom.default_namespace()
   @foreign_namespace :brief_test
   @embedding [0.5, -1.5, 2.25]
-
-  # ---------------------------------------------------------------------------
-  # Tampering
-  # ---------------------------------------------------------------------------
-
-  defp update_payload(manifest, namespace, module, fun) do
-    resources =
-      Enum.map(manifest.resources, fn
-        %{module: ^module} = resource ->
-          %{resource | custom: Map.update!(resource.custom, namespace, fun)}
-
-        other ->
-          other
-      end)
-
-    %{manifest | resources: resources}
-  end
-
-  # A lie about one attribute's type, written to every place the decoration
-  # records it: the two lists and both key forms of the `by_name` map.
-  defp retype(manifest, namespace, module, field, type) do
-    update_payload(manifest, namespace, module, fn payload ->
-      payload
-      |> Map.update!(:attributes, &retype_in_list(&1, field, type))
-      |> Map.update!(:public_attributes, &retype_in_list(&1, field, type))
-      |> Map.update!(:by_name, fn by_name ->
-        Map.update!(by_name, :attributes, fn attributes ->
-          attributes
-          |> Map.update!(field, &retyped(&1, type))
-          |> Map.update!(Atom.to_string(field), &retyped(&1, type))
-        end)
-      end)
-    end)
-  end
-
-  defp retype_in_list(attributes, field, type) do
-    Enum.map(attributes, fn
-      %{name: ^field} = attribute -> retyped(attribute, type)
-      other -> other
-    end)
-  end
-
-  defp retyped(attribute, type), do: %{attribute | type: type, constraints: []}
-
-  # A lie about one attribute's visibility.
-  defp hide(manifest, namespace, module, field) do
-    update_payload(manifest, namespace, module, fn payload ->
-      payload
-      |> Map.update!(:public_attributes, &Enum.reject(&1, fn a -> a.name == field end))
-      |> Map.update!(:by_name, fn by_name ->
-        Map.update!(by_name, :attributes, fn attributes ->
-          attributes
-          |> Map.update!(field, &%{&1 | public?: false})
-          |> Map.update!(Atom.to_string(field), &%{&1 | public?: false})
-        end)
-      end)
-    end)
-  end
-
-  # A lie about where a module lives in the manifest. An embedded resource is
-  # carried under `types` with `kind: :embedded_resource`; listed under
-  # `resources` instead, `ResourceInfo.embedded?/2` answers `false` without
-  # asking `Ash.Resource.Info`.
-  defp declare_resource(manifest, module) do
-    %{
-      manifest
-      | resources: [%Ash.Info.Manifest.Resource{module: module} | manifest.resources],
-        types: Enum.reject(manifest.types, &(&1.module == module))
-    }
-  end
 
   defp prepared(manifest), do: %{manifest: ResourceInfo.prepare(manifest)}
 
@@ -208,7 +140,15 @@ defmodule AshIntrospection.Rpc.PipelineTamperedManifestTest do
 
     test "a retype reaches the reader" do
       tampered =
-        prepared(retype(decorated(), @default_namespace, Account, :embedding, Ash.Type.String))
+        prepared(
+          ManifestTamper.retype(
+            decorated(),
+            @default_namespace,
+            Account,
+            :embedding,
+            Ash.Type.String
+          )
+        )
 
       assert ResourceInfo.attribute(Account, :embedding, tampered).type == Ash.Type.String
 
@@ -223,7 +163,7 @@ defmodule AshIntrospection.Rpc.PipelineTamperedManifestTest do
 
   describe "stage 1 — field selection" do
     test "a field the tampered manifest hides is refused" do
-      tampered = prepared(hide(decorated(), @default_namespace, Account, :email))
+      tampered = prepared(ManifestTamper.hide(decorated(), @default_namespace, Account, :email))
 
       assert {:ok, {_select, _load, _template}} =
                FieldSelector.process(Account, :read, [:id, :email], decorated_config())
@@ -249,7 +189,9 @@ defmodule AshIntrospection.Rpc.PipelineTamperedManifestTest do
              }
 
       tampered =
-        prepared(retype(decorated(), @default_namespace, Dossier, :owner, Ash.Type.String))
+        prepared(
+          ManifestTamper.retype(decorated(), @default_namespace, Dossier, :owner, Ash.Type.String)
+        )
 
       {:ok, result} = Pipeline.process_result(dossier_result(), request, tampered)
 
@@ -282,7 +224,15 @@ defmodule AshIntrospection.Rpc.PipelineTamperedManifestTest do
       assert honest["data"]["embedding"] == @embedding
 
       tampered =
-        prepared(retype(decorated(), @default_namespace, Account, :embedding, Ash.Type.String))
+        prepared(
+          ManifestTamper.retype(
+            decorated(),
+            @default_namespace,
+            Account,
+            :embedding,
+            Ash.Type.String
+          )
+        )
 
       response =
         Pipeline.format_output_with_request(%{success: true, data: processed}, request, tampered)
@@ -306,7 +256,7 @@ defmodule AshIntrospection.Rpc.PipelineTamperedManifestTest do
              "the fixture manifest does not carry EmbeddedUnscoped as an embedded type"
 
       honest = decorated_config()
-      tampered = prepared(declare_resource(decorated(), EmbeddedUnscoped))
+      tampered = prepared(ManifestTamper.declare_resource(decorated(), EmbeddedUnscoped))
 
       assert ResourceInfo.embedded?(EmbeddedUnscoped, honest)
       refute ResourceInfo.embedded?(EmbeddedUnscoped, tampered)
@@ -339,7 +289,7 @@ defmodule AshIntrospection.Rpc.PipelineTamperedManifestTest do
 
       tampered =
         ManifestFixture.decorated(@foreign_namespace)
-        |> retype(@foreign_namespace, Dossier, :owner, Ash.Type.String)
+        |> ManifestTamper.retype(@foreign_namespace, Dossier, :owner, Ash.Type.String)
 
       config = %{manifest: tampered, manifest_namespace: @foreign_namespace}
 
