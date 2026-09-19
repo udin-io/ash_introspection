@@ -402,6 +402,41 @@ needs the same care as any other test here: listing an embedded resource under
 `manifest.resources` changes nothing until it is also dropped from
 `manifest.types`, because `ResourceInfo.embedded?/2` reads the types first. See
 `test/ash_introspection/rpc/pipeline_tampered_manifest_test.exs`.
+`AshIntrospection.Test.ManifestTamper` writes the lies; add a new one there
+rather than in a test file, and make it edit **every** place the decorator
+records the value.
+
+### A manifest does not record how it was built — #23 stage 5a PR 2
+
+**Symptom.** A reader answers out of the manifest, agrees with live
+introspection on every fixture, and is wrong at one consumer. Or it silently
+reads live for a whole class of input and the differential test is green.
+
+**Why.** `%Ash.Info.Manifest{}` has six fields — `resources`, `types`,
+`entrypoints`, `filter_capabilities`, `sort_capabilities`, `custom`
+(ash 3.33.4, `deps/ash/lib/ash/info/manifest.ex:40`). None of them is the
+option list `Ash.Info.Manifest.Generator.generate/1` was called with. Those
+options change what the manifest contains: `include_private_attributes?`,
+`include_private_calculations?`, `include_private_aggregates?` and
+`include_private_relationships?` each pick between the public and the full list
+(`deps/ash/lib/ash/info/manifest/generator/resource_builder.ex:247`, `:255`,
+`:263`, `:271`), and all four default to `false`. So "absent from the manifest"
+has two meanings a
+reader cannot separate — the resource does not declare it, or the manifest was
+built without it. `relationship/3` guessed the first and fell back to live for
+every private relationship; `public_relationship/3` guessed the second and
+handed a private relationship back as public on `ash_kotlin_multiplatform`'s
+manifest, which passes `include_private_relationships?: true`
+(`build_manifest.ex:69`).
+
+**What we do.** When an answer depends on a build option, do not read it off
+the manifest — decorate it. `Manifest.Decorator` lists relationships with
+`Ash.Resource.Info.relationships/1` at compile time and stores a record per
+relationship including `public?`, so the decoration is complete whatever the
+manifest was built with. And test against more than one generator
+configuration: every fixture here uses ash's defaults, which is why three
+differential suites passed over the `public_relationship/3` bug. See
+`test/ash_introspection/manifest/decorated_relationships_test.exs`.
 
 ### A failing async test's diff makes the atom-safety batch flaky
 
@@ -628,9 +663,11 @@ mix hex.audit
 mix deps.audit
 ```
 
-The branch for #23 stage 5a PR 1 is at **477 tests + 8 doctests, 0 failures**
-(measured 2026-09-18 on `issue-23-stage-5a-manifest-request-path`); it added 7
-tests to `main`'s **470 + 8**, all in
+The branch for #23 stage 5a PR 2 is at **488 tests + 8 doctests, 0 failures**
+(measured 2026-09-19 on `issue-23-stage-5a-decorate-relationships`); it added 11
+tests to `main`'s **477 + 8**, all in
+`test/ash_introspection/manifest/decorated_relationships_test.exs`. That 477 is
+stage 5a PR 1 (`c6c744b`), which added 7 to the 470 + 8 before it, all in
 `pipeline_tampered_manifest_test.exs`. #66 added 10 tests to 0.5.1's 460 and 7
 doctests to its 1, the first to run `FieldExtractor`'s examples. #84 had added
 9 to 0.5.0's 451. That 451 was 26 below

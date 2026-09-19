@@ -103,9 +103,9 @@ defmodule AshIntrospection.ResourceInfo do
   only the keys its call sites read, and both sources build it. `relationship/3`
   is the case: live returns `%Ash.Resource.Relationships.HasOne{}` and friends,
   the manifest returns `%Ash.Info.Manifest.Relationship{}`, and the decoration
-  stores `AshIntrospection.Manifest.Custom.relationship_record/0`. Callers here
-  read `:destination` and `:cardinality` and nothing else, so that is what comes
-  back, plus the `:name` they were keyed by. `identity_keys/3` is the same
+  stores a `t:AshIntrospection.Manifest.Custom.relationship_record/0`. Callers
+  here read `:destination` and `:cardinality` and nothing else, so that is what
+  comes back, plus the `:name` they were keyed by. `identity_keys/3` is the same
   narrowing over `%Ash.Resource.Identity{}` versus the manifest's
   `%{keys: [...]}`.
 

@@ -30,9 +30,11 @@ now built, and since stage 4b the consumer's codegen reads its types straight
 off it: this repo's `Codegen.TypeDiscovery` is deleted. Since stage 5a's PR 1
 the request path reads the manifest it is handed at every stage: the two config
 maps rebuilt mid-request carry `:manifest` and `:manifest_namespace`, and no
-request-path read drops the config. The consumer still passes none — its
-`build_config/0` has no `:manifest` key — so every RPC read in production is
-still live until stage 5a's PR 4 lands in `ash_kotlin_multiplatform`.
+request-path read drops the config. Since PR 2 every relationship is decorated,
+private ones included, so `relationship/3` has no live fallback left for a
+decorated resource. The consumer still passes none — its `build_config/0` has no
+`:manifest` key — so every RPC read in production is still live until stage 5a's
+PR 4 lands in `ash_kotlin_multiplatform`.
 
 **Why it bites.** A bug fixed upstream stays live here, and it stays live in
 `ash_kotlin_multiplatform`, which is what a real user runs.
@@ -131,6 +133,14 @@ found `relationship/3` answering `nil` for a private `belongs_to`, a bug stage
 1 shipped and stage 1's own differential test could not see, because it walked
 `public_relationships/1` only. A differential test is only as wide as the list
 it iterates.
+
+**And only as sharp as the manifests it runs against.** Stage 5a's PR 2 found
+`public_relationship/3` answering a private relationship as public, which every
+one of those tests passed over: they all build the fixture manifest with ash's
+defaults, so no manifest under test carried a private relationship. The
+consumer's does (`include_private_relationships?: true`). A differential test
+run against one generator configuration says nothing about the others; PR 2's
+own suite generates a second manifest with private relationships included.
 
 ### T3 — The RPC layer is young code with new tests
 

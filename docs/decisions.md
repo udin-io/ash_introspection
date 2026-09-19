@@ -13,6 +13,44 @@ recorded nowhere in the repo. This page replaces ADRs; there is no `adr/`
 directory here and none should be created. A decision that no longer shapes the
 code is deleted, not archived, because git keeps the history.
 
+## 2026-09-19 — Relationships are decorated, because the manifest cannot say
+
+**Decided.** `Manifest.Decorator` lists a resource's relationships live at
+decoration time and stores a narrowed record for each — `name`, `destination`,
+`cardinality`, `public?` — under the resource's payload, private relationships
+included. `ResourceInfo.relationship/3` and `public_relationship/3` read those
+records, and fall back to live introspection only for a resource the decorator
+did not reach. Issue #23 stage 5a, PR 2.
+
+**Why.** Both readers had an answer no manifest can give.
+`Ash.Info.Manifest.Generator` builds a resource's relationships from
+`public_relationships/1` unless `include_private_relationships?: true` is
+passed (`deps/ash/lib/ash/info/manifest/generator/resource_builder.ex:271`),
+and `%Ash.Info.Manifest{}` records **no build options** at all: its six fields
+are `resources`, `types`, `entrypoints`, `filter_capabilities`,
+`sort_capabilities` and `custom` (`deps/ash/lib/ash/info/manifest.ex:40`). So a
+reader holding a manifest cannot tell a resource that declares no private
+relationships from a manifest built without them, and `relationship/3` fell
+back to live for every private relationship with nothing saying so. The public
+reader was worse than slow: `%Ash.Info.Manifest.Relationship{}` carries no
+`public?`, so on a manifest built **with** private relationships —
+`ash_kotlin_multiplatform`'s, at `build_manifest.ex:69` — the manifest's own
+map handed a private relationship back as public.
+
+**What it cost.** A relationship's decoration now lives in two places. The
+narrowed records hang off the resource, because a private relationship has no
+`%Manifest.Relationship{}` to carry a `custom` map; stage 2's pagination and
+read-action payload stays on that struct, because #24 asks it only of a
+relationship a client can select. Neither answers the other's question, so
+there is no second path to drift — but a reader has to know which one it wants.
+Measured on `ash_kotlin_multiplatform`'s manifest at `4a50811`: 8 records over
+7 resources, +2004 bytes of a 911,459-byte term, 0.22%.
+
+The alternative — moving pagination onto the records too, one home for all of
+it — was rejected here: it changes the signature of the public
+`Custom.relationship_pagination/2`, and this PR ships additively in 0.5.3
+beside PR 1.
+
 ## 2026-09-18 — A tuple template entry is a map that carries its index
 
 **Decided.** Every entry `FieldSelector` emits for a tuple field is a map,
