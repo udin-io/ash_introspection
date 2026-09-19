@@ -423,7 +423,7 @@ dozen other items.
    | 4a | this | codegen reads the manifest; `Codegen.TypeDiscovery` stays, proved byte-identical | 0.4.x, additive | shipped |
    | 4b | this | delete `Codegen.TypeDiscovery` (1109 lines); codegen reads the manifest only | 0.5.0, breaking | shipped |
    | 5a PR 1 | this | every request-path read gets the manifest: both config rebuilds carry `:manifest` and `:manifest_namespace`, the entry points prepare it once | 0.5.3, additive | merged `c6c744b` |
-   | 5a PR 2 | this | decorate every relationship, private included, so `relationship/3` needs no live fallback | 0.5.3, additive | in review |
+   | 5a PR 2 | this | decorate every relationship, private included, so `relationship/3` needs no live fallback | 0.5.3, additive | merged `76322eb` |
    | 5a PR 4 | consumer | a manifest on the request path; `Runner` resolves actions through `rpc_action_lookup` | consumer minor | next |
    | 5a PR 6 | this | make `:manifest` required at the four entry points; a carried but undecorated resource raises; drop the manifest-miss live reads | 0.6.0, breaking | next |
    | 5b | this | manifest-shaped return values in place of the captured Ash structs, deferred from stage 2 ([#83](https://github.com/udin-io/ash_introspection/issues/83)) | 0.6.x | next |
