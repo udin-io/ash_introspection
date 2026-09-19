@@ -14,6 +14,21 @@ and this project adheres to
 
 ## [Unreleased]
 
+## [0.5.3] - 2026-09-19
+
+Additive: carries two stage 5a PRs of
+[#23](https://github.com/udin-io/ash_introspection/issues/23). The request
+path now reads the manifest it is given instead of dropping keys on two
+config rebuilds
+([PR #91](https://github.com/udin-io/ash_introspection/pull/91)), and every
+relationship is decorated, private ones included, with
+`Custom.relationship/3` and `Custom.public_relationship/3`
+([PR #92](https://github.com/udin-io/ash_introspection/pull/92)). PR #92 also
+fixes `public_relationship/3` reporting a private relationship as public when
+the manifest was built with private relationships included — latent, not
+shipped, since it needs a manifest on the request path, which no consumer
+uses yet.
+
 ### Added
 
 - `Manifest.Decorator` stores a record for every relationship a resource

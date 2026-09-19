@@ -15,6 +15,28 @@ which come first. Numbers in parentheses are GitHub issues on
 
 ## Shipped
 
+### 0.5.3 — 2026-09-19
+
+- **#23 stage 5a, PR 1 of 4 — the request path reads the manifest it is
+  given.** The stage-3 processor config and `value_formatter_config/2` carry
+  `:manifest` and `:manifest_namespace` instead of dropping them, the three
+  request entry points prepare the manifest once per stage, and seven reads
+  that passed no config now pass it. Additive; merged as `c6c744b` at 477
+  tests + 8 doctests.
+- **#23 stage 5a, PR 2 of 4 — every relationship is decorated, private ones
+  included.** `Manifest.Decorator` stores `name`, `destination`, `cardinality`
+  and `public?` per relationship, listed live at compile time;
+  `Manifest.Custom.relationship/3` and `public_relationship/3` read them, and
+  `ResourceInfo.relationship/3` needs no live fallback for a decorated
+  resource. It also fixes `public_relationship/3`, which answered a private
+  relationship as public on a manifest built with private relationships.
+  Additive; merged as `76322eb` at 488 tests + 8 doctests, and
+  `ash_kotlin_multiplatform` at `4a50811` stays at 363 tests, 0 failures, with
+  its manifest 0.22% larger. PR 6 (require the manifest, breaking, 0.6.0)
+  follows here; PR 4 puts a manifest on the request path in
+  `ash_kotlin_multiplatform`. Stage 5b, manifest-shaped return values, moved to
+  [#83](https://github.com/udin-io/ash_introspection/issues/83).
+
 ### 0.5.2 — 2026-09-18
 
 - **#66 — a nested selection inside a tuple field came back `null`.** Three
@@ -378,25 +400,8 @@ merged commit on `main`.
 
 ## In progress
 
-- **#23 stage 5a, PR 1 of 4 — the request path reads the manifest it is
-  given.** The stage-3 processor config and `value_formatter_config/2` carry
-  `:manifest` and `:manifest_namespace` instead of dropping them, the three
-  request entry points prepare the manifest once per stage, and seven reads
-  that passed no config now pass it. Additive, for 0.5.3; merged as `c6c744b`
-  at 477 tests + 8 doctests.
-- **#23 stage 5a, PR 2 of 4 — every relationship is decorated, private ones
-  included.** `Manifest.Decorator` stores `name`, `destination`, `cardinality`
-  and `public?` per relationship, listed live at compile time;
-  `Manifest.Custom.relationship/3` and `public_relationship/3` read them, and
-  `ResourceInfo.relationship/3` needs no live fallback for a decorated
-  resource. It also fixes `public_relationship/3`, which answered a private
-  relationship as public on a manifest built with private relationships.
-  Additive, for 0.5.3; the suite is 488 tests + 8 doctests, and
-  `ash_kotlin_multiplatform` at `4a50811` stays at 363 tests, 0 failures, with
-  its manifest 0.22% larger. PR 6 (require the manifest, breaking, 0.6.0)
-  follows here; PR 4 puts a manifest on the request path in
-  `ash_kotlin_multiplatform`. Stage 5b, manifest-shaped return values, moved to
-  [#83](https://github.com/udin-io/ash_introspection/issues/83).
+- Nothing. Stage 5a PR 1 and PR 2 of #23 are in 0.5.3 above; PR 4 and PR 6 are
+  next.
 
 ## Next
 
@@ -418,7 +423,7 @@ dozen other items.
    | 4a | this | codegen reads the manifest; `Codegen.TypeDiscovery` stays, proved byte-identical | 0.4.x, additive | shipped |
    | 4b | this | delete `Codegen.TypeDiscovery` (1109 lines); codegen reads the manifest only | 0.5.0, breaking | shipped |
    | 5a PR 1 | this | every request-path read gets the manifest: both config rebuilds carry `:manifest` and `:manifest_namespace`, the entry points prepare it once | 0.5.3, additive | merged `c6c744b` |
-   | 5a PR 2 | this | decorate every relationship, private included, so `relationship/3` needs no live fallback | 0.5.3, additive | in review |
+   | 5a PR 2 | this | decorate every relationship, private included, so `relationship/3` needs no live fallback | 0.5.3, additive | merged `76322eb` |
    | 5a PR 4 | consumer | a manifest on the request path; `Runner` resolves actions through `rpc_action_lookup` | consumer minor | next |
    | 5a PR 6 | this | make `:manifest` required at the four entry points; a carried but undecorated resource raises; drop the manifest-miss live reads | 0.6.0, breaking | next |
    | 5b | this | manifest-shaped return values in place of the captured Ash structs, deferred from stage 2 ([#83](https://github.com/udin-io/ash_introspection/issues/83)) | 0.6.x | next |
