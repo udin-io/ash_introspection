@@ -42,11 +42,19 @@ defmodule AshIntrospection.Manifest.Decorator do
   | Struct | Payload |
   |---|---|
   | `%Ash.Info.Manifest{}` | `entrypoint_lookup` |
-  | each `%Manifest.Resource{}` | fields, actions, aggregate types, return classifications, bulk strategy, field and argument names |
+  | each `%Manifest.Resource{}` | fields, actions, relationships, aggregate types, return classifications, bulk strategy, field and argument names |
   | each `%Manifest.Relationship{}` on it | the read action it loads through, and how that action paginates |
   | each embedded `%Manifest.Type{}`'s nested resource | the same resource payload |
   | each `%Manifest.Type{}` with a field-names callback | field-name mappings |
   | each `%Manifest.Entrypoint{}` | `client_name`, from the `:entrypoint_name` callback |
+
+  Relationships appear twice because the two payloads reach different sets of
+  them. The narrowed records on the resource are listed live, so they cover
+  every relationship the module declares — a manifest built with the default
+  `include_private_relationships?: false` carries no `%Manifest.Relationship{}`
+  for a private one, and there is nothing to hang a `custom` map off. Pagination
+  and read action stay on the struct, because the question #24 asks is only
+  asked of a relationship a client can select.
 
   ## Decoration depends on compile order, and says so
 
@@ -182,6 +190,7 @@ defmodule AshIntrospection.Manifest.Decorator do
       calculations = Ash.Resource.Info.calculations(module)
       aggregates = Ash.Resource.Info.aggregates(module)
       actions = Ash.Resource.Info.actions(module)
+      relationships = Ash.Resource.Info.relationships(module)
       formatted = formatted_field_names(module, resource, config)
       formatted_arguments = formatted_argument_names(module, actions, config)
 
@@ -195,7 +204,8 @@ defmodule AshIntrospection.Manifest.Decorator do
           attributes: by_name(attributes),
           calculations: by_name(calculations),
           aggregates: by_name(aggregates),
-          actions: by_name(actions)
+          actions: by_name(actions),
+          relationships: by_name(Enum.map(relationships, &relationship_record/1))
         },
         aggregate_types: aggregate_types(module, aggregates),
         return_classifications: return_classifications(actions, config),
@@ -211,6 +221,30 @@ defmodule AshIntrospection.Manifest.Decorator do
   end
 
   defp build_resource_payload(_module, _resource, _config), do: nil
+
+  # A relationship narrowed to what the request path reads off one, listed live
+  # so **every** relationship is stored — private ones included.
+  #
+  # The manifest carries public relationships only unless it was built with
+  # `include_private_relationships?: true`, and `%Ash.Info.Manifest{}` records
+  # no build options (`deps/ash/lib/ash/info/manifest.ex:40`), so a reader
+  # holding one cannot tell which. Listing live here removes the question: the
+  # decoration is complete whatever the manifest was built with.
+  #
+  # `:destination` and `:cardinality` are what the call sites read
+  # (`type_system/resource_fields.ex:54` and `:86`,
+  # `rpc/field_processing/field_selector.ex:366` and `:483`); `:name` is part of
+  # the narrow map `AshIntrospection.ResourceInfo.relationship/3` returns; and
+  # `:public?` is what lets `public_relationship/3` answer from the decoration
+  # instead of from how the manifest happened to be built.
+  defp relationship_record(relationship) do
+    %{
+      name: relationship.name,
+      destination: relationship.destination,
+      cardinality: relationship.cardinality,
+      public?: relationship.public?
+    }
+  end
 
   # Both key forms, mirroring the `:attributes_by_name` and
   # `:calculations_by_name` maps Ash persists
