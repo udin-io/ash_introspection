@@ -14,6 +14,13 @@ and this project adheres to
 
 ## [Unreleased]
 
+### Security
+
+- `mix.lock` takes `mint` 1.10.1, fixing EEF-CVE-2026-82672
+  ([#94](https://github.com/udin-io/ash_introspection/issues/94)). Mint is
+  transitive here through `finch` (`~> 1.8`), so no `mix.exs` entry changes;
+  nothing in this library calls mint directly.
+
 ## [0.5.3] - 2026-09-19
 
 Additive: carries two stage 5a PRs of
