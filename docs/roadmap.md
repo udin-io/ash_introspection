@@ -402,8 +402,8 @@ merged commit on `main`.
 
 - **#23 stage 5a, PR 5 — every RPC test runs with a manifest**
   ([PR #96](https://github.com/udin-io/ash_introspection/pull/96)). Test-only,
-  no release. 68 entry-point calls across 16 test files ran on an empty config and
-  now carry the decorated fixture manifest, so PR 6 can require it without
+  no release. 68 entry-point calls across 16 test files ran on an empty config
+  and now carry the decorated fixture manifest, so PR 6 can require it without
   turning the suite red. One file is left out on purpose:
   `pipeline_manifest_parity_test.exs` compares live against manifest, so its
   empty-config arm is the subject, and PR 6 retires the file with the fallback
