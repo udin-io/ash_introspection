@@ -21,6 +21,19 @@ defmodule AshIntrospection.Test.ManifestFixture do
   struct rather than a hand-written imitation of it, and it needs no new
   library surface.
 
+  ## What the entrypoint list has to cover
+
+  Issue #23 stage 5a PR 6 makes the manifest required at the four request
+  entry points — `Pipeline.execute_ash_action/2`, `Pipeline.process_result/3`,
+  `Pipeline.format_output_with_request/3` and `FieldSelector.process/4` — and
+  makes a resource the manifest carries but did not decorate raise. So every
+  `{resource, action}` an RPC test drives through one of those four has to be
+  an entrypoint below, or that test has no manifest to run on.
+
+  Adding a pair here is therefore how a new RPC test gets its manifest. The
+  pair pulls the resource into `resources` and its reachable embedded
+  resources into `types`, and `decorated/2` decorates all of them.
+
   ## Why the entrypoints are explicit
 
   `Ash.Info.Manifest.Generator.generate/1` requires `:otp_app`, but when
@@ -56,6 +69,7 @@ defmodule AshIntrospection.Test.ManifestFixture do
     {Test.Account, :get_account},
     {Test.Account, :create},
     {Test.Account, :update},
+    {Test.Account, :destroy},
     {Test.Document, :read},
     {Test.Document, :audited},
     {Test.Document, :attach},
@@ -65,12 +79,28 @@ defmodule AshIntrospection.Test.ManifestFixture do
     {Test.LedgerEntry, :list_entries},
     {Test.LedgerEntry, :paged_entries},
     {Test.LedgerEntry, :get_entry},
+    {Test.LedgerEntry, :raw_rows},
+    {Test.LedgerEntry, :typed_rows},
     {Test.AuditedRecord, :read_with_metadata},
+    {Test.AuditedRecord, :create_with_metadata},
+    {Test.AuditedRecord, :raw_payload},
     {Test.LoadRestrictions.Article, :read},
     {Test.LoadRestrictions.Author, :read},
     {Test.LoadRestrictions.Comment, :read},
     {Test.RelPagination.Library, :read},
-    {Test.Dossier, :read}
+    {Test.Dossier, :read},
+    {Test.MapTile, :get_tile},
+    {Test.MapTile, :get_tile_deep},
+    {Test.MapTile, :get_tile_map},
+    {Test.MapTile, :list_tiles},
+    {Test.MapTile, :pick_tile},
+    {Test.Shelf, :read},
+    {Test.Shelf, :pick_content},
+    {Test.Shelf, :pick_wrapped_content},
+    {Test.Shelf, :all_content},
+    {Test.Post, :get_stats},
+    {Test.Post, :get_task_stats},
+    {Test.Post, :get_bounds}
   ]
 
   @doc "The `{resource, action}` pairs the fixture manifest is generated from."
