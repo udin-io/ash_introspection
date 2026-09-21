@@ -15,7 +15,13 @@ defmodule AshIntrospection.Rpc.PipelineFilterInjectionTest do
   alias AshIntrospection.Rpc.Pipeline
   alias AshIntrospection.Rpc.Request
   alias AshIntrospection.Test.Account
+  alias AshIntrospection.Test.ManifestFixture
   alias AshIntrospection.Test.RpcDomain
+
+  # The request path is handed the manifest a production consumer carries
+  # (#23 stage 5a).
+  defp execute(request),
+    do: Pipeline.execute_ash_action(request, ManifestFixture.decorated_config())
 
   setup do
     suffix = System.unique_integer([:positive])
@@ -80,7 +86,7 @@ defmodule AshIntrospection.Rpc.PipelineFilterInjectionTest do
 
   describe "get_by lookups" do
     test "an exact scalar value still resolves the named record", %{alice: alice} do
-      assert {:ok, record} = Pipeline.execute_ash_action(get_request(%{email: alice.email}))
+      assert {:ok, record} = execute(get_request(%{email: alice.email}))
       assert record.id == alice.id
     end
 
@@ -88,21 +94,19 @@ defmodule AshIntrospection.Rpc.PipelineFilterInjectionTest do
       # Without validation this compiles to `email < "zzz"` and returns whichever
       # account the data layer reads first.
       assert {:error, {:invalid_get_by, %{message: message}}} =
-               Pipeline.execute_ash_action(get_request(%{email: %{"less_than" => "zzz"}}))
+               execute(get_request(%{email: %{"less_than" => "zzz"}}))
 
       assert message =~ "email"
     end
 
     test "rejects a list value", %{alice: alice, bob: bob} do
       assert {:error, {:invalid_get_by, _}} =
-               Pipeline.execute_ash_action(get_request(%{email: [alice.email, bob.email]}))
+               execute(get_request(%{email: [alice.email, bob.email]}))
     end
 
     test "names every non-scalar field in the error message" do
       assert {:error, {:invalid_get_by, %{message: message}}} =
-               Pipeline.execute_ash_action(
-                 get_request(%{email: %{"less_than" => "zzz"}, name: ["Alice"]})
-               )
+               execute(get_request(%{email: %{"less_than" => "zzz"}, name: ["Alice"]}))
 
       assert message =~ "email"
       assert message =~ "name"
@@ -112,7 +116,7 @@ defmodule AshIntrospection.Rpc.PipelineFilterInjectionTest do
   describe "identity lookups on update" do
     test "an exact scalar identity still updates the named record", %{alice: alice, bob: bob} do
       assert {:ok, record} =
-               Pipeline.execute_ash_action(
+               execute(
                  update_request(%{email: alice.email}, [:unique_email], %{name: "Alice Renamed"})
                )
 
@@ -127,7 +131,7 @@ defmodule AshIntrospection.Rpc.PipelineFilterInjectionTest do
       # Without validation this compiles to `email > ""` and the bulk update
       # renames whichever account the data layer reads first.
       assert {:error, {:invalid_identity, %{message: message}}} =
-               Pipeline.execute_ash_action(
+               execute(
                  update_request(%{email: %{"greater_than" => ""}}, [:unique_email], %{
                    name: "Injected"
                  })
@@ -140,9 +144,7 @@ defmodule AshIntrospection.Rpc.PipelineFilterInjectionTest do
 
     test "rejects a non-scalar primary key identity value", %{alice: alice} do
       assert {:error, {:invalid_identity, _}} =
-               Pipeline.execute_ash_action(
-                 update_request([alice.id], [:_primary_key], %{name: "Injected PK"})
-               )
+               execute(update_request([alice.id], [:_primary_key], %{name: "Injected PK"}))
 
       assert Ash.get!(Account, alice.id).name == "Alice"
     end
@@ -154,9 +156,7 @@ defmodule AshIntrospection.Rpc.PipelineFilterInjectionTest do
       bob: bob
     } do
       assert {:error, {:invalid_identity, _}} =
-               Pipeline.execute_ash_action(
-                 destroy_request(%{email: %{"greater_than" => ""}}, [:unique_email])
-               )
+               execute(destroy_request(%{email: %{"greater_than" => ""}}, [:unique_email]))
 
       assert Ash.get!(Account, alice.id)
       assert Ash.get!(Account, bob.id)
@@ -164,9 +164,7 @@ defmodule AshIntrospection.Rpc.PipelineFilterInjectionTest do
 
     test "an exact scalar identity still destroys the named record", %{alice: alice, bob: bob} do
       assert {:ok, _} =
-               Pipeline.execute_ash_action(
-                 destroy_request(%{email: alice.email}, [:unique_email])
-               )
+               execute(destroy_request(%{email: alice.email}, [:unique_email]))
 
       assert {:error, _} = Ash.get(Account, alice.id)
       assert Ash.get!(Account, bob.id)
