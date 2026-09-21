@@ -400,8 +400,9 @@ merged commit on `main`.
 
 ## In progress
 
-- **#23 stage 5a, PR 5 — every RPC test runs with a manifest.** Test-only, no
-  release. 68 entry-point calls across 16 test files ran on an empty config and
+- **#23 stage 5a, PR 5 — every RPC test runs with a manifest**
+  ([PR #96](https://github.com/udin-io/ash_introspection/pull/96)). Test-only,
+  no release. 68 entry-point calls across 16 test files ran on an empty config and
   now carry the decorated fixture manifest, so PR 6 can require it without
   turning the suite red. One file is left out on purpose:
   `pipeline_manifest_parity_test.exs` compares live against manifest, so its
@@ -433,7 +434,7 @@ dozen other items.
    | 5a PR 1 | this | every request-path read gets the manifest: both config rebuilds carry `:manifest` and `:manifest_namespace`, the entry points prepare it once | 0.5.3, additive | merged `c6c744b` |
    | 5a PR 2 | this | decorate every relationship, private included, so `relationship/3` needs no live fallback | 0.5.3, additive | merged `76322eb` |
    | 5a PR 4 | consumer | a manifest on the request path; `Runner` resolves actions through `rpc_action_lookup` | consumer minor | merged, consumer PR #103 |
-   | 5a PR 5 | this | every RPC test runs with a manifest, so PR 6's requirement lands on a green suite | test-only, no release | in review |
+   | 5a PR 5 | this | every RPC test runs with a manifest, so PR 6's requirement lands on a green suite | test-only, no release | [PR #96](https://github.com/udin-io/ash_introspection/pull/96) open |
    | 5a PR 6 | this | make `:manifest` required at the four entry points; a carried but undecorated resource raises; drop the manifest-miss live reads | 0.6.0, breaking | next |
    | 5b | this | manifest-shaped return values in place of the captured Ash structs, deferred from stage 2 ([#83](https://github.com/udin-io/ash_introspection/issues/83)) | 0.6.x | next |
 
