@@ -438,6 +438,34 @@ configuration: every fixture here uses ash's defaults, which is why three
 differential suites passed over the `public_relationship/3` bug. See
 `test/ash_introspection/manifest/decorated_relationships_test.exs`.
 
+### An RPC test needs its `{resource, action}` in the fixture manifest
+
+**Symptom.** A new RPC test passes on its own branch and fails after #23 stage
+5a PR 6 lands, raising on a resource the manifest carries but did not decorate.
+Or it passes and reads live introspection while every neighbouring test reads
+the manifest, so the two disagree and only one is covered.
+
+**Why.** PR 6 makes `:manifest` required at the four request entry points —
+`Pipeline.execute_ash_action/2`, `Pipeline.process_result/3`,
+`Pipeline.format_output_with_request/3` and `FieldSelector.process/4`. The
+config a test passes them has to carry a manifest that carries the resource,
+and `AshIntrospection.Test.ManifestFixture` generates its manifest from an
+explicit `{resource, action}` list, not from a domain scan — this repo's test
+domains are deliberately unregistered (#39), so `otp_app` alone finds nothing.
+A pair that is not on that list is a resource the fixture does not carry.
+
+**What we do.** Every RPC test passes `ManifestFixture.decorated_config/1` at
+the entry point, and every `{resource, action}` it drives is an entrypoint in
+`test/support/manifest_fixture.ex`. Adding a test resource means adding its
+pair there. Use the **decorated** fixture, not `config/1`: the undecorated one
+is for `resource_info_test.exs`, and PR 6 raises on a carried-but-undecorated
+resource.
+
+The one exception is
+`test/ash_introspection/rpc/pipeline_manifest_parity_test.exs`, which compares
+live against manifest and so has to keep an empty-config arm. PR 6 retires it
+along with the fallback it tests.
+
 ### A failing async test's diff makes the atom-safety batch flaky
 
 **Symptom.** A batch case in
