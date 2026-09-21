@@ -32,6 +32,7 @@ defmodule AshIntrospection.Rpc.PipelineUnconstrainedMapTest do
   alias AshIntrospection.Rpc.Pipeline
   alias AshIntrospection.Rpc.Request
   alias AshIntrospection.Test.AuditedRecord
+  alias AshIntrospection.Test.ManifestFixture
   alias AshIntrospection.Test.MetadataDomain
 
   # The map the fixture's action hands back, verbatim.
@@ -57,10 +58,16 @@ defmodule AshIntrospection.Rpc.PipelineUnconstrainedMapTest do
       }
       |> Request.new()
 
-    {:ok, ash_result} = Pipeline.execute_ash_action(request)
-    {:ok, processed} = Pipeline.process_result(ash_result, request)
+    {:ok, ash_result} = Pipeline.execute_ash_action(request, ManifestFixture.decorated_config())
 
-    Pipeline.format_output_with_request(%{success: true, data: processed}, request)
+    {:ok, processed} =
+      Pipeline.process_result(ash_result, request, ManifestFixture.decorated_config())
+
+    Pipeline.format_output_with_request(
+      %{success: true, data: processed},
+      request,
+      ManifestFixture.decorated_config()
+    )
   end
 
   describe "the premise" do

@@ -33,6 +33,7 @@ defmodule AshIntrospection.Rpc.PipelineMetadataFormattingTest do
   alias AshIntrospection.Rpc.Pipeline
   alias AshIntrospection.Rpc.Request
   alias AshIntrospection.Test.AuditedRecord
+  alias AshIntrospection.Test.ManifestFixture
   alias AshIntrospection.Test.MetadataDomain
 
   @show_metadata [:audit_entry, :revision_info, :raw_audit]
@@ -64,9 +65,16 @@ defmodule AshIntrospection.Rpc.PipelineMetadataFormattingTest do
   end
 
   defp response(request) do
-    {:ok, ash_result} = Pipeline.execute_ash_action(request)
-    {:ok, processed} = Pipeline.process_result(ash_result, request)
-    Pipeline.format_output_with_request(%{success: true, data: processed}, request)
+    {:ok, ash_result} = Pipeline.execute_ash_action(request, ManifestFixture.decorated_config())
+
+    {:ok, processed} =
+      Pipeline.process_result(ash_result, request, ManifestFixture.decorated_config())
+
+    Pipeline.format_output_with_request(
+      %{success: true, data: processed},
+      request,
+      ManifestFixture.decorated_config()
+    )
   end
 
   defp create_record(title) do
