@@ -23,12 +23,41 @@ defmodule AshIntrospection.ResourceInfo do
   | no `:manifest` key, or `nil` | live `Ash.Resource.Info`, exactly as before |
   | `%Ash.Info.Manifest{}` | the manifest, lookups rebuilt per read |
   | `AshIntrospection.ResourceInfo.Source` | the manifest, lookups built once |
+  | the same `Source` with `strict?: true` | the manifest, and a read that would fall back raises |
 
-  **Omitting the key preserves current behaviour exactly.** That is the
-  compatibility guarantee of this stage and the reason it is reversible: no
-  caller in this repo passes `:manifest` yet, so every read is still live.
+  **Omitting the key preserves current behaviour exactly.** That is what the
+  compile-time verifiers, `AshIntrospection.Codegen` and
+  `AshIntrospection.Manifest.Decorator` rely on: they call these readers before
+  a decorated manifest exists.
   `test/ash_introspection/resource_info_test.exs` proves it against
   `Ash.Resource.Info` directly rather than asserting it.
+
+  ## The request path is strict
+
+  `require_manifest!/1` raises `AshIntrospection.ManifestError` when the config
+  carries no manifest, and arms `strict?: true` on the prepared source. Since
+  0.6.0 the four request entry points call it —
+  `AshIntrospection.Rpc.Pipeline.execute_ash_action/2`, `process_result/3`,
+  `format_output_with_request/3` and
+  `AshIntrospection.Rpc.FieldProcessing.FieldSelector.process/4` — and nothing
+  else does.
+
+  A strict source raises at two places a non-strict one reads live:
+
+    * a resource the manifest **carries but did not decorate**. The decorator
+      skips a module it cannot load, so the resource sits in the manifest bare;
+      live introspection answers it correctly and silently, which is how stage
+      4 of the pipeline read live for five releases.
+    * a resource the manifest **does not carry**, for `primary_key/2` and
+      `identity_keys/3` only. Those two are asked only about the resource the
+      request names, so a miss there is a manifest built without an entrypoint
+      for it.
+
+  Every other reader keeps its live fallback for a module the manifest does not
+  carry, because `runtime_resource?/2` does: a module nobody declared must
+  still serialize as a resource, and serializing it is what calls
+  `attribute/3`, `relationship/3` and the rest. Raising there would contradict
+  the guarantee two paragraphs down.
 
   ## `resource?/1` is two questions, not one
 
@@ -92,10 +121,12 @@ defmodule AshIntrospection.ResourceInfo do
   built with private relationships hands one back indistinguishable from a
   public one.
 
-  **An undecorated manifest still reads live for the second group.** A
+  **An undecorated manifest reads live for the second group, or raises.** A
   resource the decorator skipped — a module it could not load at decoration
-  time — is present in the manifest and bare, and is indistinguishable to
-  these readers from a resource the manifest never carried. Both fall back.
+  time — is present in the manifest and bare. A non-strict source falls back to
+  live introspection for it, exactly as it does for a resource the manifest
+  never carried. A strict source separates the two: bare raises, absent falls
+  back. See "The request path is strict" above.
 
   ## Shapes the two sources cannot share
 
@@ -116,6 +147,7 @@ defmodule AshIntrospection.ResourceInfo do
   It is unrelated to this module and to `:manifest`.
   """
 
+  alias AshIntrospection.ManifestError
   alias AshIntrospection.Manifest.Custom
   alias AshIntrospection.ResourceInfo.Source
 
@@ -164,6 +196,34 @@ defmodule AshIntrospection.ResourceInfo do
 
       manifest ->
         Map.put(config, :manifest, prepare(manifest, Map.get(config, :manifest_namespace)))
+    end
+  end
+
+  @doc """
+  `normalize_config/1`, plus the manifest is no longer optional.
+
+  Raises `AshIntrospection.ManifestError` when `config` carries no `:manifest`,
+  and arms `strict?: true` on the prepared source otherwise. A strict source
+  raises where a read would otherwise fall back to live `Ash.Resource.Info`.
+
+  The four request entry points call this and nothing else does. The
+  compile-time verifiers, `AshIntrospection.Codegen` and
+  `AshIntrospection.Manifest.Decorator` call the same readers before a
+  decorated manifest exists, so they keep `normalize_config/1` and keep their
+  live fallbacks.
+
+  Idempotent: a config already armed comes back unchanged.
+  """
+  @spec require_manifest!(map()) :: map()
+  def require_manifest!(config) when is_map(config) do
+    case Map.get(config, :manifest) do
+      nil ->
+        raise ManifestError, reason: :missing
+
+      _manifest ->
+        config
+        |> normalize_config()
+        |> Map.update!(:manifest, &%Source{&1 | strict?: true})
     end
   end
 
@@ -266,14 +326,21 @@ defmodule AshIntrospection.ResourceInfo do
   @doc """
   The primary key field names of `resource`.
 
-  Returns `[]` for a module the manifest does not carry, matching
-  `Ash.Info.Manifest.primary_key/2`.
+  Under a strict source a module the manifest does not carry raises: this is
+  only ever asked about the resource the request names, so a miss is a manifest
+  built without an entrypoint for it. Otherwise it reads live.
   """
   @spec primary_key(module(), config()) :: [atom()]
   def primary_key(resource, config \\ %{}) do
-    case manifest_resource(config, resource) do
-      nil -> Ash.Resource.Info.primary_key(resource)
-      %{primary_key: primary_key} -> primary_key || []
+    source = source(config)
+
+    case manifest_resource_in(source, resource) do
+      nil ->
+        strict_miss!(source, resource, "primary_key/2")
+        Ash.Resource.Info.primary_key(resource)
+
+      %{primary_key: primary_key} ->
+        primary_key || []
     end
   end
 
@@ -282,11 +349,18 @@ defmodule AshIntrospection.ResourceInfo do
 
   A narrowing: live introspection returns `%Ash.Resource.Identity{}` and the
   manifest returns `%{keys: [...]}`. Every caller here reads `:keys`.
+
+  Raises for a module a strict source does not carry, for the reason
+  `primary_key/2` does.
   """
   @spec identity_keys(module(), atom(), config()) :: [atom()] | nil
   def identity_keys(resource, identity_name, config \\ %{}) do
-    case manifest_resource(config, resource) do
+    source = source(config)
+
+    case manifest_resource_in(source, resource) do
       nil ->
+        strict_miss!(source, resource, "identity_keys/3")
+
         case Ash.Resource.Info.identity(resource, identity_name) do
           nil -> nil
           identity -> identity.keys
@@ -334,8 +408,10 @@ defmodule AshIntrospection.ResourceInfo do
   `:include_private_relationships?` to `false`
   (`deps/ash/lib/ash/info/manifest/generator.ex:50`), so a private `belongs_to`
   is absent from a manifest built with the defaults while
-  `Ash.Resource.Info.relationship/2` still answers for it. That fallback is what
-  the decoration removes, and issue #23 stage 5a PR 6 deletes.
+  `Ash.Resource.Info.relationship/2` still answers for it.
+
+  Under a strict source that fallback is reachable only for a module the
+  manifest does not carry. A resource it carries bare raises instead.
   """
   @spec relationship(module(), atom(), config()) :: relationship() | nil
   def relationship(resource, name, config \\ %{}) do
@@ -630,15 +706,46 @@ defmodule AshIntrospection.ResourceInfo do
   # `AshIntrospection.Manifest.Decorator` skips a module it cannot load, so a
   # resource can be present and bare.
   defp decorated(config, resource) do
-    with %Source{namespace: namespace} = source <- source(config),
-         %Ash.Info.Manifest.Resource{} = manifest_resource <-
-           manifest_resource_in(source, resource),
-         true <- Custom.decorated?(manifest_resource, namespace) do
-      {manifest_resource, namespace}
-    else
+    case source(config) do
+      %Source{} = source -> decorated_in(source, resource)
       _ -> nil
     end
   end
+
+  defp decorated_in(%Source{namespace: namespace} = source, resource) do
+    case manifest_resource_in(source, resource) do
+      %Ash.Info.Manifest.Resource{} = manifest_resource ->
+        if Custom.decorated?(manifest_resource, namespace) do
+          {manifest_resource, namespace}
+        else
+          strict_undecorated!(source, resource)
+          nil
+        end
+
+      _ ->
+        nil
+    end
+  end
+
+  # A strict source is the four request entry points saying "this manifest is
+  # the whole answer". A resource it carries bare was skipped by
+  # `AshIntrospection.Manifest.Decorator` — a compile-order mistake in the
+  # consumer — and reading live would answer it correctly and say nothing, which
+  # is how stage 4 of the pipeline read live introspection for five releases.
+  defp strict_undecorated!(%Source{strict?: true, namespace: namespace}, resource) do
+    raise ManifestError, reason: :undecorated, resource: resource, namespace: namespace
+  end
+
+  defp strict_undecorated!(_source, _resource), do: :ok
+
+  # The same call for the two readers that are only ever asked about the
+  # resource the request names, where a manifest miss is a missing entrypoint
+  # rather than a module nobody declared.
+  defp strict_miss!(%Source{strict?: true}, resource, reader) do
+    raise ManifestError, reason: :unknown_resource, resource: resource, reader: reader
+  end
+
+  defp strict_miss!(_source, _resource, _reader), do: :ok
 
   # The relationship readings for a resource the decorator did not reach: no
   # manifest, a manifest that does not carry the module, or one that carries it
