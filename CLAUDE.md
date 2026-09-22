@@ -690,11 +690,16 @@ mix hex.audit
 mix deps.audit
 ```
 
-The branch for #23 stage 5a PR 2 is at **488 tests + 8 doctests, 0 failures**
-(measured 2026-09-19 on `issue-23-stage-5a-decorate-relationships`); it added 11
-tests to `main`'s **477 + 8**, all in
-`test/ash_introspection/manifest/decorated_relationships_test.exs`. That 477 is
-stage 5a PR 1 (`c6c744b`), which added 7 to the 470 + 8 before it, all in
+The branch for #23 stage 5a PR 6 is at **523 tests + 8 doctests, 0 failures**
+(measured 2026-09-22 on `issue-23-stage-5a-pr6`), against `main`'s **488 + 8**
+at `223a131`. It is the first branch since 4b to move the number in both
+directions: +24 in `resource_info_strict_test.exs`, +16 in
+`pipeline_manifest_required_test.exs`, +2 for the 0.6.0 upgrade notice, and
+**-7** for `pipeline_manifest_parity_test.exs`, deleted because its subject was
+the no-manifest arm that PR 6 makes raise. That 488 is stage 5a PR 2
+(`76322eb`), which added 11 to 477 + 8, all in
+`decorated_relationships_test.exs`; the 477 is stage 5a PR 1 (`c6c744b`), which
+added 7 to the 470 + 8 before it, all in
 `pipeline_tampered_manifest_test.exs`. #66 added 10 tests to 0.5.1's 460 and 7
 doctests to its 1, the first to run `FieldExtractor`'s examples. #84 had added
 9 to 0.5.0's 451. That 451 was 26 below

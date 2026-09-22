@@ -57,7 +57,7 @@ defmodule AshIntrospection.ResourceInfo do
   carry, because `runtime_resource?/2` does: a module nobody declared must
   still serialize as a resource, and serializing it is what calls
   `attribute/3`, `relationship/3` and the rest. Raising there would contradict
-  the guarantee two paragraphs down.
+  "`resource?/1` is two questions, not one" below.
 
   ## `resource?/1` is two questions, not one
 
