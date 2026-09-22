@@ -242,22 +242,35 @@ config = %{
 ### Reading from an `Ash.Info.Manifest`
 
 Every `Ash.Resource.Info` call in this library goes through
-`AshIntrospection.ResourceInfo`. Put an `%Ash.Info.Manifest{}` under an optional
-`:manifest` key on the config map and it answers from the manifest where it
-can; omit the key — which is what every caller does today — and it reads live
-introspection.
+`AshIntrospection.ResourceInfo`, which answers from an `%Ash.Info.Manifest{}`
+under the `:manifest` key on the config map.
 
 ```elixir
-config = %{manifest: MyApp.Manifest.manifest()}
+config = %{
+  manifest: MyApp.Manifest.manifest(),
+  manifest_namespace: :my_app
+}
 ```
+
+**From 0.6.0 the four request entry points require it.**
+`Rpc.Pipeline.execute_ash_action/2`, `Rpc.Pipeline.process_result/3`,
+`Rpc.Pipeline.format_output_with_request/3` and
+`Rpc.FieldProcessing.FieldSelector.process/4` raise
+`AshIntrospection.ManifestError` on a config with no `:manifest`, and raise for
+a resource the manifest carries that
+`AshIntrospection.Manifest.Decorator.decorate/3` did not decorate. Generate the
+manifest, decorate it, and pass the namespace you decorated under.
+
+Everything else still reads live when the key is absent, which is what the
+compile-time verifiers, codegen and the decorator rely on: they run before a
+decorated manifest exists.
 
 `Ash.Resource.Info.resource?/1` asks whether a module is a resource;
 `Ash.Info.Manifest.has_resource?/2` asks whether it is part of the declared API
 surface. Those differ for a module nobody declared, so `ResourceInfo` exposes
 both: `runtime_resource?/2` falls back to live introspection, and
 `declared_resource?/2` treats absence as the answer. See the module docs for
-which functions the manifest currently backs — issue #23 is staged, and this is
-stage 1 of five.
+which functions the manifest backs.
 
 ### Load Restrictions
 

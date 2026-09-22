@@ -391,9 +391,9 @@ grep -n 'field_names_callback: Map.get' lib/ash_introspection/rpc/pipeline.ex
 
 **Proving a manifest is read means tampering with it, never comparing parity.**
 `Manifest.Decorator` captures the live structs, so the two sources agree by
-construction: `test/ash_introspection/rpc/pipeline_manifest_parity_test.exs`
-passes whether or not a stage ever opens the manifest, which is how stage 4's
-drop survived every release since the `:manifest` key landed in 0.4.x. Retype
+construction: the deleted `pipeline_manifest_parity_test.exs` passed whether or
+not a stage ever opened the manifest, which is how stage 4's drop survived
+every release since the `:manifest` key landed in 0.4.x. Retype
 one decorated attribute and assert the response follows the lie —
 `Test.Account`'s `:embedding` retyped off `Ash.Type.Vector` reaches the client
 as the packed binary instead of a list of numbers, and `Test.Dossier`'s
@@ -440,16 +440,16 @@ differential suites passed over the `public_relationship/3` bug. See
 
 ### An RPC test needs its `{resource, action}` in the fixture manifest
 
-**Symptom.** A new RPC test passes on its own branch and fails after #23 stage
-5a PR 6 lands, raising on a resource the manifest carries but did not decorate.
-Or it passes and reads live introspection while every neighbouring test reads
-the manifest, so the two disagree and only one is covered.
+**Symptom.** A new RPC test raises `AshIntrospection.ManifestError`, saying
+either "requires a manifest" or "did not decorate", from a call that looks
+like every other call in the file.
 
-**Why.** PR 6 makes `:manifest` required at the four request entry points —
-`Pipeline.execute_ash_action/2`, `Pipeline.process_result/3`,
-`Pipeline.format_output_with_request/3` and `FieldSelector.process/4`. The
-config a test passes them has to carry a manifest that carries the resource,
-and `AshIntrospection.Test.ManifestFixture` generates its manifest from an
+**Why.** Since #23 stage 5a PR 6 (0.6.0) `:manifest` is required at the four
+request entry points — `Pipeline.execute_ash_action/2`,
+`Pipeline.process_result/3`, `Pipeline.format_output_with_request/3` and
+`FieldSelector.process/4`. The config a test passes them has to carry a
+manifest that carries the resource **and** decorates it, and
+`AshIntrospection.Test.ManifestFixture` generates its manifest from an
 explicit `{resource, action}` list, not from a domain scan — this repo's test
 domains are deliberately unregistered (#39), so `otp_app` alone finds nothing.
 A pair that is not on that list is a resource the fixture does not carry.
@@ -458,13 +458,12 @@ A pair that is not on that list is a resource the fixture does not carry.
 the entry point, and every `{resource, action}` it drives is an entrypoint in
 `test/support/manifest_fixture.ex`. Adding a test resource means adding its
 pair there. Use the **decorated** fixture, not `config/1`: the undecorated one
-is for `resource_info_test.exs`, and PR 6 raises on a carried-but-undecorated
-resource.
+is for `resource_info_test.exs` and for the tests that assert the raise, and an
+entry point rejects it.
 
-The one exception is
-`test/ash_introspection/rpc/pipeline_manifest_parity_test.exs`, which compares
-live against manifest and so has to keep an empty-config arm. PR 6 retires it
-along with the fallback it tests.
+There is no exception left. `pipeline_manifest_parity_test.exs` was the one,
+and PR 6 deleted it with the fallback it tested. A test that wants the live
+path calls `ResourceInfo` directly, the way `resource_info_test.exs` does.
 
 ### A failing async test's diff makes the atom-safety batch flaky
 

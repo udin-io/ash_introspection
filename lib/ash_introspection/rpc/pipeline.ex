@@ -30,9 +30,19 @@ defmodule AshIntrospection.Rpc.Pipeline do
     field_names_callback: :interop_field_names,
     get_original_field_name: fn resource, client_key -> ... end,
     format_field_for_client: fn field_name, resource, formatter -> ... end,
-    not_found_error?: true
+    not_found_error?: true,
+    manifest: MyApp.Manifest.manifest(),
+    manifest_namespace: :my_app
   }
   ```
+
+  **`:manifest` is required from 0.6.0 on.** `execute_ash_action/2`,
+  `process_result/3` and `format_output_with_request/3` call
+  `AshIntrospection.ResourceInfo.require_manifest!/1`, which raises
+  `AshIntrospection.ManifestError` without it and arms `strict?: true` on the
+  prepared source, so a resource the manifest carries that
+  `AshIntrospection.Manifest.Decorator.decorate/3` did not decorate raises too.
+  `format_output/2` is not an entry point and takes a bare config.
 
   ## Usage
 

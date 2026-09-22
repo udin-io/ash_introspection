@@ -32,9 +32,10 @@ the request path reads the manifest it is handed at every stage: the two config
 maps rebuilt mid-request carry `:manifest` and `:manifest_namespace`, and no
 request-path read drops the config. Since PR 2 every relationship is decorated,
 private ones included, so `relationship/3` has no live fallback left for a
-decorated resource. The consumer still passes none — its `build_config/0` has no
-`:manifest` key — so every RPC read in production is still live until stage 5a's
-PR 4 lands in `ash_kotlin_multiplatform`.
+decorated resource. PR 4 landed the consumer half, and since PR 6 the four
+request entry points **require** a manifest and raise
+`AshIntrospection.ManifestError` without one, so no production RPC read can
+fall back to live introspection in silence.
 
 **Why it bites.** A bug fixed upstream stays live here, and it stays live in
 `ash_kotlin_multiplatform`, which is what a real user runs.
@@ -50,7 +51,7 @@ one we are on until #23 lands. Stages 1 and 2 shipped the seam and the
 decorator that fills it, stage 3 the consumer's manifest, and stage 4 moved
 codegen onto it. Stage 5a, on [roadmap.md](roadmap.md), closes the gap: PR 1
 makes this library read the manifest it is given, PR 4 hands it one from the
-consumer, and PR 6 requires it.
+consumer, and PR 6 requires it — shipped in 0.6.0, breaking.
 
 **A port was partial; the manifest closed it.** #21 landed the behaviour of
 upstream `437901f` by hand, because upstream's own version of that commit calls
@@ -116,13 +117,14 @@ exercises the shared surface from the consumer's side. That test does not exist
 yet and is not on the board.
 
 **One half of it now does exist, for one surface.** #23 stage 1 added
-`test/ash_introspection/resource_info_test.exs` and
-`test/ash_introspection/rpc/pipeline_manifest_parity_test.exs`, and stage 2
-added `test/ash_introspection/manifest/differential_test.exs`. Together they
-run live introspection and a decorated manifest against each other field by
-field, action by action, response by response. Stage 4a added a fourth for
-codegen, 423 byte-for-byte comparisons, and stage 4b deleted it with the
-module it compared. That is the differential test this page said was missing
+`test/ash_introspection/resource_info_test.exs`, and stage 2 added
+`test/ash_introspection/manifest/differential_test.exs`. Together they run live
+introspection and a decorated manifest against each other field by field and
+action by action. Stage 4a added a third for codegen, 423 byte-for-byte
+comparisons, and stage 4b deleted it with the module it compared. Stage 5a's
+PR 6 deleted a fourth, `pipeline_manifest_parity_test.exs`, which compared
+whole responses: the request path no longer has a live arm to compare
+against. That is the differential test this page said was missing
 — for `AshIntrospection.ResourceInfo`, and for nothing else. It says nothing
 about whether the consumer's call sites still compile. The consumer's own copy
 of the traversal is gone too (its PR #83), and its codegen reads

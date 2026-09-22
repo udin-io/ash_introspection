@@ -62,15 +62,23 @@ defmodule AshIntrospection.Manifest.Decorator do
   has to be compiled when `decorate/3` runs. Under parallel compilation it may
   not be. Rather than write wrong data, this module **skips** a module it
   cannot load — `Code.ensure_loaded?/1` guards every such read, the repo-wide
-  rule from #49 — and the reader falls back to live `Ash.Resource.Info` for
-  anything undecorated. That is safe but silent, which is exactly the staleness
-  trap issue #23 records against a naive port of upstream's `8c07331`.
+  rule from #49 — and the resource stays in the manifest bare.
+
+  Until 0.6.0 the reader fell back to live `Ash.Resource.Info` for anything
+  undecorated. That was safe but silent, which is exactly the staleness trap
+  issue #23 records against a naive port of upstream's `8c07331`. Since 0.6.0
+  the four request entry points arm `strict?: true` on the prepared source and
+  a skipped resource raises `AshIntrospection.ManifestError` on the first read.
+  Codegen, the compile-time verifiers and this module still read live, because
+  they run before a decorated manifest exists.
 
   **The caller owns the compile edges.** The transformer that calls this
   function must force every referenced module to compile first, and must give
   the manifest module a compile-time dependency on the domains it was built
   from. Neither belongs here; both are stage 3 of #23. Nothing in this module
-  makes them harder — `decorate/3` is a pure function of its arguments.
+  makes them harder — `decorate/3` is a pure function of its arguments. A
+  consumer that skips them now finds out at its first request rather than
+  never.
 
   ## Namespace
 

@@ -13,6 +13,61 @@ recorded nowhere in the repo. This page replaces ADRs; there is no `adr/`
 directory here and none should be created. A decision that no longer shapes the
 code is deleted, not archived, because git keeps the history.
 
+## 2026-09-22 — A required manifest, and a strict source that raises
+
+**Decided.** `Rpc.Pipeline.execute_ash_action/2`,
+`Rpc.Pipeline.process_result/3`,
+`Rpc.Pipeline.format_output_with_request/3` and
+`Rpc.FieldProcessing.FieldSelector.process/4` call
+`ResourceInfo.require_manifest!/1`. It raises
+`AshIntrospection.ManifestError` on a config with no `:manifest`, and arms
+`strict?: true` on the prepared `ResourceInfo.Source`. A strict source raises
+where a read would otherwise fall back to live `Ash.Resource.Info`. Issue #23
+stage 5a, PR 6; breaking, 0.6.0.
+
+**Why raise instead of reading live.** A resource the manifest carries that
+`Manifest.Decorator` skipped reads live and gets the **right answer**. That is
+the trap. The decorator skips a module it cannot load at decoration time, so
+the resource sits in the manifest bare, and nothing in the response says the
+decoration was missed. The same silence is why stage 4 of the pipeline typed
+every field off live introspection for five releases after the `:manifest` key
+landed: `value_formatter_config/2` did not name the key, the parity test was
+green either way, and the bug was found by reading the rebuild rather than by
+any failure. A raise turns a compile-order mistake in the consumer into a first
+request that fails loudly.
+
+**Why the flag lives on the Source, not in `ResourceInfo`.** The compile-time
+verifiers, `AshIntrospection.Codegen` and `Manifest.Decorator` call the same
+readers before a decorated manifest exists — the decorator reads the manifest
+it is decorating, to answer `declared_resource?/2` — so "required" cannot be a
+property of the reader. It is a property of the caller, and the four request
+entry points are the only callers that arm it. `prepare/2` and
+`normalize_config/1` leave it `false`.
+
+**Why two of the readers raise on an uncarried resource and the rest do not.**
+`primary_key/2` and `identity_keys/3` are asked only about the resource a
+request names, so a miss is a manifest built without an entrypoint for it.
+Every other reader keeps its live fallback for an uncarried module, because
+`runtime_resource?/2` keeps one by the 2026-09-11 decision below: a module
+nobody declared must still serialize as a resource, and serializing it is what
+calls `attribute/3`, `relationship/3` and `get_field_type_info/3`. Raising
+there would contradict that.
+
+**What it cost.** Every consumer has to build a manifest, decorate it and put
+it on the pipeline config. There is no opt-out and no per-resource escape: a
+config that used to work now raises on the first request.
+`mix ash_introspection.upgrade` cannot rewrite it — the change is in a map the
+consumer builds under a name this library cannot know — so 0.6.0's step is a
+notice.
+
+`pipeline_manifest_parity_test.exs` went with the fallback it tested. Its
+subject was the no-manifest arm. The claim survives in two places that are
+stronger: `resource_info_test.exs` compares live against manifest at the
+reader, where the live path stays supported, and
+`pipeline_tampered_manifest_test.exs` proves each stage *reads* the manifest by
+lying to it — which a parity assertion can never do, because the decorator
+captures live structs and the two sources agree by construction.
+
 ## 2026-09-19 — Relationships are decorated, because the manifest cannot say
 
 **Decided.** `Manifest.Decorator` lists a resource's relationships live at
@@ -297,8 +352,10 @@ translation: if the manifest turns out to answer a question differently, the
 whole thing has to come back out. With the reader in place, stage 2 changes one
 module and stage 5 deletes a branch in it. The compatibility guarantee is
 testable rather than asserted — `resource_info_test.exs` compares every read
-against `Ash.Resource.Info` itself, and `pipeline_manifest_parity_test.exs`
-runs the same request twice and compares the responses.
+against `Ash.Resource.Info` itself. It still is, for the callers that still
+read live; the four request entry points require a manifest since 0.6.0, and
+`pipeline_manifest_parity_test.exs`, which ran the same request twice, went
+with the fallback it tested.
 
 **Why `resource?/1` is two functions.** `Ash.Resource.Info.resource?/1` answers
 a fact about a module. `Ash.Info.Manifest.has_resource?/2` answers a fact about
