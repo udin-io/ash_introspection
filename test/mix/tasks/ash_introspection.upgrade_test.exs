@@ -156,6 +156,24 @@ defmodule Mix.Tasks.AshIntrospection.UpgradeTest do
     end
   end
 
+  describe "0.6.0" do
+    test "names the required key and the four entry points, rewrites nothing" do
+      "Pipeline.execute_ash_action(request, config)"
+      |> upgrade(from: "0.5.3", to: "0.6.0")
+      |> assert_unchanged("lib/my_app/rpc.ex")
+      |> assert_has_notice(&(&1 =~ "AshIntrospection.ManifestError"))
+      |> assert_has_notice(&(&1 =~ "execute_ash_action/2"))
+      |> assert_has_notice(&(&1 =~ "FieldSelector.process/4"))
+      |> assert_has_notice(&(&1 =~ "Manifest.Decorator.decorate/3"))
+    end
+
+    test "does not fire when 0.6.0 falls outside the range" do
+      igniter = upgrade("error.code", from: "0.4.0", to: "0.5.0")
+
+      refute Enum.any?(igniter.notices, &(&1 =~ "ManifestError"))
+    end
+  end
+
   describe "version selection" do
     test "does not rewrite code when 0.3.0 falls outside the range" do
       "error.code"
