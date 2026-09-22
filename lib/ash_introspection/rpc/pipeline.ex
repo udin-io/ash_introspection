@@ -101,10 +101,15 @@ defmodule AshIntrospection.Rpc.Pipeline do
   def execute_ash_action(%Request{} = request, config \\ %{}) do
     # Prepare the manifest once per stage. Handed a bare `%Ash.Info.Manifest{}`,
     # `ResourceInfo.source/1` rebuilds the lookup maps on every read, and one
-    # stage reads dozens of times. `normalize_config/1` also folds
+    # stage reads dozens of times. `require_manifest!/1` also folds
     # `:manifest_namespace` into the prepared source, so the config maps rebuilt
     # further down carry the namespace by carrying `:manifest`.
-    config = ResourceInfo.normalize_config(config)
+    #
+    # It raises when the config carries no manifest, and arms `strict?: true` so
+    # a resource the manifest carries bare raises rather than reading live. This
+    # is one of the four request entry points and the only place that arms it —
+    # see `AshIntrospection.ResourceInfo`.
+    config = ResourceInfo.require_manifest!(config)
 
     opts = [
       actor: request.actor,
@@ -146,8 +151,8 @@ defmodule AshIntrospection.Rpc.Pipeline do
   """
   @spec process_result(term(), Request.t(), config()) :: {:ok, term()} | {:error, term()}
   def process_result(ash_result, %Request{} = request, config \\ %{}) do
-    # Prepared once here; see the note in `execute_ash_action/2`.
-    config = ResourceInfo.normalize_config(config)
+    # Required and prepared once here; see the note in `execute_ash_action/2`.
+    config = ResourceInfo.require_manifest!(config)
 
     case ash_result do
       {:error, error} ->
@@ -251,8 +256,8 @@ defmodule AshIntrospection.Rpc.Pipeline do
   """
   @spec format_output_with_request(term(), Request.t(), config()) :: term()
   def format_output_with_request(filtered_result, %Request{} = request, config \\ %{}) do
-    # Prepared once here; see the note in `execute_ash_action/2`.
-    config = ResourceInfo.normalize_config(config)
+    # Required and prepared once here; see the note in `execute_ash_action/2`.
+    config = ResourceInfo.require_manifest!(config)
     formatter = Map.get(config, :output_field_formatter, :camel_case)
     format_output_data(filtered_result, formatter, request, config)
   end

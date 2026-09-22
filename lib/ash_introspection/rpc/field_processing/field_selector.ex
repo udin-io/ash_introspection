@@ -78,7 +78,7 @@ defmodule AshIntrospection.Rpc.FieldProcessing.FieldSelector do
   """
   @spec process(module(), atom(), list(), config()) :: {:ok, select_result()} | {:error, term()}
   def process(resource, action_name, requested_fields, config \\ %{}) do
-    config = ResourceInfo.normalize_config(config)
+    config = ResourceInfo.require_manifest!(config)
     action = ResourceInfo.action(resource, action_name, config)
 
     if is_nil(action) do
