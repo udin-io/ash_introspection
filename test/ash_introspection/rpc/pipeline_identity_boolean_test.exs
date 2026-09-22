@@ -25,7 +25,13 @@ defmodule AshIntrospection.Rpc.PipelineIdentityBooleanTest do
   alias AshIntrospection.Rpc.Pipeline
   alias AshIntrospection.Rpc.Request
   alias AshIntrospection.Test.Account
+  alias AshIntrospection.Test.ManifestFixture
   alias AshIntrospection.Test.RpcDomain
+
+  # The request path is handed the manifest a production consumer carries
+  # (#23 stage 5a).
+  defp execute(request),
+    do: Pipeline.execute_ash_action(request, ManifestFixture.decorated_config())
 
   setup do
     suffix = System.unique_integer([:positive])
@@ -88,7 +94,7 @@ defmodule AshIntrospection.Rpc.PipelineIdentityBooleanTest do
     test "an identity value of false updates the false record and nothing else",
          %{name: name} = ctx do
       assert {:ok, record} =
-               Pipeline.execute_ash_action(
+               execute(
                  update_request(%{name: name, active: false}, %{email: "renamed@example.com"})
                )
 
@@ -101,7 +107,7 @@ defmodule AshIntrospection.Rpc.PipelineIdentityBooleanTest do
     test "an identity value of true updates the true record and nothing else",
          %{name: name} = ctx do
       assert {:ok, record} =
-               Pipeline.execute_ash_action(
+               execute(
                  update_request(%{name: name, active: true}, %{email: "renamed@example.com"})
                )
 
@@ -121,7 +127,7 @@ defmodule AshIntrospection.Rpc.PipelineIdentityBooleanTest do
       # update failed as `NotFound` — an answer that reads as "no such record"
       # when the real fault is an identity that cannot name one.
       assert {:error, {:invalid_identity, %{message: message}}} =
-               Pipeline.execute_ash_action(
+               execute(
                  update_request(%{name: name, active: nil}, %{email: "renamed@example.com"})
                )
 
@@ -135,7 +141,7 @@ defmodule AshIntrospection.Rpc.PipelineIdentityBooleanTest do
     test "a nil identity value is rejected on destroy too and destroys nothing",
          %{name: name} = ctx do
       assert {:error, {:invalid_identity, %{message: _}}} =
-               Pipeline.execute_ash_action(destroy_request(%{name: name, active: nil}))
+               execute(destroy_request(%{name: name, active: nil}))
 
       assert Ash.get!(Account, ctx.inactive.id)
       assert Ash.get!(Account, ctx.active.id)
@@ -146,7 +152,7 @@ defmodule AshIntrospection.Rpc.PipelineIdentityBooleanTest do
   describe "destroys through a boolean named identity" do
     test "an identity value of false destroys the false record and nothing else",
          %{name: name} = ctx do
-      assert {:ok, _} = Pipeline.execute_ash_action(destroy_request(%{name: name, active: false}))
+      assert {:ok, _} = execute(destroy_request(%{name: name, active: false}))
 
       assert {:error, _} = Ash.get(Account, ctx.inactive.id)
       assert Ash.get!(Account, ctx.active.id)

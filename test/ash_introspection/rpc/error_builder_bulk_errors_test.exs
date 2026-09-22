@@ -23,7 +23,13 @@ defmodule AshIntrospection.Rpc.ErrorBuilderBulkErrorsTest do
   alias AshIntrospection.Rpc.Pipeline
   alias AshIntrospection.Rpc.Request
   alias AshIntrospection.Test.Account
+  alias AshIntrospection.Test.ManifestFixture
   alias AshIntrospection.Test.RpcDomain
+
+  # The request path is handed the manifest a production consumer carries
+  # (#23 stage 5a).
+  defp execute(request),
+    do: Pipeline.execute_ash_action(request, ManifestFixture.decorated_config())
 
   setup do
     suffix = System.unique_integer([:positive])
@@ -82,7 +88,7 @@ defmodule AshIntrospection.Rpc.ErrorBuilderBulkErrorsTest do
   end
 
   defp update(id, input) do
-    Pipeline.execute_ash_action(
+    execute(
       Request.new(%{
         domain: RpcDomain,
         resource: Account,

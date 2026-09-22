@@ -23,11 +23,12 @@ defmodule AshIntrospection.Rpc.LoadRestrictionsTest do
   alias AshIntrospection.Rpc.FieldProcessing.FieldSelector
   alias AshIntrospection.Rpc.LoadRestrictions
   alias AshIntrospection.Test.LoadRestrictions.Article
+  alias AshIntrospection.Test.ManifestFixture
 
   doctest AshIntrospection.Rpc.LoadRestrictions
 
   defp process(fields, config \\ %{}) do
-    FieldSelector.process(Article, :read, fields, config)
+    FieldSelector.process(Article, :read, fields, ManifestFixture.decorated_config(config))
   end
 
   defp deny(spec), do: %{load_restrictions: {:deny, spec}}

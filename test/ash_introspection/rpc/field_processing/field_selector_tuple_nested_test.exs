@@ -36,12 +36,18 @@ defmodule AshIntrospection.Rpc.FieldProcessing.FieldSelectorTupleNestedTest do
   alias AshIntrospection.Rpc.FieldProcessing.FieldSelector
   alias AshIntrospection.Rpc.Pipeline
   alias AshIntrospection.Rpc.Request
+  alias AshIntrospection.Test.ManifestFixture
   alias AshIntrospection.Test.MapTile
   alias AshIntrospection.Test.TupleSelectionDomain
 
   defp select(requested_fields, action \\ :get_tile) do
     assert {:ok, {select, load, template}} =
-             FieldSelector.process(MapTile, action, requested_fields)
+             FieldSelector.process(
+               MapTile,
+               action,
+               requested_fields,
+               ManifestFixture.decorated_config()
+             )
 
     {select, load, template}
   end
@@ -69,10 +75,16 @@ defmodule AshIntrospection.Rpc.FieldProcessing.FieldSelectorTupleNestedTest do
       }
       |> Request.new()
 
-    {:ok, ash_result} = Pipeline.execute_ash_action(request)
-    {:ok, processed} = Pipeline.process_result(ash_result, request)
+    {:ok, ash_result} = Pipeline.execute_ash_action(request, ManifestFixture.decorated_config())
 
-    Pipeline.format_output_with_request(%{success: true, data: processed}, request)
+    {:ok, processed} =
+      Pipeline.process_result(ash_result, request, ManifestFixture.decorated_config())
+
+    Pipeline.format_output_with_request(
+      %{success: true, data: processed},
+      request,
+      ManifestFixture.decorated_config()
+    )
   end
 
   describe "the premise" do
@@ -105,7 +117,12 @@ defmodule AshIntrospection.Rpc.FieldProcessing.FieldSelectorTupleNestedTest do
 
     test "still rejects a nested field the tuple field does not have" do
       assert {:error, {:unknown_field, _, _, [:corner]}} =
-               FieldSelector.process(MapTile, :get_tile, [%{"corner" => ["z"]}])
+               FieldSelector.process(
+                 MapTile,
+                 :get_tile,
+                 [%{"corner" => ["z"]}],
+                 ManifestFixture.decorated_config()
+               )
     end
   end
 

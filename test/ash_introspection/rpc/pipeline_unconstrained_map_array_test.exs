@@ -35,6 +35,7 @@ defmodule AshIntrospection.Rpc.PipelineUnconstrainedMapArrayTest do
   alias AshIntrospection.Rpc.Request
   alias AshIntrospection.Test.LedgerEntry
   alias AshIntrospection.Test.ListOutputDomain
+  alias AshIntrospection.Test.ManifestFixture
   alias AshIntrospection.TypeSystem.Introspection
 
   @raw_rows [
@@ -58,10 +59,16 @@ defmodule AshIntrospection.Rpc.PipelineUnconstrainedMapArrayTest do
       }
       |> Request.new()
 
-    {:ok, ash_result} = Pipeline.execute_ash_action(request)
-    {:ok, processed} = Pipeline.process_result(ash_result, request)
+    {:ok, ash_result} = Pipeline.execute_ash_action(request, ManifestFixture.decorated_config())
 
-    Pipeline.format_output_with_request(%{success: true, data: processed}, request)
+    {:ok, processed} =
+      Pipeline.process_result(ash_result, request, ManifestFixture.decorated_config())
+
+    Pipeline.format_output_with_request(
+      %{success: true, data: processed},
+      request,
+      ManifestFixture.decorated_config()
+    )
   end
 
   describe "the premise" do

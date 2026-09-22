@@ -17,6 +17,7 @@ defmodule AshIntrospection.Rpc.ResultProcessorRedactionTest do
   alias AshIntrospection.Rpc.Pipeline
   alias AshIntrospection.Rpc.Request
   alias AshIntrospection.Rpc.ResultProcessor
+  alias AshIntrospection.Test.ManifestFixture
 
   @secret "123-45-6789"
 
@@ -106,7 +107,12 @@ defmodule AshIntrospection.Rpc.ResultProcessorRedactionTest do
 
   describe "Pipeline.process_result/3 for an unconstrained map action" do
     test "redacts a forbidden field in the returned map" do
-      {:ok, result} = Pipeline.process_result(%{"ssn" => forbidden(:ssn)}, map_action_request())
+      {:ok, result} =
+        Pipeline.process_result(
+          %{"ssn" => forbidden(:ssn)},
+          map_action_request(),
+          ManifestFixture.decorated_config()
+        )
 
       assert %{"ssn" => nil} == result
     end
@@ -114,14 +120,19 @@ defmodule AshIntrospection.Rpc.ResultProcessorRedactionTest do
     test "redacts a forbidden field nested below the returned map" do
       raw = %{"user" => %Envelope{label: "Ada", payload: forbidden(:ssn)}}
 
-      {:ok, result} = Pipeline.process_result(raw, map_action_request())
+      {:ok, result} =
+        Pipeline.process_result(raw, map_action_request(), ManifestFixture.decorated_config())
 
       assert %{"user" => %{label: "Ada", payload: nil}} == result
     end
 
     test "omits a not-loaded field in the returned map" do
       {:ok, result} =
-        Pipeline.process_result(%{"address" => not_loaded(:address)}, map_action_request())
+        Pipeline.process_result(
+          %{"address" => not_loaded(:address)},
+          map_action_request(),
+          ManifestFixture.decorated_config()
+        )
 
       assert %{} == result
     end

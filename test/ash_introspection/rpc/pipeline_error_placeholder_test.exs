@@ -21,6 +21,7 @@ defmodule AshIntrospection.Rpc.PipelineErrorPlaceholderTest do
   alias AshIntrospection.Rpc.ErrorBuilder
   alias AshIntrospection.Rpc.Pipeline
   alias AshIntrospection.Rpc.Request
+  alias AshIntrospection.Test.ManifestFixture
 
   @placeholder ~r/%\{([^}]+)\}/
 
@@ -88,7 +89,7 @@ defmodule AshIntrospection.Rpc.PipelineErrorPlaceholderTest do
                Pipeline.format_output_with_request(
                  %{success: false, errors: errors},
                  %Request{},
-                 %{}
+                 ManifestFixture.decorated_config()
                )
     end
   end
@@ -96,7 +97,11 @@ defmodule AshIntrospection.Rpc.PipelineErrorPlaceholderTest do
   describe "the success envelope" do
     test "is unaffected" do
       response =
-        Pipeline.format_output_with_request(%{success: true}, %Request{}, %{})
+        Pipeline.format_output_with_request(
+          %{success: true},
+          %Request{},
+          ManifestFixture.decorated_config()
+        )
 
       assert response == %{"success" => true}
     end
@@ -107,7 +112,7 @@ defmodule AshIntrospection.Rpc.PipelineErrorPlaceholderTest do
       Pipeline.format_output_with_request(
         %{success: false, errors: List.flatten(errors)},
         %Request{},
-        %{}
+        ManifestFixture.decorated_config()
       )
 
     assert response["success"] == false

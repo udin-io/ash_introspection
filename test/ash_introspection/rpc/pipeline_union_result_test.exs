@@ -30,6 +30,7 @@ defmodule AshIntrospection.Rpc.PipelineUnionResultTest do
   alias AshIntrospection.Rpc.FieldProcessing.FieldSelector
   alias AshIntrospection.Rpc.Pipeline
   alias AshIntrospection.Rpc.Request
+  alias AshIntrospection.Test.ManifestFixture
   alias AshIntrospection.Test.Shelf
   alias AshIntrospection.Test.UnionResultDomain
 
@@ -42,7 +43,9 @@ defmodule AshIntrospection.Rpc.PipelineUnionResultTest do
   end
 
   defp request(action_name, fields, input) do
-    {:ok, selection} = FieldSelector.process(Shelf, action_name, fields, %{})
+    {:ok, selection} =
+      FieldSelector.process(Shelf, action_name, fields, ManifestFixture.decorated_config())
+
     build_request(action_name, selection, input)
   end
 
@@ -62,11 +65,17 @@ defmodule AshIntrospection.Rpc.PipelineUnionResultTest do
   end
 
   defp data(request) do
-    {:ok, ash_result} = Pipeline.execute_ash_action(request)
-    {:ok, processed} = Pipeline.process_result(ash_result, request)
+    {:ok, ash_result} = Pipeline.execute_ash_action(request, ManifestFixture.decorated_config())
+
+    {:ok, processed} =
+      Pipeline.process_result(ash_result, request, ManifestFixture.decorated_config())
 
     %{"data" => data} =
-      Pipeline.format_output_with_request(%{success: true, data: processed}, request)
+      Pipeline.format_output_with_request(
+        %{success: true, data: processed},
+        request,
+        ManifestFixture.decorated_config()
+      )
 
     data
   end
@@ -91,7 +100,12 @@ defmodule AshIntrospection.Rpc.PipelineUnionResultTest do
 
     test "keys every member entry in the template by its atom" do
       {:ok, {_select, _load, template}} =
-        FieldSelector.process(Shelf, :read, ["title", %{"content" => @every_member}], %{})
+        FieldSelector.process(
+          Shelf,
+          :read,
+          ["title", %{"content" => @every_member}],
+          ManifestFixture.decorated_config()
+        )
 
       {:content, members} = List.keyfind(template, :content, 0)
 

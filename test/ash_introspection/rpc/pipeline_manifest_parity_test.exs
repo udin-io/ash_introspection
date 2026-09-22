@@ -18,6 +18,18 @@ defmodule AshIntrospection.Rpc.PipelineManifestParityTest do
   reading one record could not see: a bare list, an `%Ash.Page.Offset{}`, and a
   `get?` single record. Plus a named-identity update, which is the only path
   through `ResourceInfo.identity_keys/3`.
+
+  ## This file is the one #23 stage 5a PR 5 left on an empty config
+
+  PR 5 gave every other RPC test a manifest, because PR 6 makes the manifest
+  required at the four request entry points. It could not give this one: the
+  `%{}` arm of each comparison *is* the subject. PR 6 deletes the live
+  fallback these six calls exercise, so it retires this file rather than
+  converting it. `resource_info_test.exs` keeps the same parity claim at the
+  reader, where no entry point is involved and the live path stays supported.
+
+  Its manifest arm uses the undecorated fixture, which PR 6 also rejects — a
+  resource the manifest carries but did not decorate raises there.
   """
   use ExUnit.Case, async: true
 

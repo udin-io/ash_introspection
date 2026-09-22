@@ -20,10 +20,16 @@ defmodule AshIntrospection.Rpc.FieldProcessing.FieldSelectorAtomSafetyTest do
   use ExUnit.Case, async: false
 
   alias AshIntrospection.Rpc.FieldProcessing.FieldSelector
+  alias AshIntrospection.Test.ManifestFixture
   alias AshIntrospection.Test.Post
   alias AshIntrospection.Test.User
 
   @batch_size 500
+
+  # Every call goes through the entry point with the manifest the request path
+  # is given in production (#23 stage 5a).
+  defp process(resource, action, fields),
+    do: FieldSelector.process(resource, action, fields, ManifestFixture.decorated_config())
 
   defp atom_exists?(name) when is_binary(name) do
     _ = String.to_existing_atom(name)
@@ -68,7 +74,7 @@ defmodule AshIntrospection.Rpc.FieldProcessing.FieldSelectorAtomSafetyTest do
       name = unknown_name("atomBombResource")
 
       assert {:error, {:unknown_field, unknown, User, []}} =
-               FieldSelector.process(User, :read, [name])
+               process(User, :read, [name])
 
       assert is_binary(unknown)
       refute_atoms_for(name)
@@ -76,7 +82,7 @@ defmodule AshIntrospection.Rpc.FieldProcessing.FieldSelectorAtomSafetyTest do
 
     test "a batch of unknown field names mints no atoms" do
       assert_no_atoms_minted(fn name ->
-        assert {:error, {:unknown_field, _, _, _}} = FieldSelector.process(User, :read, [name])
+        assert {:error, {:unknown_field, _, _, _}} = process(User, :read, [name])
       end)
     end
 
@@ -84,7 +90,7 @@ defmodule AshIntrospection.Rpc.FieldProcessing.FieldSelectorAtomSafetyTest do
       name = unknown_name("atomBombNestedResource")
 
       assert {:error, {:unknown_field, unknown, User, []}} =
-               FieldSelector.process(User, :read, [%{name => ["id"]}])
+               process(User, :read, [%{name => ["id"]}])
 
       assert is_binary(unknown)
       refute_atoms_for(name)
@@ -92,7 +98,7 @@ defmodule AshIntrospection.Rpc.FieldProcessing.FieldSelectorAtomSafetyTest do
 
     test "known attribute and aggregate names still resolve" do
       assert {:ok, {select, load, template}} =
-               FieldSelector.process(User, :read, ["id", "name", "isActive", "addressCount"])
+               process(User, :read, ["id", "name", "isActive", "addressCount"])
 
       assert select == [:id, :name, :is_active]
       assert load == [:address_count]
@@ -101,7 +107,7 @@ defmodule AshIntrospection.Rpc.FieldProcessing.FieldSelectorAtomSafetyTest do
 
     test "known relationship names still resolve" do
       assert {:ok, {_select, load, template}} =
-               FieldSelector.process(User, :read, [%{"address" => ["street", "city"]}])
+               process(User, :read, [%{"address" => ["street", "city"]}])
 
       assert load == [{:address, [:street, :city]}]
       assert template == [address: [:street, :city]]
@@ -113,7 +119,7 @@ defmodule AshIntrospection.Rpc.FieldProcessing.FieldSelectorAtomSafetyTest do
       name = unknown_name("atomBombTypedMap")
 
       assert {:error, {:unknown_field, unknown, "map", []}} =
-               FieldSelector.process(Post, :get_stats, [name])
+               process(Post, :get_stats, [name])
 
       assert is_binary(unknown)
       refute_atoms_for(name)
@@ -122,7 +128,7 @@ defmodule AshIntrospection.Rpc.FieldProcessing.FieldSelectorAtomSafetyTest do
     test "a batch of unknown field names mints no atoms" do
       assert_no_atoms_minted(fn name ->
         assert {:error, {:unknown_field, _, _, _}} =
-                 FieldSelector.process(Post, :get_stats, [name])
+                 process(Post, :get_stats, [name])
       end)
     end
 
@@ -130,7 +136,7 @@ defmodule AshIntrospection.Rpc.FieldProcessing.FieldSelectorAtomSafetyTest do
       name = unknown_name("atomBombNestedTypedMap")
 
       assert {:error, {:unknown_field, unknown, "map", []}} =
-               FieldSelector.process(Post, :get_stats, [%{name => ["id"]}])
+               process(Post, :get_stats, [%{name => ["id"]}])
 
       assert is_binary(unknown)
       refute_atoms_for(name)
@@ -138,7 +144,7 @@ defmodule AshIntrospection.Rpc.FieldProcessing.FieldSelectorAtomSafetyTest do
 
     test "known field names still resolve" do
       assert {:ok, {_select, _load, template}} =
-               FieldSelector.process(Post, :get_stats, ["totalPosts", "draftCount"])
+               process(Post, :get_stats, ["totalPosts", "draftCount"])
 
       assert template == [:total_posts, :draft_count]
     end
@@ -149,7 +155,7 @@ defmodule AshIntrospection.Rpc.FieldProcessing.FieldSelectorAtomSafetyTest do
       name = unknown_name("atomBombTypedStruct")
 
       assert {:error, {:unknown_field, unknown, "field_constrained_type", []}} =
-               FieldSelector.process(Post, :get_task_stats, [name])
+               process(Post, :get_task_stats, [name])
 
       assert is_binary(unknown)
       refute_atoms_for(name)
@@ -158,13 +164,13 @@ defmodule AshIntrospection.Rpc.FieldProcessing.FieldSelectorAtomSafetyTest do
     test "a batch of unknown field names mints no atoms" do
       assert_no_atoms_minted(fn name ->
         assert {:error, {:unknown_field, _, _, _}} =
-                 FieldSelector.process(Post, :get_task_stats, [name])
+                 process(Post, :get_task_stats, [name])
       end)
     end
 
     test "mapped field names still resolve to their internal atoms" do
       assert {:ok, {_select, _load, template}} =
-               FieldSelector.process(Post, :get_task_stats, ["isActive", "taskCount", "meta1"])
+               process(Post, :get_task_stats, ["isActive", "taskCount", "meta1"])
 
       assert template == [:is_active?, :task_count, :meta_1]
     end
@@ -175,7 +181,7 @@ defmodule AshIntrospection.Rpc.FieldProcessing.FieldSelectorAtomSafetyTest do
       name = unknown_name("atomBombTuple")
 
       assert {:error, {:unknown_field, unknown, "tuple", []}} =
-               FieldSelector.process(Post, :get_bounds, [name])
+               process(Post, :get_bounds, [name])
 
       assert is_binary(unknown)
       refute_atoms_for(name)
@@ -184,13 +190,13 @@ defmodule AshIntrospection.Rpc.FieldProcessing.FieldSelectorAtomSafetyTest do
     test "a batch of unknown field names mints no atoms" do
       assert_no_atoms_minted(fn name ->
         assert {:error, {:unknown_field, _, _, _}} =
-                 FieldSelector.process(Post, :get_bounds, [name])
+                 process(Post, :get_bounds, [name])
       end)
     end
 
     test "known field names still resolve" do
       assert {:ok, {_select, _load, template}} =
-               FieldSelector.process(Post, :get_bounds, ["latitude", "longitude"])
+               process(Post, :get_bounds, ["latitude", "longitude"])
 
       assert template == [
                %{field_name: :latitude, index: 0},

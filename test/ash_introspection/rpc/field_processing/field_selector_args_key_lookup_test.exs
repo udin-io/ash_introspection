@@ -39,8 +39,10 @@ defmodule AshIntrospection.Rpc.FieldProcessing.FieldSelectorArgsKeyLookupTest do
 
   alias AshIntrospection.Rpc.FieldProcessing.FieldSelector
   alias AshIntrospection.Test.LoadRestrictions.Article
+  alias AshIntrospection.Test.ManifestFixture
 
-  defp process(fields), do: FieldSelector.process(Article, :read, fields)
+  defp process(fields),
+    do: FieldSelector.process(Article, :read, fields, ManifestFixture.decorated_config())
 
   describe "a well-formed request is untouched" do
     test "a calculation with arguments still loads with its arguments" do

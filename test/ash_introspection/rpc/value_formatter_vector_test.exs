@@ -21,6 +21,7 @@ defmodule AshIntrospection.Rpc.ValueFormatterVectorTest do
   alias AshIntrospection.Rpc.Request
   alias AshIntrospection.Rpc.ValueFormatter
   alias AshIntrospection.Test.Account
+  alias AshIntrospection.Test.ManifestFixture
   alias AshIntrospection.Test.RpcDomain
 
   @embedding [0.5, -1.5, 2.25]
@@ -97,10 +98,18 @@ defmodule AshIntrospection.Rpc.ValueFormatterVectorTest do
         get_by: %{email: email}
       })
 
-    assert {:ok, record} = Pipeline.execute_ash_action(request)
-    assert {:ok, filtered} = Pipeline.process_result(record, request)
+    assert {:ok, record} =
+             Pipeline.execute_ash_action(request, ManifestFixture.decorated_config())
 
-    response = Pipeline.format_output_with_request(%{success: true, data: filtered}, request)
+    assert {:ok, filtered} =
+             Pipeline.process_result(record, request, ManifestFixture.decorated_config())
+
+    response =
+      Pipeline.format_output_with_request(
+        %{success: true, data: filtered},
+        request,
+        ManifestFixture.decorated_config()
+      )
 
     assert response["success"] == true
     response["data"]

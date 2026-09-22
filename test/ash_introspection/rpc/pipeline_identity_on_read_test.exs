@@ -17,7 +17,13 @@ defmodule AshIntrospection.Rpc.PipelineIdentityOnReadTest do
   alias AshIntrospection.Rpc.Pipeline
   alias AshIntrospection.Rpc.Request
   alias AshIntrospection.Test.Account
+  alias AshIntrospection.Test.ManifestFixture
   alias AshIntrospection.Test.RpcDomain
+
+  # The request path is handed the manifest a production consumer carries
+  # (#23 stage 5a).
+  defp execute(request),
+    do: Pipeline.execute_ash_action(request, ManifestFixture.decorated_config())
 
   setup do
     suffix = System.unique_integer([:positive])
@@ -57,24 +63,22 @@ defmodule AshIntrospection.Rpc.PipelineIdentityOnReadTest do
   describe "identity on a read action" do
     test "a get? read carrying an identity is rejected by name", %{alice: alice} do
       assert {:error, {:identity_not_supported, %{action: :get_account}}} =
-               Pipeline.execute_ash_action(request(:get_account, %{identity: alice.id}))
+               execute(request(:get_account, %{identity: alice.id}))
     end
 
     test "a list read carrying an identity is rejected", %{alice: alice} do
       assert {:error, {:identity_not_supported, %{action: :read}}} =
-               Pipeline.execute_ash_action(request(:read, %{identity: alice.id}))
+               execute(request(:read, %{identity: alice.id}))
     end
 
     test "a map identity is rejected on a read", %{alice: alice} do
       assert {:error, {:identity_not_supported, _}} =
-               Pipeline.execute_ash_action(
-                 request(:get_account, %{identity: %{email: alice.email}})
-               )
+               execute(request(:get_account, %{identity: %{email: alice.email}}))
     end
 
     test "a read without an identity is untouched", %{alice: alice} do
       assert {:ok, record} =
-               Pipeline.execute_ash_action(request(:get_account, %{get_by: %{id: alice.id}}))
+               execute(request(:get_account, %{get_by: %{id: alice.id}}))
 
       assert record.id == alice.id
     end
@@ -83,7 +87,7 @@ defmodule AshIntrospection.Rpc.PipelineIdentityOnReadTest do
       alice: alice,
       bob: bob
     } do
-      assert {:ok, records} = Pipeline.execute_ash_action(request(:read, %{}))
+      assert {:ok, records} = execute(request(:read, %{}))
 
       ids = MapSet.new(records, & &1.id)
       assert MapSet.member?(ids, alice.id)
