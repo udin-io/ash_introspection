@@ -15,6 +15,35 @@ which come first. Numbers in parentheses are GitHub issues on
 
 ## Shipped
 
+### 0.6.0 — 2026-09-23
+
+- **#23 stage 5a, PR 6 — the manifest is required on the request path.**
+  `Rpc.Pipeline.execute_ash_action/2`, `Rpc.Pipeline.process_result/3`,
+  `Rpc.Pipeline.format_output_with_request/3` and
+  `Rpc.FieldProcessing.FieldSelector.process/4` call
+  `ResourceInfo.require_manifest!/1`, which raises
+  `AshIntrospection.ManifestError` on a config with no `:manifest` and arms
+  `strict?: true` on the prepared `ResourceInfo.Source`. A strict source raises
+  where it would have read live: for a resource the manifest carries bare, and
+  for a resource the manifest does not carry at all in `primary_key/2` and
+  `identity_keys/3`.
+
+  `pipeline_manifest_parity_test.exs` is deleted — its subject was the
+  empty-config arm — and `resource_info_test.exs` keeps the live-vs-manifest
+  parity claim at the reader, where the live path stays supported. Breaking;
+  merged as `266612f` at 523 tests + 8 doctests. The
+  `mix ash_introspection.upgrade` notice for 0.6.0 rewrites no file: no call
+  site changes names, arities or argument order, so the only edit is to the
+  config map the consumer builds, in a function this library cannot name.
+
+  PR 1 and PR 2 are in 0.5.3 below; PR 4 merged in the consumer as its
+  PR #103; PR 5 merged as `223a131`, giving every RPC test a manifest so this
+  requirement landed on a green suite. PR 8, the consumer's `~> 0.6` bump,
+  follows.
+- **#94 — `mix.lock` takes `mint` 1.10.1**, fixing EEF-CVE-2026-82672
+  (`f7b1677`). Mint is transitive here through `finch` (`~> 1.8`), so no
+  `mix.exs` entry changed and nothing in this library calls mint directly.
+
 ### 0.5.3 — 2026-09-19
 
 - **#23 stage 5a, PR 1 of 4 — the request path reads the manifest it is
@@ -400,27 +429,10 @@ merged commit on `main`.
 
 ## In progress
 
-- **#23 stage 5a, PR 6 — the manifest is required on the request path.**
-  Breaking, for 0.6.0. `Rpc.Pipeline.execute_ash_action/2`,
-  `Rpc.Pipeline.process_result/3`,
-  `Rpc.Pipeline.format_output_with_request/3` and
-  `Rpc.FieldProcessing.FieldSelector.process/4` call
-  `ResourceInfo.require_manifest!/1`, which raises
-  `AshIntrospection.ManifestError` on a config with no `:manifest` and arms
-  `strict?: true` on the prepared `ResourceInfo.Source`. A strict source raises
-  where it would have read live: for a resource the manifest carries bare, and
-  for a resource the manifest does not carry at all in `primary_key/2` and
-  `identity_keys/3`.
-
-  `pipeline_manifest_parity_test.exs` is deleted — its subject was the
-  empty-config arm — and `resource_info_test.exs` keeps the live-vs-manifest
-  parity claim at the reader, where the live path stays supported. The 0.6.0
-  CHANGELOG entry and the `mix ash_introspection.upgrade` notice ship here; the
-  version bump and the release are PR 7.
-
-  PR 1 and PR 2 are in 0.5.3 above; PR 4 merged in the consumer as its PR #103;
-  PR 5 merged as `223a131`, giving every RPC test a manifest so this
-  requirement landed on a green suite.
+- **#23 stage 5a, PR 7 — release 0.6.0.** The `@version` bump, the dated
+  CHANGELOG section and the 0.6.0 entry under Shipped above. Publishing to Hex
+  is a manual step after this merges. PR 8, the consumer's `~> 0.6` bump, waits
+  on the published package.
 
 ## Next
 
@@ -445,8 +457,8 @@ dozen other items.
    | 5a PR 2 | this | decorate every relationship, private included, so `relationship/3` needs no live fallback | 0.5.3, additive | merged `76322eb` |
    | 5a PR 4 | consumer | a manifest on the request path; `Runner` resolves actions through `rpc_action_lookup` | consumer minor | merged, consumer PR #103 |
    | 5a PR 5 | this | every RPC test runs with a manifest, so PR 6's requirement lands on a green suite | test-only, no release | merged `223a131` |
-   | 5a PR 6 | this | make `:manifest` required at the four entry points; a carried but undecorated resource raises; drop the manifest-miss live reads | 0.6.0, breaking | in progress |
-   | 5a PR 7 | this | release 0.6.0 | 0.6.0 | next |
+   | 5a PR 6 | this | make `:manifest` required at the four entry points; a carried but undecorated resource raises; drop the manifest-miss live reads | 0.6.0, breaking | merged `266612f` |
+   | 5a PR 7 | this | release 0.6.0 | 0.6.0 | in review |
    | 5a PR 8 | consumer | require `~> 0.6` | consumer patch | next |
    | 5b | this | manifest-shaped return values in place of the captured Ash structs, deferred from stage 2 ([#83](https://github.com/udin-io/ash_introspection/issues/83)) | 0.6.x | next |
 

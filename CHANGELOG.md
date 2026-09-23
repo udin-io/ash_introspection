@@ -14,11 +14,14 @@ and this project adheres to
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-09-23
+
 **Breaking: the request path requires a manifest.** Stage 5a PR 6 of
-[#23](https://github.com/udin-io/ash_introspection/issues/23), releasing as
-0.6.0. Four functions now raise `AshIntrospection.ManifestError` when the
-config map they are given carries no `:manifest`, and raise for a resource the
-manifest carries that `Manifest.Decorator.decorate/3` did not decorate:
+[#23](https://github.com/udin-io/ash_introspection/issues/23)
+([PR #97](https://github.com/udin-io/ash_introspection/pull/97)). Four
+functions now raise `AshIntrospection.ManifestError` when the config map they
+are given carries no `:manifest`, and raise for a resource the manifest
+carries that `Manifest.Decorator.decorate/3` did not decorate:
 
 - `Rpc.Pipeline.execute_ash_action/2`
 - `Rpc.Pipeline.process_result/3`
