@@ -170,6 +170,52 @@ if Code.ensure_loaded?(Igniter) do
     `TypeSystem.Introspection.get_union_types_from_constraints/2` stay.
     """
 
+    @manifest_required_notice """
+    ash_introspection 0.6.0 requires a manifest on the request path.
+
+    These four functions now raise `AshIntrospection.ManifestError` when the
+    config map they are given carries no `:manifest`:
+
+      * `AshIntrospection.Rpc.Pipeline.execute_ash_action/2`
+      * `AshIntrospection.Rpc.Pipeline.process_result/3`
+      * `AshIntrospection.Rpc.Pipeline.format_output_with_request/3`
+      * `AshIntrospection.Rpc.FieldProcessing.FieldSelector.process/4`
+
+    Nothing was rewritten, because no call site changes. The four keep their
+    names, arities and argument order; what changes is the config map you build
+    and pass them, in a function this library cannot name. Add both keys to it:
+
+        %{
+          # ... the callbacks you already pass ...
+          manifest: MyApp.Manifest.manifest(),
+          manifest_namespace: :my_app
+        }
+
+    The manifest must be decorated. Generate it with
+    `Ash.Info.Manifest.generate/1` and pass it through
+    `AshIntrospection.Manifest.Decorator.decorate/3` with the namespace you
+    name in `:manifest_namespace`.
+
+    Two messages, two causes:
+
+      * "requires a manifest" - the config carried no `:manifest` key.
+      * "did not decorate" - the manifest carries the resource, but the
+        decorator skipped it. It skips a module it cannot load at decoration
+        time, so give the manifest module a compile-time dependency on the
+        domains it was built from and force every referenced module to compile
+        first. Check `:manifest_namespace` too: decorating under one key and
+        reading with another looks identical.
+
+    Until 0.5.3 a config with no `:manifest` read live `Ash.Resource.Info` on
+    every request. That answer was right and silent, which is how one pipeline
+    stage read live introspection for five releases after the key landed.
+
+    `AshIntrospection.Rpc.Pipeline.format_output/2` is not an entry point and
+    still takes a bare config. Everything outside the request path - codegen,
+    the compile-time verifiers, the decorator - still reads live when the key
+    is absent.
+    """
+
     @impl Igniter.Mix.Task
     def info(_argv, _composing_task) do
       %Igniter.Mix.Task.Info{
@@ -187,7 +233,8 @@ if Code.ensure_loaded?(Igniter) do
       upgrades = %{
         "0.3.0" => [&rewrite_error_code_to_type/2],
         "0.4.0" => [&notify_0_4_0_breaks/2],
-        "0.5.0" => [&notify_0_5_0_breaks/2]
+        "0.5.0" => [&notify_0_5_0_breaks/2],
+        "0.6.0" => [&notify_0_6_0_breaks/2]
       }
 
       Igniter.Upgrades.run(igniter, positional.from, positional.to, upgrades,
@@ -218,6 +265,13 @@ if Code.ensure_loaded?(Igniter) do
     @doc false
     def notify_0_5_0_breaks(igniter, _opts) do
       Igniter.add_notice(igniter, @type_discovery_notice)
+    end
+
+    # Touches no file. See the 0.6.0 section of this module's comment: no
+    # consumer call site changes, only the config map they build.
+    @doc false
+    def notify_0_6_0_breaks(igniter, _opts) do
+      Igniter.add_notice(igniter, @manifest_required_notice)
     end
 
     # `Igniter.update_all_elixir_files/2` leans on `Igniter.include_glob/2` to

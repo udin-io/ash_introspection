@@ -30,9 +30,19 @@ defmodule AshIntrospection.Rpc.Pipeline do
     field_names_callback: :interop_field_names,
     get_original_field_name: fn resource, client_key -> ... end,
     format_field_for_client: fn field_name, resource, formatter -> ... end,
-    not_found_error?: true
+    not_found_error?: true,
+    manifest: MyApp.Manifest.manifest(),
+    manifest_namespace: :my_app
   }
   ```
+
+  **`:manifest` is required from 0.6.0 on.** `execute_ash_action/2`,
+  `process_result/3` and `format_output_with_request/3` call
+  `AshIntrospection.ResourceInfo.require_manifest!/1`, which raises
+  `AshIntrospection.ManifestError` without it and arms `strict?: true` on the
+  prepared source, so a resource the manifest carries that
+  `AshIntrospection.Manifest.Decorator.decorate/3` did not decorate raises too.
+  `format_output/2` is not an entry point and takes a bare config.
 
   ## Usage
 
@@ -101,10 +111,15 @@ defmodule AshIntrospection.Rpc.Pipeline do
   def execute_ash_action(%Request{} = request, config \\ %{}) do
     # Prepare the manifest once per stage. Handed a bare `%Ash.Info.Manifest{}`,
     # `ResourceInfo.source/1` rebuilds the lookup maps on every read, and one
-    # stage reads dozens of times. `normalize_config/1` also folds
+    # stage reads dozens of times. `require_manifest!/1` also folds
     # `:manifest_namespace` into the prepared source, so the config maps rebuilt
     # further down carry the namespace by carrying `:manifest`.
-    config = ResourceInfo.normalize_config(config)
+    #
+    # It raises when the config carries no manifest, and arms `strict?: true` so
+    # a resource the manifest carries bare raises rather than reading live. This
+    # is one of the four request entry points and the only place that arms it —
+    # see `AshIntrospection.ResourceInfo`.
+    config = ResourceInfo.require_manifest!(config)
 
     opts = [
       actor: request.actor,
@@ -146,8 +161,8 @@ defmodule AshIntrospection.Rpc.Pipeline do
   """
   @spec process_result(term(), Request.t(), config()) :: {:ok, term()} | {:error, term()}
   def process_result(ash_result, %Request{} = request, config \\ %{}) do
-    # Prepared once here; see the note in `execute_ash_action/2`.
-    config = ResourceInfo.normalize_config(config)
+    # Required and prepared once here; see the note in `execute_ash_action/2`.
+    config = ResourceInfo.require_manifest!(config)
 
     case ash_result do
       {:error, error} ->
@@ -251,8 +266,8 @@ defmodule AshIntrospection.Rpc.Pipeline do
   """
   @spec format_output_with_request(term(), Request.t(), config()) :: term()
   def format_output_with_request(filtered_result, %Request{} = request, config \\ %{}) do
-    # Prepared once here; see the note in `execute_ash_action/2`.
-    config = ResourceInfo.normalize_config(config)
+    # Required and prepared once here; see the note in `execute_ash_action/2`.
+    config = ResourceInfo.require_manifest!(config)
     formatter = Map.get(config, :output_field_formatter, :camel_case)
     format_output_data(filtered_result, formatter, request, config)
   end

@@ -30,6 +30,14 @@ defmodule AshIntrospection.Rpc.FieldProcessing.FieldSelector do
   | Union | `Ash.Type.Union` | `select_union_fields/5` |
   | Array | `{:array, inner_type}` | Recurse with inner type |
   | Primitive | Default | Validate no fields requested |
+
+  ## `:manifest` is required
+
+  `process/4` is one of the four request entry points, so from 0.6.0 it calls
+  `AshIntrospection.ResourceInfo.require_manifest!/1`: a config with no
+  `:manifest` raises `AshIntrospection.ManifestError`, and a resource the
+  manifest carries that `AshIntrospection.Manifest.Decorator.decorate/3` did
+  not decorate raises on the first read.
   """
 
   alias AshIntrospection.FieldFormatter
@@ -78,7 +86,7 @@ defmodule AshIntrospection.Rpc.FieldProcessing.FieldSelector do
   """
   @spec process(module(), atom(), list(), config()) :: {:ok, select_result()} | {:error, term()}
   def process(resource, action_name, requested_fields, config \\ %{}) do
-    config = ResourceInfo.normalize_config(config)
+    config = ResourceInfo.require_manifest!(config)
     action = ResourceInfo.action(resource, action_name, config)
 
     if is_nil(action) do

@@ -32,9 +32,9 @@ which come first. Numbers in parentheses are GitHub issues on
   relationship as public on a manifest built with private relationships.
   Additive; merged as `76322eb` at 488 tests + 8 doctests, and
   `ash_kotlin_multiplatform` at `4a50811` stays at 363 tests, 0 failures, with
-  its manifest 0.22% larger. PR 6 (require the manifest, breaking, 0.6.0)
-  follows here; PR 4 puts a manifest on the request path in
-  `ash_kotlin_multiplatform`. Stage 5b, manifest-shaped return values, moved to
+  its manifest 0.22% larger. PR 4 put a manifest on the request path in
+  `ash_kotlin_multiplatform`, and PR 6 requires it here — see "In progress".
+  Stage 5b, manifest-shaped return values, moved to
   [#83](https://github.com/udin-io/ash_introspection/issues/83).
 
 ### 0.5.2 — 2026-09-18
@@ -400,17 +400,27 @@ merged commit on `main`.
 
 ## In progress
 
-- **#23 stage 5a, PR 5 — every RPC test runs with a manifest**
-  ([PR #96](https://github.com/udin-io/ash_introspection/pull/96)). Test-only,
-  no release. 68 entry-point calls across 16 test files ran on an empty config
-  and now carry the decorated fixture manifest, so PR 6 can require it without
-  turning the suite red. One file is left out on purpose:
-  `pipeline_manifest_parity_test.exs` compares live against manifest, so its
-  empty-config arm is the subject, and PR 6 retires the file with the fallback
-  it tests.
+- **#23 stage 5a, PR 6 — the manifest is required on the request path.**
+  Breaking, for 0.6.0. `Rpc.Pipeline.execute_ash_action/2`,
+  `Rpc.Pipeline.process_result/3`,
+  `Rpc.Pipeline.format_output_with_request/3` and
+  `Rpc.FieldProcessing.FieldSelector.process/4` call
+  `ResourceInfo.require_manifest!/1`, which raises
+  `AshIntrospection.ManifestError` on a config with no `:manifest` and arms
+  `strict?: true` on the prepared `ResourceInfo.Source`. A strict source raises
+  where it would have read live: for a resource the manifest carries bare, and
+  for a resource the manifest does not carry at all in `primary_key/2` and
+  `identity_keys/3`.
 
-  PR 1 and PR 2 are in 0.5.3 above; PR 4 merged in the consumer as its PR #103.
-  PR 6 is next here.
+  `pipeline_manifest_parity_test.exs` is deleted — its subject was the
+  empty-config arm — and `resource_info_test.exs` keeps the live-vs-manifest
+  parity claim at the reader, where the live path stays supported. The 0.6.0
+  CHANGELOG entry and the `mix ash_introspection.upgrade` notice ship here; the
+  version bump and the release are PR 7.
+
+  PR 1 and PR 2 are in 0.5.3 above; PR 4 merged in the consumer as its PR #103;
+  PR 5 merged as `223a131`, giving every RPC test a manifest so this
+  requirement landed on a green suite.
 
 ## Next
 
@@ -434,8 +444,10 @@ dozen other items.
    | 5a PR 1 | this | every request-path read gets the manifest: both config rebuilds carry `:manifest` and `:manifest_namespace`, the entry points prepare it once | 0.5.3, additive | merged `c6c744b` |
    | 5a PR 2 | this | decorate every relationship, private included, so `relationship/3` needs no live fallback | 0.5.3, additive | merged `76322eb` |
    | 5a PR 4 | consumer | a manifest on the request path; `Runner` resolves actions through `rpc_action_lookup` | consumer minor | merged, consumer PR #103 |
-   | 5a PR 5 | this | every RPC test runs with a manifest, so PR 6's requirement lands on a green suite | test-only, no release | [PR #96](https://github.com/udin-io/ash_introspection/pull/96) open |
-   | 5a PR 6 | this | make `:manifest` required at the four entry points; a carried but undecorated resource raises; drop the manifest-miss live reads | 0.6.0, breaking | next |
+   | 5a PR 5 | this | every RPC test runs with a manifest, so PR 6's requirement lands on a green suite | test-only, no release | merged `223a131` |
+   | 5a PR 6 | this | make `:manifest` required at the four entry points; a carried but undecorated resource raises; drop the manifest-miss live reads | 0.6.0, breaking | in progress |
+   | 5a PR 7 | this | release 0.6.0 | 0.6.0 | next |
+   | 5a PR 8 | consumer | require `~> 0.6` | consumer patch | next |
    | 5b | this | manifest-shaped return values in place of the captured Ash structs, deferred from stage 2 ([#83](https://github.com/udin-io/ash_introspection/issues/83)) | 0.6.x | next |
 
    **Stage 4 is split on purpose.** Reading a manifest and deleting the live

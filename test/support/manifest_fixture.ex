@@ -23,10 +23,10 @@ defmodule AshIntrospection.Test.ManifestFixture do
 
   ## What the entrypoint list has to cover
 
-  Issue #23 stage 5a PR 6 makes the manifest required at the four request
+  Since issue #23 stage 5a PR 6 the manifest is required at the four request
   entry points — `Pipeline.execute_ash_action/2`, `Pipeline.process_result/3`,
-  `Pipeline.format_output_with_request/3` and `FieldSelector.process/4` — and
-  makes a resource the manifest carries but did not decorate raise. So every
+  `Pipeline.format_output_with_request/3` and `FieldSelector.process/4` — and a
+  resource the manifest carries but did not decorate raises. So every
   `{resource, action}` an RPC test drives through one of those four has to be
   an entrypoint below, or that test has no manifest to run on.
 

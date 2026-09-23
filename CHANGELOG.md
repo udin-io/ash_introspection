@@ -14,6 +14,102 @@ and this project adheres to
 
 ## [Unreleased]
 
+**Breaking: the request path requires a manifest.** Stage 5a PR 6 of
+[#23](https://github.com/udin-io/ash_introspection/issues/23), releasing as
+0.6.0. Four functions now raise `AshIntrospection.ManifestError` when the
+config map they are given carries no `:manifest`, and raise for a resource the
+manifest carries that `Manifest.Decorator.decorate/3` did not decorate:
+
+- `Rpc.Pipeline.execute_ash_action/2`
+- `Rpc.Pipeline.process_result/3`
+- `Rpc.Pipeline.format_output_with_request/3`
+- `Rpc.FieldProcessing.FieldSelector.process/4`
+
+Run the upgrade task before anything else:
+
+```
+mix igniter.upgrade ash_introspection
+```
+
+It rewrites nothing for 0.6.0 and prints a notice. **No call site changes** —
+the four keep their names, arities and argument order. What changes is the
+config map you build and hand them, in a function this library cannot name, so
+there is nothing for a codemod to edit. Add both keys to it:
+
+```elixir
+%{
+  # ... the callbacks you already pass ...
+  manifest: MyApp.Manifest.manifest(),
+  manifest_namespace: :my_app
+}
+```
+
+The manifest must be **decorated**: generate it with
+`Ash.Info.Manifest.generate/1` and pass it through
+`AshIntrospection.Manifest.Decorator.decorate/3` with the namespace you name in
+`:manifest_namespace`. To run the step on its own:
+`mix ash_introspection.upgrade 0.5.3 0.6.0`.
+
+Two messages, two causes. "requires a manifest" means the config carried no
+`:manifest` key. "did not decorate" means the manifest carries the resource but
+the decorator skipped it — it skips a module it cannot load at decoration time,
+so give the manifest module a compile-time dependency on the domains it was
+built from and force every referenced module to compile first. Check
+`:manifest_namespace` too: decorating under one key and reading with another
+looks identical.
+
+`Rpc.Pipeline.format_output/2` is not an entry point and still takes a bare
+config. Everything outside the request path — codegen, the compile-time
+verifiers, the decorator — still reads live `Ash.Resource.Info` when the key is
+absent, because all three run before a decorated manifest exists.
+
+### Changed
+
+- **Breaking.** The four request entry points call
+  `ResourceInfo.require_manifest!/1` where they called `normalize_config/1`
+  ([#23](https://github.com/udin-io/ash_introspection/issues/23) stage 5a,
+  PR 6). Until 0.5.3 a config with no `:manifest` read live
+  `Ash.Resource.Info` at every stage, which is what every consumer shipped
+  before stage 5a's PR 4.
+
+- **Breaking.** A resource the manifest carries that the decorator did not
+  decorate raises on the request path instead of reading live. The live answer
+  was **right**, and that is the trap: nothing in the response said the
+  decoration had been missed. The same silence is why one pipeline stage typed
+  every field off live introspection for five releases after the `:manifest`
+  key landed.
+
+  The same strict source makes `ResourceInfo.primary_key/2` and
+  `identity_keys/3` raise for a resource the manifest does not carry at all.
+  Those two are asked only about the resource a request names, so a miss is a
+  manifest built without an entrypoint for it. Every other reader keeps its
+  live fallback for an uncarried module, because `runtime_resource?/2` does: a
+  module nobody declared must still serialize as a resource.
+
+### Added
+
+- `AshIntrospection.ManifestError`, with a `reason` of `:missing`,
+  `:undecorated` or `:unknown_resource` and the `resource`, `namespace` and
+  `reader` that apply, so a consumer can match the struct instead of the
+  message.
+
+- `ResourceInfo.require_manifest!/1`, and `strict?` on
+  `ResourceInfo.Source`. Only the four request entry points arm it;
+  `prepare/2` and `normalize_config/1` leave it `false`.
+
+- A 0.6.0 step in the `ash_introspection.upgrade` task: the notice above. It
+  touches no file, because no call site changes.
+
+### Removed
+
+- **Breaking.** `test/ash_introspection/rpc/pipeline_manifest_parity_test.exs`,
+  7 tests. It ran each request twice, once with no `:manifest` key and once
+  with one, and asserted the same bytes; the empty-config arm is what this
+  release makes raise. `resource_info_test.exs` keeps the live-vs-manifest
+  parity claim at the reader, where the live path stays supported, and
+  `pipeline_tampered_manifest_test.exs` proves each stage reads the manifest by
+  lying to it.
+
 ### Security
 
 - `mix.lock` takes `mint` 1.10.1, fixing EEF-CVE-2026-82672

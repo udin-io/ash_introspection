@@ -124,6 +124,7 @@ flowchart LR
         rfields["TypeSystem.ResourceFields"]
         vet["Codegen.ValidationErrorTypes"]
         mcustom["Manifest.Custom ((NEW))<br/>the only reader of custom"]
+        merr["ManifestError ((NEW))<br/>raised by a strict source"]
     end
 
     subgraph compile["ash_introspection: compile time only"]
@@ -164,8 +165,8 @@ flowchart LR
     actint --> vet
     actint --> tsi
 
-    pipeline --> rinfo
-    fsel --> rinfo
+    pipeline -->|"require_manifest!/1 at 3 entry points ((NEW))"| rinfo
+    fsel -->|"require_manifest!/1 at process/4 ((NEW))"| rinfo
     rproc --> rinfo
     vfmt --> rinfo
     rfields --> rinfo
@@ -174,6 +175,7 @@ flowchart LR
     vet --> rinfo
     rinfo -->|"live, or an Ash.Info.Manifest<br/>off the config map's :manifest key"| ash
     rinfo -->|"decorated reads"| mcustom
+    rinfo -->|"strict source, no live fallback ((NEW))"| merr
     actint -->|"return classification"| mcustom
     mdec -->|"writes custom.namespace"| mcustom
     mdec -->|"asks once, at compile time"| rinfo
@@ -183,8 +185,10 @@ flowchart LR
 `ResourceInfo` is the seam issue #23 stage 1 added. Every `Ash.Resource.Info`
 call in `lib/` goes through it — 64 of them, measured at `74afafd` — so a
 later stage changes one module rather than nine. With no `:manifest` key on the
-config map it reads live introspection, which is what every caller gets today
-because nothing here puts a manifest on the config.
+config map it reads live introspection, which is what the compile-time
+verifiers, codegen and the decorator get: they call these readers before a
+decorated manifest exists. The four request entry points no longer accept such
+a config — see below.
 `grep -rn 'Ash\.Resource\.Info\.' lib` should match nothing outside
 `lib/ash_introspection/resource_info.ex` and
 `lib/ash_introspection/manifest/decorator.ex` — plus seven doc references in
@@ -192,23 +196,37 @@ because nothing here puts a manifest on the config.
 reader mirrors and call none of them.
 
 Since #23 stage 5a's PR 1 a manifest on the config reaches every request-path
-read. `execute_ash_action/2`, `process_result/3` and
-`format_output_with_request/3` each call `ResourceInfo.normalize_config/1` once,
-which prepares the lookup maps and folds `:manifest_namespace` into the
-prepared source; the two config maps `Rpc.Pipeline` rebuilds mid-request — the
-stage-3 processor config and `value_formatter_config/2` — copy that prepared
-source rather than rebuilding it. Two reads stay deliberately config-free:
+read, and since PR 6 the request path requires one. `execute_ash_action/2`,
+`process_result/3`, `format_output_with_request/3` and
+`FieldProcessing.FieldSelector.process/4` each call
+`ResourceInfo.require_manifest!/1` once, which raises
+`AshIntrospection.ManifestError` on a config with no `:manifest`, prepares the
+lookup maps, folds `:manifest_namespace` into the prepared source and arms
+`strict?: true` on it. The two config maps `Rpc.Pipeline` rebuilds
+mid-request — the stage-3 processor config and `value_formatter_config/2` —
+copy that prepared source rather than rebuilding it, so the strict flag travels
+with it. Two reads stay deliberately config-free:
 `action_returns_resource?/1` in `Rpc.Pipeline` and the two runtime struct
 guards in `Rpc.ResultProcessor`, which ask only whether a module Ash handed
 back is a resource — an answer a manifest cannot change.
+`Rpc.Pipeline.format_output/2` is not an entry point and takes a bare config,
+because it has no request and reads no resource.
 
 PR 2 closed the one read that a manifest could not replace at all.
 `relationship/3` fell back to live introspection on a manifest miss, and a miss
 was unreadable: nothing on `%Ash.Info.Manifest{}` says whether it was built with
 private relationships. The decorator now stores a narrowed record for every
-relationship, so that read comes out of `custom.<namespace>` too. Three
-manifest-miss live reads remain, and PR 6 deletes them: `primary_key/2`,
-`identity_keys/3` and the undecorated branch of the two relationship readers.
+relationship, so that read comes out of `custom.<namespace>` too.
+
+PR 6 took the remaining manifest-miss live reads off the request path. Under a
+strict source a resource the manifest carries **bare** raises, which closes the
+undecorated branch of both relationship readers and of every field and action
+reader, and `primary_key/2` and `identity_keys/3` raise for a resource the
+manifest does not carry at all — those two are asked only about the resource a
+request names, so a miss there is a manifest built without an entrypoint for
+it. Every other reader keeps its live fallback for an uncarried module, because
+`runtime_resource?/2` does: a module nobody declared must still serialize as a
+resource, and serializing it is what calls `attribute/3` and `relationship/3`.
 
 `Manifest.Decorator` and `Manifest.Custom` are what #23 stage 2 added. Stage 3
 shipped in `ash_kotlin_multiplatform` (its PR #75, `e5ad024`), so the dashed
@@ -288,12 +306,14 @@ manifest was built with `include_private_relationships?: true`.
 
 A module the decorator cannot load is **skipped**, not guessed at:
 `Code.ensure_loaded?/1` guards every read, per the repo-wide rule from #49, and
-the resource stays in the manifest bare. A bare resource reads live, so the
-answer is right and nothing says the decoration was missed. That silence is the
-staleness trap #23 records: the caller owns the compile edges — forcing every
-referenced module to compile first, and giving the manifest module a
-compile-time dependency on the domains it was built from — and that is stage
-3's job, not this library's.
+the resource stays in the manifest bare. Until 0.6.0 a bare resource read live,
+so the answer was right and nothing said the decoration was missed. That
+silence is the staleness trap #23 records, and since PR 6 the request path
+breaks it: a strict source raises `AshIntrospection.ManifestError` on a bare
+resource. The caller still owns the compile edges — forcing every referenced
+module to compile first, and giving the manifest module a compile-time
+dependency on the domains it was built from — and that is stage 3's job, not
+this library's. The raise is what tells them it was not done.
 
 ## 5. The four-stage RPC pipeline
 
@@ -356,9 +376,9 @@ Stage 4 has camelized everything around them. Both have regression tests —
   deleted this library's codegen traversal, so a consumer reads
   `manifest.types` itself. Stage 5a's PR 1 made the request path read the
   manifest it is handed — see §3 — but `Rpc.Pipeline` is still handed the
-  config the consumer builds, and the consumer builds one with no `:manifest`
-  key, so production requests read live. PR 4 changes that in the consumer and
-  PR 6 makes the key required here, breaking, in 0.6.0. See
+  config the consumer builds. PR 4 made `ash_kotlin_multiplatform` build one
+  with a `:manifest` key, and PR 6 made the key required here, breaking, in
+  0.6.0: the four request entry points raise without it. See
   [roadmap.md](roadmap.md) and [decisions.md](decisions.md).
 - **No persistence.** `test/support/*.ex` uses `Ash.DataLayer.Ets`; there is no
   repo, no migration directory and no database setup step.

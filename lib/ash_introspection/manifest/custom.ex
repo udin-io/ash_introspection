@@ -24,8 +24,10 @@ defmodule AshIntrospection.Manifest.Custom do
   ## Absent decoration is not an empty decoration
 
   `decorated?/2` is the question every caller asks first.
-  `AshIntrospection.ResourceInfo` reads a decorated resource and falls back to
-  live `Ash.Resource.Info` for an undecorated one, so the two cases have to be
+  `AshIntrospection.ResourceInfo` reads a decorated resource, and for an
+  undecorated one either falls back to live `Ash.Resource.Info` or raises —
+  raises when the caller was a request entry point, which since 0.6.0 arms
+  `strict?: true` on the prepared source. Either way the two cases have to be
   distinguishable: a resource whose decoration is missing is not a resource
   with no attributes. Singular readers below return `nil` for "no such field"
   only after `decorated?/2` has answered `true`.

@@ -9,11 +9,12 @@ defmodule AshIntrospection.Rpc.PipelineTamperedManifestTest do
 
   A parity test cannot prove this. `AshIntrospection.Manifest.Decorator`
   captures the live structs, so a manifest and live introspection agree by
-  construction: `pipeline_manifest_parity_test.exs` passes whether or not a
-  stage ever opens the manifest. The only way to separate the two sources is to
-  make them disagree — tamper with one decorated payload and assert the
-  response follows the tampered copy.
-  `AshIntrospection.Test.ManifestTamper` writes the lies.
+  construction: the deleted `pipeline_manifest_parity_test.exs` passed whether
+  or not a stage ever opened the manifest. The only way to separate the two
+  sources is to make them disagree — tamper with one decorated payload and
+  assert the response follows the tampered copy.
+  `AshIntrospection.Test.ManifestTamper` writes the lies. This file is now the
+  only proof that a stage reads the manifest at all.
 
   Each test varies the config of **one** stage and runs the others honestly, so
   a failure names the stage that stopped reading.
