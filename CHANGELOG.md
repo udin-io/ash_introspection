@@ -16,6 +16,13 @@ and this project adheres to
 
 ### Fixed
 
+- A nested selection on a tuple inside a generic action's map result returns
+  the selected elements, not every element, whether the action builds the map
+  with atom or string keys, for `:map` and `{:array, :map}` returns and at any
+  depth ([#89](https://github.com/udin-io/ash_introspection/issues/89)).
+- A key a generic action returns inside a declared map but never declared no
+  longer reaches the client. It used to pass through a nested map field
+  ([#89](https://github.com/udin-io/ash_introspection/issues/89)).
 - A generic action with no return type answers a non-empty `fields` with an
   `invalid_field_selection` error, "Cannot select fields: the action returns
   no value". `fields: ["foo"]` raised `FunctionClauseError` and `[:foo]`

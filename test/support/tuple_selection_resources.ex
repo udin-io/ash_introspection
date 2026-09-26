@@ -35,6 +35,20 @@ defmodule AshIntrospection.Test.MapTile do
 
   attributes do
     uuid_primary_key(:id)
+
+    # #89: the read-side twin of `:get_tile_map`. Ash casts an attribute, so
+    # this path was already typed; it guards that the generic-action fix
+    # leaves reads alone.
+    attribute :area, :map do
+      public?(true)
+
+      constraints(
+        fields: [
+          name: [type: :string],
+          span: [type: :tuple, constraints: [fields: [x: [type: :float], y: [type: :float]]]]
+        ]
+      )
+    end
   end
 
   actions do
@@ -109,15 +123,107 @@ defmodule AshIntrospection.Test.MapTile do
       end)
     end
 
+    # `:visible` holds `false` so a lookup that reads presence as truthiness
+    # shows up as `nil` (#45, #89).
     action :get_tile_map, :map do
       constraints(
         fields: [
           name: [type: :string],
-          span: [type: :tuple, constraints: [fields: [x: [type: :float], y: [type: :float]]]]
+          span: [type: :tuple, constraints: [fields: [x: [type: :float], y: [type: :float]]]],
+          visible: [type: :boolean]
         ]
       )
 
-      run(fn _input, _context -> {:ok, %{name: "north-west", span: {1.5, 2.5}}} end)
+      run(fn _input, _context ->
+        {:ok, %{name: "north-west", span: {1.5, 2.5}, visible: false}}
+      end)
+    end
+
+    # #89: the same map built with string keys. Ash hands a `run` result
+    # back uncast, so the keys reach `ResultProcessor` exactly as written.
+    # `:visible` holds `false` so a lookup that reads presence as truthiness
+    # shows up as `nil`.
+    action :get_tile_map_strings, :map do
+      constraints(
+        fields: [
+          name: [type: :string],
+          span: [type: :tuple, constraints: [fields: [x: [type: :float], y: [type: :float]]]],
+          meta: [type: :map, constraints: [fields: [zoom: [type: :integer]]]],
+          visible: [type: :boolean]
+        ]
+      )
+
+      run(fn _input, _context ->
+        {:ok,
+         %{
+           "name" => "north-west",
+           "span" => {1.5, 2.5},
+           "meta" => %{"zoom" => 12},
+           "visible" => false
+         }}
+      end)
+    end
+
+    action :list_tile_maps, {:array, :map} do
+      constraints(
+        items: [
+          fields: [
+            name: [type: :string],
+            span: [type: :tuple, constraints: [fields: [x: [type: :float], y: [type: :float]]]]
+          ]
+        ]
+      )
+
+      run(fn _input, _context ->
+        {:ok, [%{name: "north-west", span: {1.5, 2.5}}, %{name: "south-east", span: {3.5, 4.5}}]}
+      end)
+    end
+
+    # A tuple in a map in a list in a map.
+    action :get_region, :map do
+      constraints(
+        fields: [
+          region: [type: :string],
+          tiles: [
+            type: {:array, :map},
+            constraints: [
+              items: [
+                fields: [
+                  name: [type: :string],
+                  span: [
+                    type: :tuple,
+                    constraints: [fields: [x: [type: :float], y: [type: :float]]]
+                  ]
+                ]
+              ]
+            ]
+          ]
+        ]
+      )
+
+      run(fn _input, _context ->
+        {:ok,
+         %{
+           region: "north",
+           tiles: [
+             %{name: "north-west", span: {1.5, 2.5}},
+             %{name: "north-east", span: {3.5, 4.5}}
+           ]
+         }}
+      end)
+    end
+
+    action :get_tile_meta, :map do
+      constraints(
+        fields: [
+          name: [type: :string],
+          meta: [type: :map, constraints: [fields: [zoom: [type: :integer]]]]
+        ]
+      )
+
+      run(fn _input, _context ->
+        {:ok, %{name: "north-west", meta: %{zoom: 12, secret: "s"}}}
+      end)
     end
 
     # #85: no return type, so Ash hands back `:ok`.
