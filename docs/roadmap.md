@@ -15,6 +15,17 @@ which come first. Numbers in parentheses are GitHub issues on
 
 ## Shipped
 
+### Unreleased
+
+- **#89 and #85 — generic action results, slice 1 of #100.** A generic
+  action's map, struct or keyword result is typed from its declared return
+  type, and its typed fields are read by atom key, then string key. A nested
+  selection on a tuple inside such a map now returns the selected elements,
+  for `:map` and `{:array, :map}` returns and at any depth, and a key the
+  action never declared is dropped. An action with no return type refuses a
+  non-empty `fields` with `invalid_field_selection` and answers `data: {}`
+  to any template a consumer builds itself. PR #101.
+
 ### 0.6.0 — 2026-09-23
 
 - **#23 stage 5a, PR 6 — the manifest is required on the request path.**
@@ -484,15 +495,9 @@ dozen other items.
    incremental compiles with no error), and `SpecCache` must not be ported —
    upstream added it in `199f9cd` and deleted it in `b7104a8` because Spark's
    persisted DSL state is already free at runtime.
-2. **A tuple inside a generic action's top-level map result ignores a nested
-   selection** and returns every element (found by #66's neighbour checks, no
-   issue yet). The map is typed `{nil, []}` because Ash hands a `run` result
-   back uncast and the typed map path reads atom keys only (#62); the fix is a
-   typed path that reads string keys too. #40 shipped in 0.4.1 and #66 under
-   Unreleased, both above.
-3. **#18 — the RPC test floor.** Coverage arrives with each fix by preference,
+2. **#18 — the RPC test floor.** Coverage arrives with each fix by preference,
    but the harness and the fixtures are still a ticket of their own.
-4. **Upstream parity features**: #24 (relationship query envelopes), #25
+3. **Upstream parity features**: #24 (relationship query envelopes), #25
    (calculation load-through and nested first-aggregates). #24 touches the same
    `FieldSelector` clauses #19 just guarded: a relationship loaded through an
    `%Ash.Query{}` envelope is a seventh append site and needs its own

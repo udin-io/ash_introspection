@@ -978,14 +978,12 @@ defmodule AshIntrospection.Rpc.FieldProcessing.FieldSelector do
   # Generic Field Selection (for :any return type)
   # ---------------------------------------------------------------------------
 
-  defp select_generic_fields(requested_fields, _path) do
-    template =
-      Enum.map(requested_fields, fn
-        field_name when is_atom(field_name) -> field_name
-        %{} = field_map -> Enum.map(field_map, fn {k, v} -> {k, v} end)
-      end)
+  # An action with no return type hands back `:ok`, so there is nothing to
+  # select from. See #85.
+  defp select_generic_fields([], _path), do: {[], [], []}
 
-    {[], [], List.flatten(template)}
+  defp select_generic_fields(requested_fields, path) do
+    throw({:invalid_field_selection, :no_return_value, requested_fields, path})
   end
 
   # ---------------------------------------------------------------------------

@@ -30,9 +30,9 @@ defmodule AshIntrospection.Rpc.ResultProcessor do
   ```
 
   `:action_returns` carries a generic action's declared return type. It is
-  the only source of member types for a union the action returns at the top
-  level: without it, each member comes back untyped. `Pipeline.process_result/3`
-  sets it for every generic action.
+  the only source of field types for a union, tuple or map the action returns
+  at the top level: without it, each comes back untyped.
+  `Pipeline.process_result/3` sets it for every generic action.
 
   ## Type-Driven Extraction
 
@@ -461,7 +461,7 @@ defmodule AshIntrospection.Rpc.ResultProcessor do
 
       template == [] ->
         Enum.reduce(field_specs, %{}, fn {field_name, field_spec}, acc ->
-          field_value = Map.get(normalized, field_name)
+          field_value = plain_map_field(normalized, field_name)
           field_type = Keyword.get(field_spec, :type)
           field_constraints = Keyword.get(field_spec, :constraints, [])
           extracted = extract_value(field_value, field_type, field_constraints, [], config)
@@ -472,7 +472,7 @@ defmodule AshIntrospection.Rpc.ResultProcessor do
         Enum.reduce(template, %{}, fn field_spec, acc ->
           case field_spec do
             field_atom when is_atom(field_atom) ->
-              field_value = Map.get(normalized, field_atom)
+              field_value = plain_map_field(normalized, field_atom)
 
               {field_type, field_constraints} =
                 Introspection.get_field_spec_type(field_specs, field_atom)
@@ -481,7 +481,7 @@ defmodule AshIntrospection.Rpc.ResultProcessor do
               Map.put(acc, field_atom, extracted)
 
             {field_atom, nested_template} when is_atom(field_atom) ->
-              field_value = Map.get(normalized, field_atom)
+              field_value = plain_map_field(normalized, field_atom)
 
               {field_type, field_constraints} =
                 Introspection.get_field_spec_type(field_specs, field_atom)
@@ -495,7 +495,7 @@ defmodule AshIntrospection.Rpc.ResultProcessor do
             # beside `:index`, because a nested entry with no index cannot be
             # placed by `FieldExtractor.convert_tuple_to_map/2`; see #66.
             %{field_name: field_name, index: _index} = entry ->
-              field_value = Map.get(normalized, field_name)
+              field_value = plain_map_field(normalized, field_name)
               nested_template = Map.get(entry, :nested, [])
 
               {field_type, field_constraints} =
@@ -558,8 +558,8 @@ defmodule AshIntrospection.Rpc.ResultProcessor do
     end)
   end
 
-  # Untyped maps reach us with either atom or string keys, so both forms are
-  # tried. `Map.fetch/2` rather than `Map.get/2 || Map.get/2`: a field present
+  # A generic action's map reaches us uncast, typed or not, with either atom
+  # or string keys, so both forms are tried (#62, #89). `Map.fetch/2` rather than `Map.get/2 || Map.get/2`: a field present
   # and `false` (or `nil`) is falsy, so `||` hands the lookup to the string key
   # and reports the field as absent. The client then receives `nil` for a value
   # that was legitimately `false`.
@@ -745,7 +745,8 @@ defmodule AshIntrospection.Rpc.ResultProcessor do
 
   This function infers type information from:
   1. The struct type of the data itself (if it's a struct)
-  2. `config[:action_returns]`, for a union a generic action returns
+  2. `config[:action_returns]`, for a union, tuple, map, struct or keyword
+     list a generic action returns
   3. The provided resource context
   4. Falls back to nil for unknown types
   """
@@ -772,7 +773,7 @@ defmodule AshIntrospection.Rpc.ResultProcessor do
         {Ash.Type.Union, action_constraints_for(Ash.Type.Union, config)}
 
       is_list(data) && data != [] && Keyword.keyword?(data) ->
-        {Ash.Type.Keyword, []}
+        {Ash.Type.Keyword, action_constraints_for(Ash.Type.Keyword, config)}
 
       # A tuple at the top of a result is a generic action's return value,
       # and only the action knows its field types. With `[]` here every
@@ -781,8 +782,11 @@ defmodule AshIntrospection.Rpc.ResultProcessor do
       is_tuple(data) ->
         {Ash.Type.Tuple, action_constraints_for(Ash.Type.Tuple, config)}
 
+      # A map at the top of a generic action's result is typed by the
+      # action, as a tuple is. Ash hands it back uncast, so its keys may be
+      # strings; `extract_typed_map_value/4` reads either. See #89.
       is_map(data) && not is_struct(data) ->
-        {nil, []}
+        action_map_type(config)
 
       resource && ResourceInfo.runtime_resource?(resource, config) && is_struct(data) ->
         {resource, []}
@@ -814,6 +818,18 @@ defmodule AshIntrospection.Rpc.ResultProcessor do
       nil ->
         []
     end
+  end
+
+  # A `:struct` with `fields` and no `instance_of` reaches us as a plain map,
+  # so it is typed here too.
+  defp action_map_type(config) do
+    Enum.find_value([Ash.Type.Map, Ash.Type.Struct], {nil, []}, fn expected_type ->
+      constraints = action_constraints_for(expected_type, config)
+
+      if Introspection.has_field_constraints?(constraints) do
+        {expected_type, constraints}
+      end
+    end)
   end
 
   defp constraints_if_type(type, constraints, expected_type, config) when is_atom(type) do

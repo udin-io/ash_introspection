@@ -13,6 +13,28 @@ recorded nowhere in the repo. This page replaces ADRs; there is no `adr/`
 directory here and none should be created. A decision that no longer shapes the
 code is deleted, not archived, because git keeps the history.
 
+## 2026-09-26 — A generic action's map is typed by its action, declared keys only
+
+**Decided.** `ResultProcessor.determine_data_type/3` types a map at the top of
+a generic action's result from `config[:action_returns]` when the action
+declares `fields`, as #66 did for a tuple and #84 for a union. The typed path
+reads each declared field by its atom key, then its string key. A key the
+action returns but never declared is dropped, as on a read. Issue #89; the
+owner chose declared-only on 2026-09-26.
+
+**Why.** Untyped, a tuple inside the map had no field types, so a nested
+selection on it was ignored and the client got every element. The typed path
+used to read atom keys only, which is why the map stayed untyped after #62: a
+string-keyed result would have come back as `nil`s. Reading both keys removes
+that trade-off.
+
+**What it cost.** An undeclared key inside a declared nested map used to reach
+the client, because the untyped path copied the whole value. It no longer does.
+Ash does not cast a `run` result, so nothing else stops an action putting such
+a key there. The result is still not cast or validated against its
+constraints: a value of the wrong type is passed on, not turned into an error.
+Named in the CHANGELOG.
+
 ## 2026-09-22 — A required manifest, and a strict source that raises
 
 **Decided.** `Rpc.Pipeline.execute_ash_action/2`,

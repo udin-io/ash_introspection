@@ -348,14 +348,17 @@ and the value came back `nil`. See
 `test/ash_introspection/rpc/field_processing/field_selector_tuple_nested_test.exs`
 and `test/ash_introspection/rpc/pipeline_union_result_test.exs`.
 
-**A top-level map from a generic action is untyped, on purpose.**
-`ResultProcessor.determine_data_type/3` answers `{nil, []}` for it, because
-Ash hands a `run` result back uncast (ash 3.33.1,
-`deps/ash/lib/ash/actions/action.ex:243`) and the typed map path reads atom
-keys only, which is what #62 was about. The cost is that a tuple inside such
-a map has no field types: a nested selection on it is ignored and the client
-gets every element. Pinned in `field_selector_tuple_nested_test.exs`; the
-fix is a typed map path that reads string keys too, not a typed top-level map.
+**A generic action's map is typed by the action, and read by both keys.**
+Ash hands a `run` result back uncast (ash 3.33.4,
+`deps/ash/lib/ash/actions/action.ex:244`), so a map it returns carries the
+keys the action wrote, atoms or strings. `ResultProcessor.determine_data_type/3`
+takes its field types from `config[:action_returns]`, and
+`extract_typed_map_value/4` reads every field through `plain_map_field/2`:
+atom key, then string key. Before #89 the map was typed `{nil, []}` because
+the typed path read atom keys only (#62), and a tuple inside it came back
+whole whatever was selected. A new reader in the typed path uses
+`plain_map_field/2` too, or a string-keyed result comes back as `nil`s. See
+`test/ash_introspection/rpc/pipeline_generic_map_selection_test.exs`.
 
 **A generic action's union is typed by the action.** Stage 3 is handed the
 owning resource, and a union at the top of a result is not a field on it. Read
@@ -690,7 +693,11 @@ mix hex.audit
 mix deps.audit
 ```
 
-The branch for #23 stage 5a PR 6 is at **523 tests + 8 doctests, 0 failures**
+The branch for #89 is at **543 tests + 8 doctests, 0 failures** (measured
+2026-09-26), +20 over `main`'s 523 + 8 at `eef39a8`: 15 in
+`pipeline_generic_map_selection_test.exs` and 5 in
+`pipeline_no_return_action_test.exs`. The branch for #23 stage 5a PR 6 was at
+**523 tests + 8 doctests, 0 failures**
 (measured 2026-09-22 on `issue-23-stage-5a-pr6`), against `main`'s **488 + 8**
 at `223a131`. It is the first branch since 4b to move the number in both
 directions: +24 in `resource_info_strict_test.exs`, +16 in

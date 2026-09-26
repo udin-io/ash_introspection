@@ -14,6 +14,25 @@ and this project adheres to
 
 ## [Unreleased]
 
+### Fixed
+
+- A nested selection on a tuple inside a generic action's map result returns
+  the selected elements, not every element, whether the action builds the map
+  with atom or string keys, for `:map`, `{:array, :map}`, `:struct` with
+  `fields` and `:keyword` with `fields` returns, and at any depth ([#89](https://github.com/udin-io/ash_introspection/issues/89)).
+- A key a generic action returns inside a declared map but never declared no
+  longer reaches the client. It used to pass through a nested map field
+  ([#89](https://github.com/udin-io/ash_introspection/issues/89)).
+- A generic action with no return type answers a non-empty `fields` with an
+  `invalid_field_selection` error, "Cannot select fields: the action returns
+  no value". `fields: ["foo"]` raised `FunctionClauseError` and `[:foo]`
+  answered `data: {foo: null}`
+  ([#85](https://github.com/udin-io/ash_introspection/issues/85)).
+- The same action answers `data: {}` whatever template a consumer builds
+  itself. `ash_kotlin_multiplatform` sends the owner's public attributes when
+  its client sends no `fields`, and got one `null` per attribute
+  ([#85](https://github.com/udin-io/ash_introspection/issues/85)).
+
 ## [0.6.0] - 2026-09-23
 
 **Breaking: the request path requires a manifest.** Stage 5a PR 6 of

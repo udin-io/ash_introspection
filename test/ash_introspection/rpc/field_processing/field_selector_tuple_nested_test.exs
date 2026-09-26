@@ -203,17 +203,12 @@ defmodule AshIntrospection.Rpc.FieldProcessing.FieldSelectorTupleNestedTest do
              ]
     end
 
-    # The gap this fix does not close, filed out of #66. A map at the top of
-    # a generic action's result is typed `{nil, []}` by
-    # `ResultProcessor.determine_data_type/3`, because Ash hands the `run`
-    # result back uncast and the typed map path reads atom keys only (#62).
-    # So a tuple inside it has no field types, its nested template is
-    # ignored, and stage 4 formats the whole tuple: the client gets every
-    # element instead of the one it asked for. Change this assertion when
-    # that ticket lands; do not delete it.
-    test "a tuple inside a map ignores the nested selection and returns every element" do
+    # Pinned by #66 as a gap and closed by #89: a map at the top of a
+    # generic action's result is now typed by the action, so a tuple inside
+    # it answers a nested selection.
+    test "a tuple inside a map returns the selected element" do
       assert %{"data" => data} = response(["name", %{"span" => ["y"]}], :get_tile_map)
-      assert data == %{"name" => "north-west", "span" => %{"x" => 1.5, "y" => 2.5}}
+      assert data == %{"name" => "north-west", "span" => %{"y" => 2.5}}
     end
 
     test "a tuple inside a map selected flat returns every element" do
