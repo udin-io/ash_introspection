@@ -5,8 +5,9 @@
 defmodule AshIntrospection.Rpc.PipelineNoReturnActionTest do
   @moduledoc """
   #85: a generic action with no return type hands back `:ok`, so there is
-  nothing to select from. A non-empty `fields` gets an
-  `invalid_field_selection` error, never a crash and never a made-up `nil`.
+  nothing to select from. A non-empty `fields` from the client gets an
+  `invalid_field_selection` error, never a crash and never a made-up `nil`,
+  and any template a consumer builds itself answers `data: {}`.
   """
   use ExUnit.Case, async: true
 
@@ -61,5 +62,19 @@ defmodule AshIntrospection.Rpc.PipelineNoReturnActionTest do
 
   test "an empty field list succeeds with empty data" do
     assert response([]) == %{"success" => true, "data" => %{}}
+  end
+
+  # A consumer that gets no `fields` from its client builds its own template
+  # and skips `FieldSelector`. `ash_kotlin_multiplatform`'s runner sends the
+  # owner's public attributes, here `[:id]`, which answered `data: {id: null}`.
+  test "a consumer's own template still answers empty data" do
+    config = ManifestFixture.decorated_config()
+    request = request([:id], [], [:id])
+
+    {:ok, ash_result} = Pipeline.execute_ash_action(request, config)
+    {:ok, processed} = Pipeline.process_result(ash_result, request, config)
+
+    assert Pipeline.format_output_with_request(%{success: true, data: processed}, request, config) ==
+             %{"success" => true, "data" => %{}}
   end
 end

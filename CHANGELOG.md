@@ -21,6 +21,10 @@ and this project adheres to
   no value". `fields: ["foo"]` raised `FunctionClauseError` and `[:foo]`
   answered `data: {foo: null}`
   ([#85](https://github.com/udin-io/ash_introspection/issues/85)).
+- The same action answers `data: {}` whatever template a consumer builds
+  itself. `ash_kotlin_multiplatform` sends the owner's public attributes when
+  its client sends no `fields`, and got one `null` per attribute
+  ([#85](https://github.com/udin-io/ash_introspection/issues/85)).
 
 ## [0.6.0] - 2026-09-23
 

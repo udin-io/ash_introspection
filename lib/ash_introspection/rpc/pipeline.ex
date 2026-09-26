@@ -168,6 +168,13 @@ defmodule AshIntrospection.Rpc.Pipeline do
       {:error, error} ->
         {:error, error}
 
+      # An action with no return type hands back `:ok`, so there is nothing to
+      # select. A consumer that builds its own template when the client sent
+      # no `fields` bypasses `FieldSelector`'s refusal; its template must not
+      # turn into one `nil` per name. See #85.
+      _result when request.action.type == :action and is_nil(request.action.returns) ->
+        {:ok, %{}}
+
       result when is_list(result) or is_map(result) or is_tuple(result) ->
         # For mutations with no field selection, use empty data
         is_mutation_with_no_fields =
