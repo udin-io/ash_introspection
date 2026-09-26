@@ -745,8 +745,8 @@ defmodule AshIntrospection.Rpc.ResultProcessor do
 
   This function infers type information from:
   1. The struct type of the data itself (if it's a struct)
-  2. `config[:action_returns]`, for a union, tuple or map a generic action
-     returns
+  2. `config[:action_returns]`, for a union, tuple, map, struct or keyword
+     list a generic action returns
   3. The provided resource context
   4. Falls back to nil for unknown types
   """
@@ -773,7 +773,7 @@ defmodule AshIntrospection.Rpc.ResultProcessor do
         {Ash.Type.Union, action_constraints_for(Ash.Type.Union, config)}
 
       is_list(data) && data != [] && Keyword.keyword?(data) ->
-        {Ash.Type.Keyword, []}
+        {Ash.Type.Keyword, action_constraints_for(Ash.Type.Keyword, config)}
 
       # A tuple at the top of a result is a generic action's return value,
       # and only the action knows its field types. With `[]` here every
@@ -820,14 +820,16 @@ defmodule AshIntrospection.Rpc.ResultProcessor do
     end
   end
 
+  # A `:struct` with `fields` and no `instance_of` reaches us as a plain map,
+  # so it is typed here too.
   defp action_map_type(config) do
-    constraints = action_constraints_for(Ash.Type.Map, config)
+    Enum.find_value([Ash.Type.Map, Ash.Type.Struct], {nil, []}, fn expected_type ->
+      constraints = action_constraints_for(expected_type, config)
 
-    if Introspection.has_field_constraints?(constraints) do
-      {Ash.Type.Map, constraints}
-    else
-      {nil, []}
-    end
+      if Introspection.has_field_constraints?(constraints) do
+        {expected_type, constraints}
+      end
+    end)
   end
 
   defp constraints_if_type(type, constraints, expected_type, config) when is_atom(type) do

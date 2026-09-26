@@ -98,6 +98,8 @@ defmodule AshIntrospection.Test.ManifestFixture do
     {Test.MapTile, :get_tile_map_strings},
     {Test.MapTile, :list_tile_maps},
     {Test.MapTile, :get_region},
+    {Test.MapTile, :get_tile_struct},
+    {Test.MapTile, :get_tile_keyword},
     {Test.MapTile, :get_tile_meta},
     {Test.MapTile, :touch_tile},
     {Test.Shelf, :read},

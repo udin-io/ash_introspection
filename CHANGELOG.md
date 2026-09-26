@@ -18,8 +18,8 @@ and this project adheres to
 
 - A nested selection on a tuple inside a generic action's map result returns
   the selected elements, not every element, whether the action builds the map
-  with atom or string keys, for `:map` and `{:array, :map}` returns and at any
-  depth ([#89](https://github.com/udin-io/ash_introspection/issues/89)).
+  with atom or string keys, for `:map`, `{:array, :map}`, `:struct` with
+  `fields` and `:keyword` with `fields` returns, and at any depth ([#89](https://github.com/udin-io/ash_introspection/issues/89)).
 - A key a generic action returns inside a declared map but never declared no
   longer reaches the client. It used to pass through a nested map field
   ([#89](https://github.com/udin-io/ash_introspection/issues/89)).

@@ -4,8 +4,8 @@
 
 defmodule AshIntrospection.Rpc.PipelineGenericMapSelectionTest do
   @moduledoc """
-  #89: a generic action returning a map with declared `fields` answers a
-  nested selection with exactly the fields selected.
+  #89: a generic action returning a map, struct or keyword list with declared
+  `fields` answers a nested selection with exactly the fields selected.
 
   Ash hands a `run` result back uncast, so the keys reach stage 3 as the
   action wrote them, atoms or strings. Each test drives the four entry points
@@ -76,6 +76,18 @@ defmodule AshIntrospection.Rpc.PipelineGenericMapSelectionTest do
                  %{"name" => "north-east", "span" => %{"x" => 3.5}}
                ]
              }
+    end
+  end
+
+  describe "a nested selection on a tuple inside a generic action's struct or keyword list" do
+    test "returns the selected element of a struct with fields" do
+      assert %{"data" => data} = response(:get_tile_struct, ["name", %{"span" => ["y"]}])
+      assert data == %{"name" => "north-west", "span" => %{"y" => 2.5}}
+    end
+
+    test "returns the selected element of a keyword list with fields" do
+      assert %{"data" => data} = response(:get_tile_keyword, ["name", %{"span" => ["y"]}])
+      assert data == %{"name" => "north-west", "span" => %{"y" => 2.5}}
     end
   end
 

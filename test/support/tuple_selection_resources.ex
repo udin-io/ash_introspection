@@ -213,6 +213,29 @@ defmodule AshIntrospection.Test.MapTile do
       end)
     end
 
+    action :get_tile_struct, :struct do
+      constraints(
+        fields: [
+          name: [type: :string],
+          span: [type: :tuple, constraints: [fields: [x: [type: :float], y: [type: :float]]]]
+        ]
+      )
+
+      run(fn _input, _context -> {:ok, %{name: "north-west", span: {1.5, 2.5}}} end)
+    end
+
+    action :get_tile_keyword, :keyword do
+      constraints(
+        fields: [
+          name: [type: :string],
+          span: [type: :tuple, constraints: [fields: [x: [type: :float], y: [type: :float]]]]
+        ]
+      )
+
+      run(fn _input, _context -> {:ok, [name: "north-west", span: {1.5, 2.5}]} end)
+    end
+
+    # `meta` declares `zoom` only; the action puts `secret` beside it.
     action :get_tile_meta, :map do
       constraints(
         fields: [
