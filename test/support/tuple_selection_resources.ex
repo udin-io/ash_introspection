@@ -120,6 +120,11 @@ defmodule AshIntrospection.Test.MapTile do
       run(fn _input, _context -> {:ok, %{name: "north-west", span: {1.5, 2.5}}} end)
     end
 
+    # #85: no return type, so Ash hands back `:ok`.
+    action :touch_tile do
+      run(fn _input, _context -> :ok end)
+    end
+
     action :pick_tile, :union do
       constraints(
         types: [

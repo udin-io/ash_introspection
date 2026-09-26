@@ -225,6 +225,21 @@ defmodule AshIntrospection.Rpc.ErrorBuilder do
           }
         }
 
+      {:invalid_field_selection, :no_return_value, requested_fields, path} ->
+        %{
+          type: "invalid_field_selection",
+          message: "Cannot select fields: the action returns no value",
+          short_message: "Invalid field selection",
+          vars: %{},
+          path: format_path(path, formatter, field_formatter_module),
+          fields: [],
+          details: %{
+            requested_fields: requested_fields,
+            suggestion: "Remove the field selection; this action returns no value",
+            hint: @stale_generated_file_hint
+          }
+        }
+
       {:invalid_field_selection, field_atom, field_type, path} when is_list(path) ->
         field_type_string = format_field_type(field_type)
 

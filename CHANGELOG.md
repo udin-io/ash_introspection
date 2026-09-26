@@ -14,6 +14,14 @@ and this project adheres to
 
 ## [Unreleased]
 
+### Fixed
+
+- A generic action with no return type answers a non-empty `fields` with an
+  `invalid_field_selection` error, "Cannot select fields: the action returns
+  no value". `fields: ["foo"]` raised `FunctionClauseError` and `[:foo]`
+  answered `data: {foo: null}`
+  ([#85](https://github.com/udin-io/ash_introspection/issues/85)).
+
 ## [0.6.0] - 2026-09-23
 
 **Breaking: the request path requires a manifest.** Stage 5a PR 6 of
