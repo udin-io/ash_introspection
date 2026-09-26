@@ -50,7 +50,55 @@ which come first. Numbers in parentheses are GitHub issues on
   PR 1 and PR 2 are in 0.5.3 below; PR 4 merged in the consumer as its
   PR #103; PR 5 merged as `223a131`, giving every RPC test a manifest so this
   requirement landed on a green suite. PR 8, the consumer's `~> 0.6` bump,
-  follows.
+  merged as `ash_kotlin_multiplatform` PR #110 (`7f7fca3`) on 2026-09-23,
+  closing #23.
+- **#23 — full stage index, all stages shipped.** Stages 1, 2, 4a and 4b
+  shipped here; stage 3 shipped in the consumer. The manifest module itself
+  cannot live here: building one needs a Spark DSL to declare entrypoints,
+  and this library ships none — the recorded reason #26 was declined. So it
+  went in `ash_kotlin_multiplatform`, next to the DSL that already names the
+  RPC actions. The full stage history, in the order that kept the escape
+  hatch open longest:
+
+  | Stage | Repo | Delivers | Release | State |
+  |---|---|---|---|---|
+  | 1 | this | `AshIntrospection.ResourceInfo` and the optional `:manifest` key | 0.4.x, additive | shipped |
+  | 2 | this | `Manifest.Decorator.decorate/3` and `Manifest.Custom`: field and argument name maps, `formatted_field_names`, `return_classification`, per-relationship pagination | 0.4.x, additive | shipped |
+  | 3 | consumer | `use AshKotlinMultiplatform.Manifest`, its two transformers, the `8c07331` compile-time edges, an installer | consumer minor | shipped |
+  | 4a | this | codegen reads the manifest; `Codegen.TypeDiscovery` stays, proved byte-identical | 0.4.x, additive | shipped |
+  | 4b | this | delete `Codegen.TypeDiscovery` (1109 lines); codegen reads the manifest only | 0.5.0, breaking | shipped |
+  | 5a PR 1 | this | every request-path read gets the manifest: both config rebuilds carry `:manifest` and `:manifest_namespace`, the entry points prepare it once | 0.5.3, additive | merged `c6c744b` |
+  | 5a PR 2 | this | decorate every relationship, private included, so `relationship/3` needs no live fallback | 0.5.3, additive | merged `76322eb` |
+  | 5a PR 4 | consumer | a manifest on the request path; `Runner` resolves actions through `rpc_action_lookup` | consumer minor | merged, consumer PR #103 |
+  | 5a PR 5 | this | every RPC test runs with a manifest, so PR 6's requirement lands on a green suite | test-only, no release | merged `223a131` |
+  | 5a PR 6 | this | make `:manifest` required at the four entry points; a carried but undecorated resource raises; drop the manifest-miss live reads | 0.6.0, breaking | merged `266612f` |
+  | 5a PR 7 | this | release 0.6.0 | 0.6.0 | merged `eef39a8` |
+  | 5a PR 8 | consumer | require `~> 0.6` | consumer patch | merged, `ash_kotlin_multiplatform` #110 (`7f7fca3`), 2026-09-23 |
+  | 5b | this | manifest-shaped return values in place of the captured Ash structs, deferred from stage 2 ([#83](https://github.com/udin-io/ash_introspection/issues/83)) | 0.6.x | tracked in #83 |
+
+  **Stage 4 is split on purpose.** Reading a manifest and deleting the live
+  walk are two changes with different risk: the first is additive and
+  testable against the thing it replaces, the second is breaking and has
+  nothing left to compare against. 4a landed the reading path with a
+  differential test; 4b deleted the module once consumer PR #86 generated
+  from the manifest.
+
+  Stage 2 is where the field-name cache declined in #26 arrived for free, as
+  `Manifest.Custom.formatted_field_names`. Stage 4b closed the remainder of
+  #21: the deleted module scoped entrypoints by action kind, and codegen now
+  takes its types from upstream's `Reachability`, which walks each declared
+  action's accepted attributes and follows its relationships to their
+  destinations. It does not walk `load` statements — see T1 in
+  [risks.md](risks.md) for the grep. The consumer deleted its own copy of the
+  traversal in its PR #83.
+
+  Two traps the design surfaced and stage 3 did not inherit: `8c07331` is not
+  optional (without its injected `domain.module_info(:md5)` and
+  `Application.compile_env/3` edges the persisted manifest goes stale under
+  incremental compiles with no error), and `SpecCache` was not ported —
+  upstream added it in `199f9cd` and deleted it in `b7104a8` because Spark's
+  persisted DSL state is already free at runtime. Closed 2026-09-23; stage 5b
+  continues as [#83](https://github.com/udin-io/ash_introspection/issues/83).
 - **#94 — `mix.lock` takes `mint` 1.10.1**, fixing EEF-CVE-2026-82672
   (`f7b1677`). Mint is transitive here through `finch` (`~> 1.8`), so no
   `mix.exs` entry changed and nothing in this library calls mint directly.
@@ -73,8 +121,8 @@ which come first. Numbers in parentheses are GitHub issues on
   Additive; merged as `76322eb` at 488 tests + 8 doctests, and
   `ash_kotlin_multiplatform` at `4a50811` stays at 363 tests, 0 failures, with
   its manifest 0.22% larger. PR 4 put a manifest on the request path in
-  `ash_kotlin_multiplatform`, and PR 6 requires it here — see "In progress".
-  Stage 5b, manifest-shaped return values, moved to
+  `ash_kotlin_multiplatform`, and PR 6 requires it here — see the 0.6.0 entry
+  above. Stage 5b, manifest-shaped return values, moved to
   [#83](https://github.com/udin-io/ash_introspection/issues/83).
 
 ### 0.5.2 — 2026-09-18
@@ -440,68 +488,51 @@ merged commit on `main`.
 
 ## In progress
 
-- **#23 stage 5a, PR 7 — release 0.6.0.** The `@version` bump, the dated
-  CHANGELOG section and the 0.6.0 entry under Shipped above. Publishing to Hex
-  is a manual step after this merges. PR 8, the consumer's `~> 0.6` bump, waits
-  on the published package.
+Nothing is in progress right now.
 
 ## Next
 
-Ordered by what unblocks the most. #23 is first because it gates roughly a
-dozen other items.
+Ordered by #100's slice sequence, then by what is left over. Slice 1 of #100
+(#89 and #85) already shipped, above.
 
-1. **#23 — adopt `Ash.Info.Manifest`, stage 5a.** Stages 1, 2, 4a and 4b
-   shipped here; stage 3 shipped in the consumer. The manifest module itself
-   cannot live here: building one needs a Spark DSL to declare entrypoints, and
-   this library ships none — the recorded reason #26 was declined. So it goes
-   in `ash_kotlin_multiplatform`, next to the DSL that already names the RPC
-   actions. The stages, in the order that keeps the escape hatch open longest:
-
-   | Stage | Repo | Delivers | Release | State |
-   |---|---|---|---|---|
-   | 1 | this | `AshIntrospection.ResourceInfo` and the optional `:manifest` key | 0.4.x, additive | shipped |
-   | 2 | this | `Manifest.Decorator.decorate/3` and `Manifest.Custom`: field and argument name maps, `formatted_field_names`, `return_classification`, per-relationship pagination | 0.4.x, additive | shipped |
-   | 3 | consumer | `use AshKotlinMultiplatform.Manifest`, its two transformers, the `8c07331` compile-time edges, an installer | consumer minor | shipped |
-   | 4a | this | codegen reads the manifest; `Codegen.TypeDiscovery` stays, proved byte-identical | 0.4.x, additive | shipped |
-   | 4b | this | delete `Codegen.TypeDiscovery` (1109 lines); codegen reads the manifest only | 0.5.0, breaking | shipped |
-   | 5a PR 1 | this | every request-path read gets the manifest: both config rebuilds carry `:manifest` and `:manifest_namespace`, the entry points prepare it once | 0.5.3, additive | merged `c6c744b` |
-   | 5a PR 2 | this | decorate every relationship, private included, so `relationship/3` needs no live fallback | 0.5.3, additive | merged `76322eb` |
-   | 5a PR 4 | consumer | a manifest on the request path; `Runner` resolves actions through `rpc_action_lookup` | consumer minor | merged, consumer PR #103 |
-   | 5a PR 5 | this | every RPC test runs with a manifest, so PR 6's requirement lands on a green suite | test-only, no release | merged `223a131` |
-   | 5a PR 6 | this | make `:manifest` required at the four entry points; a carried but undecorated resource raises; drop the manifest-miss live reads | 0.6.0, breaking | merged `266612f` |
-   | 5a PR 7 | this | release 0.6.0 | 0.6.0 | in review |
-   | 5a PR 8 | consumer | require `~> 0.6` | consumer patch | next |
-   | 5b | this | manifest-shaped return values in place of the captured Ash structs, deferred from stage 2 ([#83](https://github.com/udin-io/ash_introspection/issues/83)) | 0.6.x | next |
-
-   **Stage 4 is split on purpose.** Reading a manifest and deleting the live
-   walk are two changes with different risk: the first is additive and
-   testable against the thing it replaces, the second is breaking and has
-   nothing left to compare against. 4a landed the reading path with a
-   differential test; 4b deleted the module once consumer PR #86 generated
-   from the manifest.
-
-   Stage 2 is where the field-name cache declined in #26 arrived for free, as
-   `Manifest.Custom.formatted_field_names`. Stage 4b closed the remainder of
-   #21: the deleted module scoped entrypoints by action kind, and codegen now
-   takes its types from upstream's `Reachability`, which walks each declared
-   action's accepted attributes and follows its relationships to their
-   destinations. It does not walk `load` statements — see T1 in
-   [risks.md](risks.md) for the grep. The consumer deleted its own copy of the
-   traversal in its PR #83.
-
-   Two traps the design surfaced and stage 3 must not inherit: `8c07331` is
-   not optional (without its injected `domain.module_info(:md5)` and
-   `Application.compile_env/3` edges the persisted manifest goes stale under
-   incremental compiles with no error), and `SpecCache` must not be ported —
-   upstream added it in `199f9cd` and deleted it in `b7104a8` because Spark's
-   persisted DSL state is already free at runtime.
-2. **#18 — the RPC test floor.** Coverage arrives with each fix by preference,
-   but the harness and the fixtures are still a ticket of their own.
-3. **Upstream parity features**: #24 (relationship query envelopes), #25
-   (calculation load-through and nested first-aggregates). #24 touches the same
-   `FieldSelector` clauses #19 just guarded: a relationship loaded through an
-   `%Ash.Query{}` envelope is a seventh append site and needs its own
-   `check_load_allowed!/3`.
+1. **#76 — slice 2 of #100.** `entrypoint_client_name/2` cannot tell two
+   entrypoints on one resource and action apart, so a consumer cannot pass
+   `:entrypoint_name` for `rpc_action :list_todos, :read` beside
+   `rpc_action :get_todo, :read`. Touches `Manifest.Decorator` only.
+2. **#25 — slice 3 of #100.** A calculation returning a resource and one
+   returning a typed map share one load clause, so one of them is always
+   loaded wrong; a `first` aggregate over an embedded resource or a union
+   cannot be field-selected at all. Touches
+   `FieldSelector.process_nested_resource_field/6`, `ResultProcessor` and
+   `TypeSystem.ResourceFields`.
+3. **#24 — slice 4 of #100.** A relationship cannot be filtered, sorted or
+   paginated inside a field selection, and an unusable top-level `filter`,
+   `sort` or `page` is dropped in silence instead of refused. Breaking: top-
+   level params error instead of nil-ing, and it ships in a minor release.
+   Touches `Atomizer`, `FieldSelector`, `Pipeline` and `ErrorBuilder`, and
+   adds a seventh `check_load_allowed!/3` site on top of what #25 leaves.
+4. **#18 — slice 5 of #100, the RPC test floor.** `Atomizer` is 20% covered,
+   `ErrorBuilder` 30% and `ValueFormatter` 45%, with no coverage floor and no
+   test resource carrying a policy. `test/ash_introspection/rpc/` already
+   holds 29 test files and 523 tests; what is left is the floor and a policy
+   fixture. Last, because the floor is set on the number the other slices
+   leave.
+5. **#99 — the upgrade task's notice never fires during the upgrade that
+   needs it.** Igniter runs the installed copy of
+   `Mix.Tasks.AshIntrospection.Upgrade`, whose `upgrades` map does not yet
+   carry the new version's key — that key ships inside the new tarball. Found
+   moving `ash_kotlin_multiplatform` from 0.5.3 to 0.6.0. Whether this is ours
+   to fix depends on whether Igniter intends the behavior; three options are
+   open, none decided.
+6. **#83 — stage 5b, manifest-shaped return values.** Replace the Ash structs
+   `ResourceInfo` and `Manifest.Custom` return with manifest-shaped values
+   (`%Ash.Info.Manifest.Field{}` / `%Ash.Info.Manifest.Action{}`), as upstream
+   `ash_typescript` does. 12 `ResourceInfo` readers and their 12 `Custom`
+   counterparts are affected; the manifest carries no `default`, which
+   `ActionIntrospection.get_required_inputs/3` reads. May be declined: the
+   decorated manifest is already 2.8x the undecorated size, and a full
+   request takes the same 6.2-6.6 ms median whether it reads live or reads
+   the manifest — no measured per-request gain from making this change.
 
 ## Decided against
 
