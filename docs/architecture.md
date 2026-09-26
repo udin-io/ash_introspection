@@ -6,9 +6,9 @@ SPDX-License-Identifier: MIT
 
 # Architecture
 
-C4 views of `ash_introspection` as it stands on `main`, 0.4.0 plus the
-unreleased work through issue #23 stage 4b, drawn from the code rather than
-from the README. It exists because issue #36 found no written
+C4 views of `ash_introspection` as it stands on `main`, 0.6.0 with issue #23's
+stages 1 through 5a shipped, drawn from the code rather than from the README.
+It exists because issue #36 found no written
 account of the one relationship that confuses every new reader: `ash_typescript`
 is upstream and standalone, this library is the core extracted from it, and
 `ash_kotlin_multiplatform` is the only thing that depends on it. Use these
@@ -33,7 +33,7 @@ flowchart TB
     dev -->|"writes resources in"| app
     dev -->|"runs mix codegen task"| akm
     app -->|"declares domains and RPC actions for"| akm
-    akm -->|"hex dep: ash_introspection ~> 0.4"| ai
+    akm -->|"hex dep: ash_introspection ~> 0.6"| ai
     akm -->|"emits source files"| kclient
     kclient -->|"RPC request over HTTP"| app
     ai -->|"introspects at compile and run time"| ash
