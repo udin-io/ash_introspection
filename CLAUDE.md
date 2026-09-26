@@ -693,7 +693,11 @@ mix hex.audit
 mix deps.audit
 ```
 
-The branch for #23 stage 5a PR 6 is at **523 tests + 8 doctests, 0 failures**
+The branch for #89 is at **543 tests + 8 doctests, 0 failures** (measured
+2026-09-26), +20 over `main`'s 523 + 8 at `eef39a8`: 15 in
+`pipeline_generic_map_selection_test.exs` and 5 in
+`pipeline_no_return_action_test.exs`. The branch for #23 stage 5a PR 6 was at
+**523 tests + 8 doctests, 0 failures**
 (measured 2026-09-22 on `issue-23-stage-5a-pr6`), against `main`'s **488 + 8**
 at `223a131`. It is the first branch since 4b to move the number in both
 directions: +24 in `resource_info_strict_test.exs`, +16 in
