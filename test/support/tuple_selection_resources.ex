@@ -249,6 +249,28 @@ defmodule AshIntrospection.Test.MapTile do
       end)
     end
 
+    # A tuple field selected flat, holding a map with an undeclared key.
+    # Only stage 3 drops that key: stage 4 formats every key it is handed.
+    action :get_tile_pin, :map do
+      constraints(
+        fields: [
+          pin: [
+            type: :tuple,
+            constraints: [
+              fields: [
+                label: [type: :string],
+                meta: [type: :map, constraints: [fields: [zoom: [type: :integer]]]]
+              ]
+            ]
+          ]
+        ]
+      )
+
+      run(fn _input, _context ->
+        {:ok, %{pin: {"north-west", %{zoom: 12, secret: "s"}}}}
+      end)
+    end
+
     # #85: no return type, so Ash hands back `:ok`.
     action :touch_tile do
       run(fn _input, _context -> :ok end)

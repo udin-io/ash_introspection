@@ -96,6 +96,14 @@ defmodule AshIntrospection.Rpc.PipelineGenericMapSelectionTest do
       assert %{"data" => data} = response(:get_tile_meta, ["name", "meta"])
       assert data == %{"name" => "north-west", "meta" => %{"zoom" => 12}}
     end
+
+    # The tuple selected flat gets its full positional template in stage 3
+    # (`extract_typed_map_value/4`'s `[]` tuple clause, #66). Without it the
+    # raw tuple reaches stage 4, which formats every key, `secret` included.
+    test "does not reach the client from a tuple field selected flat" do
+      assert %{"data" => data} = response(:get_tile_pin, ["pin"])
+      assert data == %{"pin" => %{"label" => "north-west", "meta" => %{"zoom" => 12}}}
+    end
   end
 
   describe "selections that already worked" do
