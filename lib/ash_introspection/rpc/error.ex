@@ -150,6 +150,21 @@ defimpl AshIntrospection.Rpc.Error, for: Ash.Error.Forbidden.Policy do
   end
 end
 
+# The error class itself reaches here only when it carries no inner error;
+# `Errors.unwrap_errors/1` renders each inner error on its own otherwise.
+defimpl AshIntrospection.Rpc.Error, for: Ash.Error.Forbidden do
+  def to_error(error) do
+    %{
+      message: "forbidden",
+      short_message: "Forbidden",
+      vars: %{},
+      type: "forbidden",
+      fields: [],
+      path: error.path || []
+    }
+  end
+end
+
 defimpl AshIntrospection.Rpc.Error, for: Ash.Error.Forbidden.ForbiddenField do
   def to_error(error) do
     %{
