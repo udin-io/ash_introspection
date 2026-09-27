@@ -149,7 +149,9 @@ flowchart LR
     pipeline --> efmt
     pipeline --> tsi
     pipeline --> ash
+    pipeline -->|"action_supports_pagination?/1<br/>for a top-level page"| actint
     fsel -->|"one load path per append"| lrest
+    fsel -->|"format_sort_string/2<br/>for a relationship sort"| ff
     fsel --> atomz
     fsel --> fval
     fsel --> rfields
@@ -334,15 +336,16 @@ sequenceDiagram
     P->>K: params, actor, tenant
     Note over K: Stage 1 is language-specific<br/>and lives in the consumer
     K->>F: process(fields, resource, action, config)
-    Note over F: each append to the load statement<br/>passes Rpc.LoadRestrictions.check!/2<br/>when config carries :load_restrictions
+    Note over F: each append to the load statement<br/>passes Rpc.LoadRestrictions.check!/2<br/>when config carries :load_restrictions.<br/>A relationship with filter, sort or page<br/>loads as an Ash.Query
     F-->>K: {select, load, extraction_template}
     K->>S: execute_ash_action(%Request{}, config)
+    Note over S: refuses a top-level filter, sort or page<br/>the action cannot use, before Ash runs
     S->>A: Ash.read / create / update / destroy / run_action
     alt action succeeds
         A-->>S: records or Ash.Page
         S-->>K: {:ok, result}
         K->>S: process_result(result, request, config)
-        Note over S: applies the extraction template<br/>and redacts ForbiddenField / NotLoaded<br/>types a generic action's result from<br/>action_returns, never the resource
+        Note over S: applies the extraction template<br/>and redacts ForbiddenField / NotLoaded<br/>types a generic action's result from<br/>action_returns, never the resource.<br/>A page, top-level or in a relationship,<br/>becomes one page map
         S-->>K: {:ok, filtered}
         K->>S: format_output_with_request(filtered, request, config)
         Note over S: camelizes keys, formats values by type

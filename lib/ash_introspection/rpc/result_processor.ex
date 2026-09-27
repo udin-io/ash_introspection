@@ -88,7 +88,7 @@ defmodule AshIntrospection.Rpc.ResultProcessor do
   The client page map for an `%Ash.Page.Offset{}` or `%Ash.Page.Keyset{}`,
   with `processed_results` in place of the page's raw records.
 
-  One shape for every paginated result: `results`,
+  One shape for a paginated read and a paginated relationship: `results`,
   `has_more` and `type`, plus `limit`/`offset`/`count` for an offset page or
   `limit`/`after`/`before`/`count`/`previous_page`/`next_page` for a keyset
   page. The cursors are read off the raw records' keyset metadata.
@@ -406,6 +406,23 @@ defmodule AshIntrospection.Rpc.ResultProcessor do
       end
     end)
     |> Enum.reject(&is_nil/1)
+  end
+
+  # A relationship loaded with `page` holds a page struct where a list would
+  # be. Without this clause it passed through whole, every unselected field of
+  # every record included.
+  defp extract_array_value(
+         %page_struct{results: results} = page,
+         inner_type,
+         inner_constraints,
+         template,
+         config
+       )
+       when page_struct in [Ash.Page.Offset, Ash.Page.Keyset] do
+    build_page_map(
+      page,
+      extract_array_value(results, inner_type, inner_constraints, template, config)
+    )
   end
 
   defp extract_array_value(value, _inner_type, _inner_constraints, _template, _config), do: value

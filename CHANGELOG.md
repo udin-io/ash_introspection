@@ -45,6 +45,10 @@ Name the fields: `firstTag: ["displayName"]`
   `filter` and `sort` resolve field names on the related resource. A
   relationship marked `filterable?: false` or `sortable?: false` refuses them
   ([#24](https://github.com/udin-io/ash_introspection/issues/24)).
+- A relationship loaded with `page` returns the top-level page shape:
+  `results`, `hasMore`, `type`, and `limit`/`offset`/`count` or the keyset
+  cursors `previousPage`/`nextPage`. Only the selected fields come back
+  ([#24](https://github.com/udin-io/ash_introspection/issues/24)).
 - `books: {fields: [...]}` is another spelling of `books: [...]`, on a to-one
   relationship too
   ([#24](https://github.com/udin-io/ash_introspection/issues/24)).

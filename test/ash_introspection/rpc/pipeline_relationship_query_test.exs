@@ -52,6 +52,45 @@ defmodule AshIntrospection.Rpc.PipelineRelationshipQueryTest do
       assert books == [%{"title" => "c"}, %{"title" => "b"}, %{"title" => "a"}]
     end
 
+    test "an offset page comes back in the top-level page shape, selected" do
+      assert {:ok, [%{"books" => page}]} =
+               rpc([
+                 %{
+                   "books" => %{
+                     "fields" => ["title"],
+                     "sort" => "title",
+                     "page" => %{"limit" => 1}
+                   }
+                 }
+               ])
+
+      assert page == %{
+               "results" => [%{"title" => "a"}],
+               "hasMore" => true,
+               "limit" => 1,
+               "offset" => 0,
+               "count" => nil,
+               "type" => "offset"
+             }
+    end
+
+    test "a keyset page carries its cursors" do
+      assert {:ok, [%{"recentBooks" => page}]} =
+               rpc([%{"recentBooks" => %{"fields" => ["title"], "page" => %{"limit" => 2}}}])
+
+      assert %{
+               "results" => [%{"title" => _}, %{"title" => _}],
+               "hasMore" => true,
+               "type" => "keyset",
+               "limit" => 2,
+               "nextPage" => next_page,
+               "previousPage" => previous_page
+             } = page
+
+      assert is_binary(next_page) and is_binary(previous_page)
+      assert next_page != previous_page
+    end
+
     test "bare limit on a relationship whose read does not require pagination is a plain slice" do
       assert {:ok, [%{"notes" => notes}]} =
                rpc([%{"notes" => %{"fields" => ["body"], "limit" => 2}}])
