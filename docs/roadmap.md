@@ -49,6 +49,14 @@ which come first. Numbers in parentheses are GitHub issues on
   against an action's arguments with no `public?` check, so a private
   argument could be set from untrusted input. Bumped to `>= 3.33.11 and <
   4.0.0-0`. PR #109, `6acf1211`.
+- **#24 — relationship query envelopes, slice 4 of #100.** A relationship in
+  a field selection takes `filter`, `sort`, `page`, or bare `limit`/`offset`,
+  at any depth, and a paged one returns the top-level page shape. A
+  relationship marked `filterable?: false` or `sortable?: false` refuses them.
+  Breaking: a top-level `filter`, `sort` or `page` the action cannot use is
+  refused instead of ignored. Also fixed: `Atomizer` kept a `nil` key for a
+  name its callback does not map, and a list read sent `get_by` returned every
+  record. PR #111, `695631c`.
 
 ### 0.6.0 — 2026-09-23
 
@@ -516,23 +524,17 @@ Nothing is in progress right now.
 
 ## Next
 
-Ordered by #100's slice sequence, then by what is left over. Slices 1 to 3
-and 5 of #100 (#89 and #85, #76, #25, #18) already shipped, above.
+All five slices of #100 (#89 and #85, #76, #25, #24, #18) shipped, above.
+What is left, in order:
 
-1. **#24 — slice 4 of #100.** A relationship cannot be filtered, sorted or
-   paginated inside a field selection, and an unusable top-level `filter`,
-   `sort` or `page` is dropped in silence instead of refused. Breaking: top-
-   level params error instead of nil-ing, and it ships in a minor release.
-   Touches `Atomizer`, `FieldSelector`, `Pipeline` and `ErrorBuilder`, and
-   adds an eighth `check_load_allowed!/3` site on top of the seven #25 leaves.
-2. **#99 — the upgrade task's notice never fires during the upgrade that
+1. **#99 — the upgrade task's notice never fires during the upgrade that
    needs it.** Igniter runs the installed copy of
    `Mix.Tasks.AshIntrospection.Upgrade`, whose `upgrades` map does not yet
    carry the new version's key — that key ships inside the new tarball. Found
    moving `ash_kotlin_multiplatform` from 0.5.3 to 0.6.0. Whether this is ours
    to fix depends on whether Igniter intends the behavior; three options are
    open, none decided.
-3. **#83 — stage 5b, manifest-shaped return values.** Replace the Ash structs
+2. **#83 — stage 5b, manifest-shaped return values.** Replace the Ash structs
    `ResourceInfo` and `Manifest.Custom` return with manifest-shaped values
    (`%Ash.Info.Manifest.Field{}` / `%Ash.Info.Manifest.Action{}`), as upstream
    `ash_typescript` does. 12 `ResourceInfo` readers and their 12 `Custom`
