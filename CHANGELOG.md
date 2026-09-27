@@ -37,9 +37,10 @@ the actor's policies hide used to succeed with empty `data` (destroy) or
 return `not_found` (update). Both now return one error with `type:
 "forbidden"`. A destroy of a record that does not exist, including an identity
 that is not a valid key, returns `not_found`; it used to succeed with every
-field `null`. Reads are unchanged: a hidden record still reads as absent. A
-`forbidden` answer confirms the record exists. `mix ash_introspection.upgrade`
-prints this as a notice
+field `null`. So does a destroy whose own change filter skips the row, and any
+zero-row write on an RPC action with no identity. Reads are unchanged: a
+hidden record still reads as absent. A `forbidden` answer confirms the record
+exists. `mix ash_introspection.upgrade` prints this as a notice
 ([#107](https://github.com/udin-io/ash_introspection/issues/107)).
 
 ### Changed
