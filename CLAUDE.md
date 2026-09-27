@@ -693,8 +693,10 @@ mix hex.audit
 mix deps.audit
 ```
 
-The branch for #89 is at **543 tests + 8 doctests, 0 failures** (measured
-2026-09-26), +20 over `main`'s 523 + 8 at `eef39a8`: 15 in
+The branch for #76 is at **549 tests + 8 doctests, 0 failures** (measured
+2026-09-27), +6 over `main`'s 543 + 8 at `81de70d`, all in
+`decorator_test.exs`. The branch for #89 is at **543 tests + 8 doctests, 0
+failures** (measured 2026-09-26), +20 over `main`'s 523 + 8 at `eef39a8`: 15 in
 `pipeline_generic_map_selection_test.exs` and 5 in
 `pipeline_no_return_action_test.exs`. The branch for #23 stage 5a PR 6 was at
 **523 tests + 8 doctests, 0 failures**
