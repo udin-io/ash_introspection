@@ -99,9 +99,9 @@ defmodule AshIntrospection.MixProject do
 
   defp deps do
     [
-      # Floor below is a security floor, not a preference. ash 3.33.4 is the
-      # first release fixing EEF-CVE-2026-86338.
-      {:ash, "~> 3.33 and >= 3.33.4"},
+      # Floor below is a security floor, not a preference. ash 3.33.11 is the
+      # first release fixing EEF-CVE-2026-93477.
+      {:ash, ">= 3.33.11 and < 4.0.0-0"},
       {:spark, "~> 2.6"},
       # Powers `mix ash_introspection.upgrade`. Dev and test only: the task
       # guards itself with `Code.ensure_loaded?(Igniter)`, and a consumer

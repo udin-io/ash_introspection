@@ -536,6 +536,16 @@ defmodule AshIntrospection.Rpc.Pipeline do
   defp apply_sort(query, sort), do: Ash.Query.sort_input(query, sort)
 
   defp apply_pagination(query, nil), do: Ash.Query.page(query, nil)
+
+  # Ash 3.33.10 added `Ash.Page.page_opts/1`'s is_list guard
+  # (deps/ash/lib/ash/page/page.ex): a `page` option that is not a literal
+  # list is now rejected before Ash validates its keys, where it used to
+  # accept a map read the same way as a keyword list. `request.pagination`
+  # is a client-shaped map (`%{limit: 2, offset: 0}`), so it needs turning
+  # into a keyword list here rather than at every caller.
+  defp apply_pagination(query, page) when is_map(page),
+    do: Ash.Query.page(query, Map.to_list(page))
+
   defp apply_pagination(query, page), do: Ash.Query.page(query, page)
 
   defp apply_select_and_load(query, request) do
