@@ -31,6 +31,17 @@ as an embedded attribute. It used to return every field with snake_case keys.
 Name the fields: `firstTag: ["displayName"]`
 ([#25](https://github.com/udin-io/ash_introspection/issues/25)).
 
+**Breaking: a forbidden update or destroy returns `forbidden`, and a destroy
+of a missing record returns `not_found`.** An update or destroy of a record
+the actor's policies hide used to succeed with empty `data` (destroy) or
+return `not_found` (update). Both now return one error with `type:
+"forbidden"`. A destroy of a record that does not exist, including an identity
+that is not a valid key, returns `not_found`; it used to succeed with every
+field `null`. Reads are unchanged: a hidden record still reads as absent. A
+`forbidden` answer confirms the record exists. `mix ash_introspection.upgrade`
+prints this as a notice
+([#107](https://github.com/udin-io/ash_introspection/issues/107)).
+
 ### Changed
 
 - `TypeSystem.ResourceFields.get_aggregate_type_info/3` returns
@@ -75,6 +86,10 @@ Name the fields: `firstTag: ["displayName"]`
 
 ### Fixed
 
+- An Ash error class with no inner error returns one error: `forbidden` for
+  `Ash.Error.Forbidden`, `internal_error` for the others. It returned an empty
+  `errors` list
+  ([#107](https://github.com/udin-io/ash_introspection/issues/107)).
 - A list read sent a `get_by` value returns the one record it names, or
   `NotFound`, the way a `get?` read does. It returned every record
   ([#24](https://github.com/udin-io/ash_introspection/issues/24)).
