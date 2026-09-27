@@ -304,6 +304,28 @@ sites. See `test/ash_introspection/rpc/load_restrictions_test.exs`.
 through. Say so in anything you write about them; risk T5 in
 [`docs/risks.md`](docs/risks.md) explains why it matters.
 
+### A selection test that stops at `FieldSelector` cannot see a load Ash rejects — #25
+
+**Symptom.** Every `FieldSelector` test is green, and the same request fails
+in the pipeline with `Ash.Error.Query.InvalidLoad` or `NoSuchInput`. The
+client gets an error and no data.
+
+**Why.** A `FieldSelector` test asserts the load statement it emits, and the
+expected value in the test is whatever the author believed Ash takes. Before
+#25, `field_selector_args_key_lookup_test.exs` pinned
+`computed_meta: [:label]` for a calculation returning an embedded resource.
+Ash rejects that shape for a calculation; it takes
+`computed_meta: {%{}, [:label]}`. Measured on `main` at `3429006`: every
+calculation returning a resource, a `:struct` of one, an array of either, or
+a union failed as soon as the client selected a field of it, and 549 tests
+passed.
+
+**What we do.** A test for a new load shape drives the request through
+`FieldSelector.process/4` and all three `Pipeline` stages, and asserts the
+client JSON. `AshIntrospection.Test.LoadThrough.rpc/2` in
+`test/support/load_through_resources.ex` does that for one fixture; copy its
+shape. See `test/ash_introspection/rpc/pipeline_calculation_load_through_test.exs`.
+
 ### A template entry has four shapes, each with its own reader — #35, #84, #66
 
 **Symptom.** A field you selected is missing from the response, or arrives

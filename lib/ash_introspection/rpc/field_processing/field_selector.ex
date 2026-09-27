@@ -384,7 +384,7 @@ defmodule AshIntrospection.Rpc.FieldProcessing.FieldSelector do
 
       cat when cat in [:calculation, :calculation_complex] ->
         check_load_allowed!(path, internal_name, config)
-        load_spec = build_load_spec(internal_name, nested_select, nested_load)
+        load_spec = calculation_load_spec(internal_name, nil, nested_select ++ nested_load)
         {select, load ++ [load_spec], template ++ [{internal_name, nested_template}]}
 
       :calculation_with_args ->
@@ -448,26 +448,7 @@ defmodule AshIntrospection.Rpc.FieldProcessing.FieldSelector do
           {[], [], []}
       end
 
-    load_fields =
-      case nested_load do
-        [] -> nested_select
-        _ -> nested_select ++ nested_load
-      end
-
-    load_spec =
-      cond do
-        args != nil && load_fields != [] ->
-          {internal_name, {args, load_fields}}
-
-        args != nil ->
-          {internal_name, args}
-
-        load_fields != [] ->
-          {internal_name, load_fields}
-
-        true ->
-          internal_name
-      end
+    load_spec = calculation_load_spec(internal_name, args, nested_select ++ nested_load)
 
     template_item =
       if nested_template == [] do
@@ -1193,6 +1174,14 @@ defmodule AshIntrospection.Rpc.FieldProcessing.FieldSelector do
 
     {field_name, load_fields}
   end
+
+  # A calculation takes `{args, fields}` to load through to fields of its
+  # value: an embedded resource's calculation, or a union member's. Ash
+  # rejects `{calc, fields}` for a calculation. A typed map, tuple or
+  # TypedStruct selects no load fields, and Ash cannot load through a map
+  # (`merge_load/4`), so those keep the bare form.
+  defp calculation_load_spec(name, args, []), do: if(is_nil(args), do: name, else: {name, args})
+  defp calculation_load_spec(name, args, fields), do: {name, {args || %{}, fields}}
 
   defp format_extraction_template(template) do
     {atoms, keyword_pairs} =

@@ -61,7 +61,7 @@ defmodule AshIntrospection.Rpc.FieldProcessing.FieldSelectorArgsKeyLookupTest do
     end
 
     test "a bare :fields selection still resolves" do
-      assert {:ok, {[:id], [computed_meta: [:label]], [:id, {:computed_meta, [:label]}]}} =
+      assert {:ok, {[:id], [computed_meta: {%{}, [:label]}], [:id, {:computed_meta, [:label]}]}} =
                process(["id", %{"computedMeta" => %{"fields" => ["label"]}}])
     end
 
