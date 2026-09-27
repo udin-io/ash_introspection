@@ -134,15 +134,7 @@ defmodule AshIntrospection.Rpc.ResultProcessor do
     cond do
       # For Ash resources, check all field types
       ResourceInfo.runtime_resource?(resource, config) ->
-        # Use resolved aggregate type for aggregates
-        case ResourceInfo.aggregate(resource, field_name, config) do
-          nil ->
-            ResourceFields.get_field_type_info(resource, field_name, config)
-
-          agg ->
-            agg_type = ResourceInfo.aggregate_type(resource, agg, config)
-            {agg_type, []}
-        end
+        ResourceFields.get_field_type_info(resource, field_name, config)
 
       # For modules with field_names callback (TypedStruct wrappers)
       Code.ensure_loaded?(resource) &&

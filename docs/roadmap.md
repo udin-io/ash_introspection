@@ -510,7 +510,7 @@ Ordered by #100's slice sequence, then by what is left over. Slice 1 of #100
    `sort` or `page` is dropped in silence instead of refused. Breaking: top-
    level params error instead of nil-ing, and it ships in a minor release.
    Touches `Atomizer`, `FieldSelector`, `Pipeline` and `ErrorBuilder`, and
-   adds a seventh `check_load_allowed!/3` site on top of what #25 leaves.
+   adds an eighth `check_load_allowed!/3` site on top of the seven #25 leaves.
 4. **#18 — slice 5 of #100, the RPC test floor.** `Atomizer` is 20% covered,
    `ErrorBuilder` 30% and `ValueFormatter` 45%, with no coverage floor and no
    test resource carrying a policy. `test/ash_introspection/rpc/` already

@@ -56,7 +56,7 @@ defmodule AshIntrospection.TypeSystem.ResourceFields do
         {type, []}
 
       agg = ResourceInfo.aggregate(resource, field_name, config) ->
-        {agg.type, agg.constraints || []}
+        aggregate_type_info(resource, agg, config)
 
       true ->
         {nil, []}
@@ -92,15 +92,18 @@ defmodule AshIntrospection.TypeSystem.ResourceFields do
           {type, []}
       end
     else
+      %Ash.Resource.Aggregate{} = agg -> aggregate_type_info(resource, agg, config)
       field -> {field.type, field.constraints || []}
     end
   end
 
   @doc """
-  Gets the resolved type for an aggregate field.
+  Gets the type and constraints of an aggregate's value.
 
-  Aggregates can have computed types based on the underlying field type.
-  This function returns the fully resolved aggregate type.
+  A declared type wins. A `first` aggregate takes the type and constraints of
+  the field it reads, found by walking `relationship_path`; a `list` aggregate
+  takes an array of them. Every other kind returns the type Ash resolves, with
+  no constraints.
 
   ## Examples
 
@@ -108,15 +111,52 @@ defmodule AshIntrospection.TypeSystem.ResourceFields do
       {Ash.Type.Integer, []}
   """
   @spec get_aggregate_type_info(module(), atom(), ResourceInfo.config()) ::
-          {atom() | nil, keyword()}
+          {atom() | tuple() | nil, keyword()}
   def get_aggregate_type_info(resource, field_name, config \\ %{}) do
     case ResourceInfo.aggregate(resource, field_name, config) do
-      nil ->
-        {nil, []}
+      nil -> {nil, []}
+      agg -> aggregate_type_info(resource, agg, config)
+    end
+  end
 
-      agg ->
-        resolved_type = ResourceInfo.aggregate_type(resource, agg, config)
-        {resolved_type, []}
+  # `agg.type` is `nil` for every aggregate that does not declare one, and
+  # `ResourceInfo.aggregate_type/3` returns a type with no constraints. A
+  # `first` or `list` over a union or an embedded resource needs both, so it
+  # reads them off the field the aggregate reads.
+  defp aggregate_type_info(_resource, %{type: type} = agg, _config) when not is_nil(type),
+    do: {type, agg.constraints || []}
+
+  defp aggregate_type_info(resource, %{kind: kind} = agg, config) when kind in [:first, :list] do
+    case aggregated_field_type_info(resource, agg, config) do
+      {nil, _} -> resolved_aggregate_type_info(resource, agg, config)
+      {type, constraints} when kind == :first -> {type, constraints}
+      {type, constraints} -> {{:array, type}, [items: constraints]}
+    end
+  end
+
+  defp aggregate_type_info(resource, agg, config),
+    do: resolved_aggregate_type_info(resource, agg, config)
+
+  defp aggregated_field_type_info(resource, agg, config) do
+    destination =
+      Enum.reduce_while(agg.relationship_path, resource, fn name, current ->
+        case ResourceInfo.relationship(current, name, config) do
+          nil -> {:halt, nil}
+          rel -> {:cont, rel.destination}
+        end
+      end)
+
+    case {destination, agg.field} do
+      {nil, _} -> {nil, []}
+      {_, nil} -> {nil, []}
+      {destination, field} -> get_field_type_info(destination, field, config)
+    end
+  end
+
+  defp resolved_aggregate_type_info(resource, agg, config) do
+    case ResourceInfo.aggregate_type(resource, agg, config) do
+      {:ok, type} -> {type, []}
+      _ -> {nil, []}
     end
   end
 end

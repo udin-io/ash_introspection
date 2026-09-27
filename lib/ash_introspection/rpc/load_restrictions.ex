@@ -60,7 +60,7 @@ defmodule AshIntrospection.Rpc.LoadRestrictions do
   ## How enforcement works
 
   `check!/2` is called by `AshIntrospection.Rpc.FieldProcessing.FieldSelector`
-  at every point where it appends to the Ash load statement — six of them.
+  at every point where it appends to the Ash load statement — seven of them.
   A load therefore cannot reach the load statement without passing the check,
   so there is no second traversal that could disagree with field selection
   about what is being loaded. Nested paths are checked at every level as

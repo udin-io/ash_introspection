@@ -274,13 +274,14 @@ test resource needs writing, give it `private? true` at birth.
 **Symptom.** A load restriction that works for every other field is silently
 ignored for the one you just added, and no test fails.
 
-**Why.** `AshIntrospection.Rpc.LoadRestrictions` is enforced at the six points
+**Why.** `AshIntrospection.Rpc.LoadRestrictions` is enforced at the seven points
 where `Rpc.FieldProcessing.FieldSelector` appends to the Ash load statement,
 not by walking the finished load statement. That is deliberate — a separate
 traversal has to re-derive which parts of a load list are loads and which are
 selects, and upstream's did it wrong (`ash_typescript` `3aaae6b`). The price is
-that a seventh append site added later is unguarded by default and nothing says
-so.
+that an eighth append site added later is unguarded by default and nothing
+says so. #25 added the seventh: a `first` or `list` aggregate with a nested
+selection, which loads the bare aggregate.
 
 **What we do.** Check that every hit of this grep has a
 `check_load_allowed!(path, internal_name, config)` above it:
@@ -290,10 +291,10 @@ grep -n 'load ++ \|load_acc ++' \
   lib/ash_introspection/rpc/field_processing/field_selector.ex
 ```
 
-#24 (relationship query envelopes) adds one: a relationship loaded through an
-`%Ash.Query{}` envelope.
+#24 (relationship query envelopes) adds the eighth: a relationship loaded
+through an `%Ash.Query{}` envelope.
 
-**Two of the six cannot be made to refuse.** The embedded-attribute and
+**Two of the seven cannot be made to refuse.** The embedded-attribute and
 union-member sites only fire when a nested selection already produced a load,
 and that nested load passed the check one level deeper; a passing child implies
 a passing parent under both `:allow` and `:deny`. Do not write a test that
@@ -303,6 +304,28 @@ sites. See `test/ash_introspection/rpc/load_restrictions_test.exs`.
 **They are not authorization.** Ash policies apply to every load that gets
 through. Say so in anything you write about them; risk T5 in
 [`docs/risks.md`](docs/risks.md) explains why it matters.
+
+### A selection test that stops at `FieldSelector` cannot see a load Ash rejects — #25
+
+**Symptom.** Every `FieldSelector` test is green, and the same request fails
+in the pipeline with `Ash.Error.Query.InvalidLoad` or `NoSuchInput`. The
+client gets an error and no data.
+
+**Why.** A `FieldSelector` test asserts the load statement it emits, and the
+expected value in the test is whatever the author believed Ash takes. Before
+#25, `field_selector_args_key_lookup_test.exs` pinned
+`computed_meta: [:label]` for a calculation returning an embedded resource.
+Ash rejects that shape for a calculation; it takes
+`computed_meta: {%{}, [:label]}`. Measured on `main` at `3429006`: every
+calculation returning a resource, a `:struct` of one, an array of either, or
+a union failed as soon as the client selected a field of it, and 549 tests
+passed.
+
+**What we do.** A test for a new load shape drives the request through
+`FieldSelector.process/4` and all three `Pipeline` stages, and asserts the
+client JSON. `AshIntrospection.Test.LoadThrough.rpc/2` in
+`test/support/load_through_resources.ex` does that for one fixture; copy its
+shape. See `test/ash_introspection/rpc/pipeline_calculation_load_through_test.exs`.
 
 ### A template entry has four shapes, each with its own reader — #35, #84, #66
 
