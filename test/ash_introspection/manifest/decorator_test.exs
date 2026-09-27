@@ -231,6 +231,18 @@ defmodule AshIntrospection.Manifest.DecoratorTest do
         Decorator.decorate(manifest, :ash_introspection, config)
       end
     end
+
+    test "an :entrypoint_name callback of another arity raises ArgumentError naming arities 2 and 3" do
+      config = %{entrypoint_name: fn _resource -> "name" end}
+
+      error =
+        assert_raise ArgumentError, fn ->
+          Decorator.decorate(ManifestFixture.manifest(), :ash_introspection, config)
+        end
+
+      assert error.message =~ "arity 2 or 3"
+      assert error.message =~ "arity 1"
+    end
   end
 
   describe "the namespace is a parameter" do

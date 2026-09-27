@@ -454,7 +454,9 @@ defmodule AshIntrospection.Manifest.Decorator do
   # codegen author declared for that one entrypoint, not the slice under this
   # namespace — so two entrypoints on the same resource and action (the
   # duplicate `build_entrypoints/3` preserves, see #76) can each get their own
-  # name.
+  # name. A function of any other arity is a mistake the consumer would not
+  # otherwise see: it would silently get no name, and every entrypoint's
+  # `client_name` would read `nil`. Fail the compile instead.
   defp entrypoint_client_name(
          %Manifest.Entrypoint{resource: resource, action: action, config: entrypoint_config},
          config
@@ -465,6 +467,18 @@ defmodule AshIntrospection.Manifest.Decorator do
 
       callback when is_function(callback, 3) ->
         client_name_from(callback.(resource, action.name, entrypoint_config))
+
+      callback when is_function(callback) ->
+        {:arity, arity} = Function.info(callback, :arity)
+
+        raise ArgumentError, """
+        `:entrypoint_name` must be a function of arity 2 or 3:
+
+          fn resource, action_name -> ... end
+          fn resource, action_name, config -> ... end
+
+        Got a function of arity #{arity}.
+        """
 
       _ ->
         nil
