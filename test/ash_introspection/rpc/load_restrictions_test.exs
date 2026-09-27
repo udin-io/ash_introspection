@@ -11,8 +11,10 @@ defmodule AshIntrospection.Rpc.LoadRestrictionsTest do
   selection, not about the shape of any one private function.
 
   The fixtures live in `test/support/load_restriction_resources.ex` and carry
-  one field of every category that appends to the load statement, so every one
-  of the six append sites is exercised from here. Four of them can be made to
+  one field of every category that appends to the load statement, so six of
+  the seven append sites are exercised from here. The seventh, a nested
+  selection on a `first` or `list` aggregate, is refused in
+  `pipeline_nested_aggregate_test.exs`. Four of these six can be made to
   refuse; the two that only fire when a nested selection already produced a
   load cannot, because that nested load passed the check one level deeper —
   see the note on those sites in `FieldSelector`.
@@ -35,7 +37,8 @@ defmodule AshIntrospection.Rpc.LoadRestrictionsTest do
   defp allow(spec), do: %{load_restrictions: {:allow, spec}}
 
   # Every field shape that reaches an append site, so the compatibility test
-  # below covers all six of them at once.
+  # below covers six of the seven at once; the seventh needs a composite
+  # aggregate, which `Article` does not carry.
   @every_load_shape [
     ["id", "slug"],
     ["id", %{"author" => ["id", "articleCount"]}],

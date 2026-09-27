@@ -13,6 +13,28 @@ recorded nowhere in the repo. This page replaces ADRs; there is no `adr/`
 directory here and none should be created. A decision that no longer shapes the
 code is deleted, not archived, because git keeps the history.
 
+## 2026-09-27 — A composite aggregate needs a field list, and selects attributes only
+
+**Decided.** A `first` or `list` aggregate over an embedded resource or a
+union takes its type from the field it reads, found by walking
+`relationship_path`. It then behaves like every other embedded value: a flat
+request gets `requires_field_selection`, and a nested selection filters the
+value. Below the aggregate a client names attributes only; a calculation,
+aggregate or relationship there gets `unknown_field`. Issue #25; the owner
+chose the refusal (option A) in chat on 2026-09-27.
+
+**Why.** Ash cannot load through an aggregate (`first_tag: [:shout]` is "not
+a valid load" on ash 3.33.4), so a selection below one can only filter what
+the aggregate already returned. Allowing a calculation there would promise a
+value Ash never computes. The refusal matches an embedded attribute and
+upstream `ash_typescript`'s `AttributesOnlySchema`, so a generator models one
+rule for every embedded-typed field.
+
+**What it cost.** A client that asked such an aggregate flat got every field
+and now gets an error. It is breaking, and ships in the minor release beside
+#24. The flat answer used atom keys (`display_name:`), so no client could
+have relied on its shape.
+
 ## 2026-09-26 — A generic action's map is typed by its action, declared keys only
 
 **Decided.** `ResultProcessor.determine_data_type/3` types a map at the top of

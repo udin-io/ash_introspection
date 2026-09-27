@@ -14,7 +14,26 @@ and this project adheres to
 
 ## [Unreleased]
 
+**Breaking: a flat request for a composite aggregate needs a field list.** A
+`first` or `list` aggregate over an embedded resource or a union, asked for
+without naming fields, now gets a `requires_field_selection` error, the same
+as an embedded attribute. It used to return every field with snake_case keys.
+Name the fields: `firstTag: ["displayName"]`
+([#25](https://github.com/udin-io/ash_introspection/issues/25)).
+
+### Changed
+
+- `TypeSystem.ResourceFields.get_aggregate_type_info/3` returns
+  `{type, constraints}`, as its doc said. It returned `{{:ok, type}, []}`
+  ([#25](https://github.com/udin-io/ash_introspection/issues/25)).
+
 ### Added
+
+- A client can select fields of a `first` or `list` aggregate over an
+  embedded resource or a union: `firstTag: ["displayName"]` returns
+  `{"firstTag": {"displayName": "Red"}}`. Attributes only; Ash cannot load a
+  calculation through an aggregate
+  ([#25](https://github.com/udin-io/ash_introspection/issues/25)).
 
 - `Manifest.Decorator`'s `:entrypoint_name` callback accepts a 3-arity form,
   `fn resource, action_name, config -> ... end`, which also receives the
@@ -27,6 +46,15 @@ and this project adheres to
   ([#76](https://github.com/udin-io/ash_introspection/issues/76)).
 
 ### Fixed
+
+- Selecting fields of a calculation that returns an embedded resource, a
+  `:struct` of a resource, an array of either, or a union returns those
+  fields. The whole request failed with Ash's `InvalidLoad` or `NoSuchInput`
+  ([#25](https://github.com/udin-io/ash_introspection/issues/25)).
+- `ResourceFields.get_field_type_info/3` and `get_public_field_type_info/3`
+  type a `first` or `list` aggregate by the field it reads, constraints
+  included. They answered `{nil, []}`
+  ([#25](https://github.com/udin-io/ash_introspection/issues/25)).
 
 - A nested selection on a tuple inside a generic action's map result returns
   the selected elements, not every element, whether the action builds the map

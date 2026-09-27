@@ -46,6 +46,7 @@ defmodule AshIntrospection.Rpc.FieldProcessing.FieldSelector do
   alias AshIntrospection.Rpc.FieldProcessing.Validation
   alias AshIntrospection.Rpc.LoadRestrictions
   alias AshIntrospection.TypeSystem.Introspection
+  alias AshIntrospection.TypeSystem.ResourceFields
 
   @type select_result :: {select :: [atom()], load :: [term()], template :: [term()]}
 
@@ -314,7 +315,8 @@ defmodule AshIntrospection.Rpc.FieldProcessing.FieldSelector do
       throw({:invalid_calculation_args, internal_name, path})
     end
 
-    if category == :aggregate do
+    if category == :aggregate &&
+         !requires_nested_selection?(field_type, field_constraints, config) do
       throw({:invalid_field_selection, internal_name, :aggregate, path})
     end
 
@@ -342,8 +344,14 @@ defmodule AshIntrospection.Rpc.FieldProcessing.FieldSelector do
 
     new_path = path ++ [internal_name]
 
+    # Ash cannot load through an aggregate, so a selection below one only
+    # filters its value: attributes, never a load. Upstream's
+    # `AttributesOnlySchema`.
+    nested_config =
+      if category == :aggregate, do: Map.put(config, :attributes_only, true), else: config
+
     {nested_select, nested_load, nested_template} =
-      select_fields(field_type, field_constraints, nested_fields, new_path, config)
+      select_fields(field_type, field_constraints, nested_fields, new_path, nested_config)
 
     case category do
       cat
@@ -387,6 +395,10 @@ defmodule AshIntrospection.Rpc.FieldProcessing.FieldSelector do
         load_spec = calculation_load_spec(internal_name, nil, nested_select ++ nested_load)
         {select, load ++ [load_spec], template ++ [{internal_name, nested_template}]}
 
+      :aggregate ->
+        check_load_allowed!(path, internal_name, config)
+        {select, load ++ [internal_name], template ++ [{internal_name, nested_template}]}
+
       :calculation_with_args ->
         throw({:invalid_calculation_args, internal_name, path})
     end
@@ -404,7 +416,7 @@ defmodule AshIntrospection.Rpc.FieldProcessing.FieldSelector do
     internal_name = resolve_resource_field_name(resource, calc_name, config)
     calc = ResourceInfo.calculation(resource, internal_name, config)
 
-    if is_nil(calc) do
+    if is_nil(calc) or Map.get(config, :attributes_only, false) do
       throw({:unknown_field, internal_name, resource, path})
     end
 
@@ -469,6 +481,9 @@ defmodule AshIntrospection.Rpc.FieldProcessing.FieldSelector do
         category = classify_attribute_category(attr.type, constraints, config)
         {attr.type, constraints, category}
 
+      Map.get(config, :attributes_only, false) ->
+        throw({:unknown_field, field_name, resource, path})
+
       rel = ResourceInfo.public_relationship(resource, field_name, config) ->
         type = if rel.cardinality == :many, do: {:array, rel.destination}, else: rel.destination
         {type, [], :relationship}
@@ -485,8 +500,9 @@ defmodule AshIntrospection.Rpc.FieldProcessing.FieldSelector do
 
         {calc.type, constraints, category}
 
-      agg = ResourceInfo.public_aggregate(resource, field_name, config) ->
-        {agg.type, agg.constraints || [], :aggregate}
+      ResourceInfo.public_aggregate(resource, field_name, config) ->
+        {type, constraints} = ResourceFields.get_aggregate_type_info(resource, field_name, config)
+        {type, constraints, :aggregate}
 
       true ->
         throw({:unknown_field, field_name, resource, path})
