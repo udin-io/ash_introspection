@@ -26,6 +26,10 @@ defmodule AshIntrospection.MixProject do
       description: @description,
       source_url: "https://github.com/udin-io/ash_introspection",
       homepage_url: "https://hexdocs.pm/ash_introspection",
+      test_coverage: [
+        ignore_modules: [~r/^(?!AshIntrospection\.Rpc\.)/],
+        summary: [threshold: 67]
+      ],
       consolidate_protocols: Mix.env() != :test
     ]
   end
@@ -99,6 +103,7 @@ defmodule AshIntrospection.MixProject do
 
   defp deps do
     [
+      {:simple_sat, "~> 0.1", only: [:test]},
       # Floor below is a security floor, not a preference. ash 3.33.11 is the
       # first release fixing EEF-CVE-2026-93477.
       {:ash, ">= 3.33.11 and < 4.0.0-0"},

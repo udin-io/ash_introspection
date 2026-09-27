@@ -703,6 +703,60 @@ adds notices and touches no file — see the 0.4.0 section of
 per break. Ship the step either way: without an entry the task is silent on
 that version, which reads as "nothing to do".
 
+### `mix test --cover`'s coverage threshold lives inside `:summary`
+
+**Symptom.** `test_coverage: [ignore_modules: [...], threshold: 67]` compiles,
+runs, and the console shows the RPC namespace's real percentage under the
+right modules — but "Threshold: 90.00%" prints regardless of the number given,
+because `threshold:` was never read.
+
+**Why.** `Mix.Tasks.Test.Coverage.generate_cover_results/1` passes the whole
+`test_coverage` keyword list to `summary/3`, which does
+`Keyword.get(opts, :summary, true)` before it ever looks for a threshold
+(elixir 1.18.4, `lib/mix/tasks/test.coverage.ex:269`). A bare `threshold:` key
+next to `ignore_modules:` sits one level too shallow: `get_threshold/1`
+receives whatever `:summary` held — `true` when the key is absent — and
+`get_threshold(true)` always returns the built-in 90%.
+
+**What we do.** Nest it: `test_coverage: [ignore_modules: [...], summary:
+[threshold: 67]]`. Verified 2026-09-27 by running the gate at 69% (above the
+measured 68.05%, exits 3) and at 67% (exits 0) before landing #18.
+
+### A destroy/update policy expressible as a filter cannot produce `Forbidden`
+
+**Symptom.** A policy-denied `Ash.bulk_destroy/4` or `Ash.bulk_update/4`
+through `Pipeline.execute_ash_action/2` returns `{:ok, %{}}` — zero rows
+changed, no error at all — for a row the actor does not own, even though
+`execute_destroy_action/3` sets `authorize_changeset_with:` to `:error` for
+any data layer that supports `:expr_error` (`Ash.DataLayer.Ets` does).
+
+**Why.** Neither `execute_destroy_action/3` nor `execute_update_action/3`
+sets `authorize_with:` or `authorize_query_with:` on the bulk call, so the
+QUERY half of the operation — the internal lookup that finds the row to
+mutate — keeps Ash's own default, `filter_with: :filter`
+(`deps/ash/lib/ash/actions/destroy/bulk.ex:1370`). A policy written as a
+plain `expr/1` (e.g. `owner_id == ^actor(:id)`) is trivially filterable, so
+Ash excludes the unowned row from that lookup before the changeset-level
+`:error` strategy ever runs. Tracked as a known gap, not fixed, in #107.
+
+**What we do.** A test that needs a genuine `Forbidden` from a destroy or
+update uses an `Ash.Policy.SimpleCheck` (see
+`AshIntrospection.Test.Policy.OwnerCheck`), never a plain `expr/1`. A
+`SimpleCheck` has no filter form, so Ash cannot push it into the query and
+falls back to the `:stream` strategy, which loads the row and evaluates the
+check for real.
+
+**A related dead end.** Forcing the filterable check through instead, with
+`authorize_with: :error` passed straight to the bulk call, looked like the
+fix but hits a live bug: on `Ash.DataLayer.Ets` the compiled `:atomic`-
+strategy match spec embeds the policy authorizer as a string rather than the
+module atom, and raises `** (ArgumentError) ...
+:erlang.function_exported("Ash.Policy.Authorizer", ...)` from
+`deps/ash/lib/ash/actions/destroy/bulk.ex:805` — Ash's own "please report a
+bug" placeholder error. Reproduced 2026-09-27 on ash 3.33.4; not filed
+upstream. Do not reach for `authorize_with: :error` on an ETS-backed
+resource without expecting this.
+
 ## CI and the definition of green
 
 `.github/workflows/ci.yml` runs on every push to `main` and every pull request,
@@ -711,10 +765,16 @@ on OTP 27 / Elixir 1.18.4, and all five steps are enforcing:
 ```
 mix format --check-formatted
 mix compile --warnings-as-errors
-mix test
+mix test --cover
 mix hex.audit
 mix deps.audit
 ```
+
+`mix test --cover` (#18) enforces a 67% floor on `AshIntrospection.Rpc.*`
+only — `mix.exs`'s `test_coverage.ignore_modules` scopes the threshold to
+that namespace, since the repo-wide number sits at 74% and other modules are
+not this ticket's job to raise. See "the coverage threshold lives inside
+`:summary`" above before touching the config.
 
 The branch for #76 is at **549 tests + 8 doctests, 0 failures** (measured
 2026-09-27), +6 over `main`'s 543 + 8 at `81de70d`, all in
