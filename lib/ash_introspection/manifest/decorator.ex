@@ -46,7 +46,7 @@ defmodule AshIntrospection.Manifest.Decorator do
   | each `%Manifest.Relationship{}` on it | the read action it loads through, and how that action paginates |
   | each embedded `%Manifest.Type{}`'s nested resource | the same resource payload |
   | each `%Manifest.Type{}` with a field-names callback | field-name mappings |
-  | each `%Manifest.Entrypoint{}` | `client_name`, from the `:entrypoint_name` callback |
+  | each `%Manifest.Entrypoint{}` | `client_name`, from the `:entrypoint_name` callback (2 or 3-arity) |
 
   Relationships appear twice because the two payloads reach different sets of
   them. The narrowed records on the resource are listed live, so they cover
@@ -107,7 +107,9 @@ defmodule AshIntrospection.Manifest.Decorator do
   @type config :: %{
           optional(:format_field_for_client) => (atom(), module() | nil, atom() -> String.t()),
           optional(:get_original_field_name) => (module(), String.t() -> atom() | nil),
-          optional(:entrypoint_name) => (module(), atom() -> String.t() | nil),
+          optional(:entrypoint_name) =>
+            (module(), atom() -> String.t() | nil)
+            | (module(), atom(), map() -> String.t() | nil),
           optional(:field_names_callback) => atom(),
           optional(:output_field_formatter) => atom()
         }
@@ -447,18 +449,30 @@ defmodule AshIntrospection.Manifest.Decorator do
   # the lookup is empty. An action name is not a usable default, because it is
   # unique per resource and the lookup is global: `:read` names one entrypoint
   # on every resource in the app.
-  defp entrypoint_client_name(%Manifest.Entrypoint{resource: resource, action: action}, config) do
+  #
+  # The 3-arity form also receives `entrypoint.config` — the whole map a
+  # codegen author declared for that one entrypoint, not the slice under this
+  # namespace — so two entrypoints on the same resource and action (the
+  # duplicate `build_entrypoints/3` preserves, see #76) can each get their own
+  # name.
+  defp entrypoint_client_name(
+         %Manifest.Entrypoint{resource: resource, action: action, config: entrypoint_config},
+         config
+       ) do
     case Map.get(config, :entrypoint_name) do
       callback when is_function(callback, 2) ->
-        case callback.(resource, action.name) do
-          name when is_binary(name) -> name
-          _ -> nil
-        end
+        client_name_from(callback.(resource, action.name))
+
+      callback when is_function(callback, 3) ->
+        client_name_from(callback.(resource, action.name, entrypoint_config))
 
       _ ->
         nil
     end
   end
+
+  defp client_name_from(name) when is_binary(name), do: name
+  defp client_name_from(_), do: nil
 
   # The O(1) lookup that replaces a scan over every entrypoint in the
   # application, once per request. An entrypoint whose client name is `nil` is

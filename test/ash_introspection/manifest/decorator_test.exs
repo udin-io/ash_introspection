@@ -166,6 +166,71 @@ defmodule AshIntrospection.Manifest.DecoratorTest do
 
       assert Custom.entrypoint(manifest, "accountRead") == nil
     end
+
+    test "two entrypoints on the same resource and action, a 3-arity callback names each from its own config" do
+      manifest = duplicate_user_read_manifest("listUsers", "getUser")
+
+      config = %{
+        entrypoint_name: fn _resource, _action_name, entry_config ->
+          Map.get(entry_config, :client_name)
+        end
+      }
+
+      decorated = Decorator.decorate(manifest, :ash_introspection, config)
+
+      list_entrypoint = Custom.entrypoint(decorated, "listUsers")
+      get_entrypoint = Custom.entrypoint(decorated, "getUser")
+
+      assert %Manifest.Entrypoint{action: %{name: :read}, config: %{client_name: "listUsers"}} =
+               list_entrypoint
+
+      assert %Manifest.Entrypoint{action: %{name: :read}, config: %{client_name: "getUser"}} =
+               get_entrypoint
+
+      assert list_entrypoint != get_entrypoint
+    end
+
+    test "a 3-arity callback receives the resource and the action name" do
+      config = %{
+        entrypoint_name: fn resource, action_name, _config ->
+          "#{inspect(resource)}.#{action_name}"
+        end
+      }
+
+      manifest = Decorator.decorate(ManifestFixture.manifest(), :ash_introspection, config)
+
+      assert %Manifest.Entrypoint{} =
+               Custom.entrypoint(manifest, "AshIntrospection.Test.User.read")
+    end
+
+    test "a 3-arity callback returning nil for one entrypoint leaves only the other in the lookup" do
+      manifest = duplicate_user_read_manifest("listUsers", nil)
+
+      config = %{
+        entrypoint_name: fn _resource, _action_name, entry_config ->
+          Map.get(entry_config, :client_name)
+        end
+      }
+
+      decorated = Decorator.decorate(manifest, :ash_introspection, config)
+
+      assert %Manifest.Entrypoint{} = Custom.entrypoint(decorated, "listUsers")
+      assert decorated |> Custom.entrypoint_lookup() |> map_size() == 1
+    end
+
+    test "a 3-arity callback returning one name for both duplicates raises ArgumentError" do
+      manifest = duplicate_user_read_manifest("everything", "everything")
+
+      config = %{
+        entrypoint_name: fn _resource, _action_name, entry_config ->
+          Map.get(entry_config, :client_name)
+        end
+      }
+
+      assert_raise ArgumentError, ~r/Two entrypoints claim the client-facing name/, fn ->
+        Decorator.decorate(manifest, :ash_introspection, config)
+      end
+    end
   end
 
   describe "the namespace is a parameter" do
@@ -333,5 +398,24 @@ defmodule AshIntrospection.Manifest.DecoratorTest do
 
       assert Custom.aggregate_type(resource, :no_such_aggregate) == :undecorated
     end
+  end
+
+  # `Ash.Info.Manifest.Generator.build_entrypoints/3` preserves duplicates when
+  # `:action_entrypoints` names the same {resource, action} more than once,
+  # each with its own `config` — the shape a codegen author who exposes one
+  # action under two names produces. `ManifestFixture` cannot carry this pair:
+  # its cached manifest is decorated with a 2-arity callback, and a duplicate
+  # there would make every test using `ManifestFixture.decorated/0` raise.
+  defp duplicate_user_read_manifest(list_client_name, get_client_name) do
+    {:ok, manifest} =
+      Manifest.generate(
+        otp_app: :ash_introspection,
+        action_entrypoints: [
+          %{resource: Test.User, action: :read, config: %{client_name: list_client_name}},
+          %{resource: Test.User, action: :read, config: %{client_name: get_client_name}}
+        ]
+      )
+
+    manifest
   end
 end
