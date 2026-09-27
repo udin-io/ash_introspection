@@ -562,6 +562,38 @@ defmodule AshIntrospection.Rpc.ErrorBuilder do
           }
         }
 
+      # === QUERY OPTION ERRORS ===
+      # A top-level `filter`, `sort` or `page` the action cannot use, returned
+      # by `Pipeline.execute_ash_action/2`. Shapes follow upstream
+      # `ash_typescript`, so both libraries' clients read one contract.
+
+      {:filter_not_supported, :top_level, reason} ->
+        top_level_query_error(
+          "filter_not_supported",
+          "This action does not support the filter parameter",
+          "Filter not supported",
+          reason,
+          "Remove the filter parameter. It is unavailable because the action is not a list read (get?/non-read) or filtering is disabled via enable_filter?: false"
+        )
+
+      {:sort_not_supported, :top_level, reason} ->
+        top_level_query_error(
+          "sort_not_supported",
+          "This action does not support the sort parameter",
+          "Sort not supported",
+          reason,
+          "Remove the sort parameter. It is unavailable because the action is not a list read (get?/non-read) or sorting is disabled via enable_sort?: false"
+        )
+
+      {:pagination_not_supported, :top_level, reason} ->
+        top_level_query_error(
+          "pagination_not_supported",
+          "This action does not support the page parameter",
+          "Pagination not supported",
+          reason,
+          "Remove the page parameter. It is unavailable because the action is not a list read (get?/non-read) or has no pagination configured"
+        )
+
       # === IDENTITY VALIDATION ERRORS ===
 
       {:identity_not_supported, %{action: action_name}} ->
@@ -724,6 +756,18 @@ defmodule AshIntrospection.Rpc.ErrorBuilder do
           }
         }
     end
+  end
+
+  defp top_level_query_error(type, message, short_message, reason, suggestion) do
+    %{
+      type: type,
+      message: message,
+      short_message: short_message,
+      vars: %{},
+      path: [],
+      fields: [],
+      details: %{reason: reason, suggestion: suggestion, hint: @stale_generated_file_hint}
+    }
   end
 
   defp format_field_type(:primitive_type), do: "primitive type"

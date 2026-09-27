@@ -82,6 +82,14 @@ if Code.ensure_loaded?(Igniter) do
     # the deletion. The two warning builders and the functions behind them go
     # with no replacement: a manifest carries only what was declared, so it
     # cannot say what was not.
+    #
+    # ## 0.7.0 — refused query parameters and aggregate field lists
+    #
+    # A notice again. Both breaks are decided by what a client sends at
+    # runtime: a top-level `filter`, `sort` or `page` on an action that cannot
+    # use it (#24), and a flat request for a composite `first` or `list`
+    # aggregate (#25). No consumer call site changes, and the requests that
+    # break live in generated client code, which is regenerated, not rewritten.
     @moduledoc false
 
     use Igniter.Mix.Task
@@ -216,6 +224,23 @@ if Code.ensure_loaded?(Igniter) do
     is absent.
     """
 
+    @query_params_notice """
+    ash_introspection 0.7.0 refuses request settings it used to ignore.
+    Nothing was rewritten: what breaks is what a client sends at runtime.
+
+      * A top-level `filter`, `sort` or `page` on an action that cannot use it
+        now fails. A `get?` read, a read sent `get_by`, a create, an update, a
+        destroy and a generic action return `filter_not_supported`,
+        `sort_not_supported` or `pagination_not_supported` with reason
+        `unsupported`. A list read whose RPC action sets
+        `enable_filter?: false` or `enable_sort?: false` returns reason
+        `disabled`. `page: {}` counts as sent. The call used to succeed with
+        the parameter ignored. Stop sending it.
+      * A `first` or `list` aggregate over an embedded resource or a union,
+        asked for without a field list, returns `requires_field_selection`.
+        Name the fields: `firstTag: ["displayName"]`.
+    """
+
     @impl Igniter.Mix.Task
     def info(_argv, _composing_task) do
       %Igniter.Mix.Task.Info{
@@ -234,7 +259,8 @@ if Code.ensure_loaded?(Igniter) do
         "0.3.0" => [&rewrite_error_code_to_type/2],
         "0.4.0" => [&notify_0_4_0_breaks/2],
         "0.5.0" => [&notify_0_5_0_breaks/2],
-        "0.6.0" => [&notify_0_6_0_breaks/2]
+        "0.6.0" => [&notify_0_6_0_breaks/2],
+        "0.7.0" => [&notify_0_7_0_breaks/2]
       }
 
       Igniter.Upgrades.run(igniter, positional.from, positional.to, upgrades,
@@ -272,6 +298,12 @@ if Code.ensure_loaded?(Igniter) do
     @doc false
     def notify_0_6_0_breaks(igniter, _opts) do
       Igniter.add_notice(igniter, @manifest_required_notice)
+    end
+
+    # Touches no file. See the 0.7.0 section of this module's comment.
+    @doc false
+    def notify_0_7_0_breaks(igniter, _opts) do
+      Igniter.add_notice(igniter, @query_params_notice)
     end
 
     # `Igniter.update_all_elixir_files/2` leans on `Igniter.include_glob/2` to

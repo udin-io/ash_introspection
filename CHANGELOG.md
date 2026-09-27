@@ -14,6 +14,16 @@ and this project adheres to
 
 ## [Unreleased]
 
+**Breaking: a top-level `filter`, `sort` or `page` the action cannot use is
+refused.** Sent to a `get?` read, a read sent `get_by`, a create, an update, a
+destroy or a generic action, each now returns `filter_not_supported`,
+`sort_not_supported` or `pagination_not_supported`, where it used to be
+ignored and the call succeeded. A list read with `enable_filter?: false` or
+`enable_sort?: false` refuses them with `reason: "disabled"`. `page: {}`
+counts as sent. Leave the parameter out. `mix ash_introspection.upgrade`
+prints this as a notice
+([#24](https://github.com/udin-io/ash_introspection/issues/24)).
+
 **Breaking: a flat request for a composite aggregate needs a field list.** A
 `first` or `list` aggregate over an embedded resource or a union, asked for
 without naming fields, now gets a `requires_field_selection` error, the same

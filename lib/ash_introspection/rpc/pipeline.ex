@@ -82,6 +82,7 @@ defmodule AshIntrospection.Rpc.Pipeline do
   """
 
   alias AshIntrospection.{ErrorFormatter, FieldFormatter}
+  alias AshIntrospection.Codegen.ActionIntrospection
   alias AshIntrospection.ResourceInfo
   alias AshIntrospection.Rpc.{Request, ResultProcessor, ValueFormatter}
   alias AshIntrospection.TypeSystem.Introspection
@@ -127,7 +128,7 @@ defmodule AshIntrospection.Rpc.Pipeline do
       context: request.context
     ]
 
-    result =
+    with :ok <- validate_query_params(request) do
       case request.action.type do
         :read ->
           execute_read_action(request, opts, config)
@@ -144,8 +145,60 @@ defmodule AshIntrospection.Rpc.Pipeline do
         :action ->
           execute_generic_action(request, opts)
       end
+    end
+  end
 
-    result
+  # A top-level `filter`, `sort` or `page` the action cannot use is refused,
+  # never dropped. Only a list read applies them: a `get?` read, a `get_by`
+  # lookup, a create, an update, a destroy and a generic action all used to
+  # succeed while ignoring them, so the client could not tell an unfiltered
+  # answer from a filtered one. Absent never errors; `page: %{}` is present.
+  # Upstream `ash_typescript`'s `validate_top_level_query_params/5`.
+  defp validate_query_params(%Request{} = request) do
+    rpc_action = request.rpc_action || %{}
+    list_read? = list_read?(request, rpc_action)
+
+    with :ok <-
+           validate_query_param(
+             request.filter,
+             list_read?,
+             Map.get(rpc_action, :enable_filter?, true),
+             :filter_not_supported
+           ),
+         :ok <-
+           validate_query_param(
+             request.sort,
+             list_read?,
+             Map.get(rpc_action, :enable_sort?, true),
+             :sort_not_supported
+           ) do
+      validate_page_param(request.pagination, list_read?, request.action)
+    end
+  end
+
+  defp list_read?(%Request{action: action} = request, rpc_action) do
+    action.type == :read and not Map.get(action, :get?, false) and is_nil(request.get_by) and
+      (Map.get(rpc_action, :get_by) || []) == [] and not Map.get(rpc_action, :get?, false)
+  end
+
+  defp validate_query_param(nil, _list_read?, _enabled?, _error), do: :ok
+
+  defp validate_query_param(_present, list_read?, enabled?, error) do
+    cond do
+      not list_read? -> {:error, {error, :top_level, :unsupported}}
+      enabled? == false -> {:error, {error, :top_level, :disabled}}
+      true -> :ok
+    end
+  end
+
+  defp validate_page_param(nil, _list_read?, _action), do: :ok
+
+  defp validate_page_param(_present, list_read?, action) do
+    if list_read? and ActionIntrospection.action_supports_pagination?(action) do
+      :ok
+    else
+      {:error, {:pagination_not_supported, :top_level, :unsupported}}
+    end
   end
 
   # ---------------------------------------------------------------------------
