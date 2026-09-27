@@ -297,8 +297,11 @@ defmodule AshIntrospection.Rpc.Pipeline do
     {:error, {:identity_not_supported, %{action: request.action.name}}}
   end
 
+  # A `get_by` value makes any read a single-record lookup. A list read used to
+  # apply it only when the action was `get?`, so a lookup for one record
+  # returned every record (#24).
   defp execute_read_action(%Request{} = request, opts, config) do
-    if Map.get(request.action, :get?, false) do
+    if Map.get(request.action, :get?, false) or not is_nil(request.get_by) do
       with {:ok, query} <-
              request.resource
              |> Ash.Query.for_read(request.action.name, request.input, opts)

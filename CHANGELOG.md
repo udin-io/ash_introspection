@@ -47,6 +47,10 @@ Name the fields: `firstTag: ["displayName"]`
 
 ### Fixed
 
+- A list read sent a `get_by` value returns the one record it names, or
+  `NotFound`, the way a `get?` read does. It returned every record
+  ([#24](https://github.com/udin-io/ash_introspection/issues/24)).
+
 - `Atomizer` keeps a field name or key that a `get_original_field_name`
   callback maps to `nil`. It turned each into a `nil` key, so `fields`,
   `args`, `filter` and `sort` collapsed into one key and all but one value was
