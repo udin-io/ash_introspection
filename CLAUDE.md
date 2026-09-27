@@ -720,40 +720,28 @@ receives whatever `:summary` held — `true` when the key is absent — and
 [threshold: 67]]`. Verified 2026-09-27 by running the gate at 69% (above the
 measured 68.05%, exits 3) and at 67% (exits 0) before landing #18.
 
-### A destroy/update policy expressible as a filter cannot produce `Forbidden`
+### Ash's `authorize_with: :error` raises on ETS for a filterable policy
 
-**Symptom.** A policy-denied `Ash.bulk_destroy/4` or `Ash.bulk_update/4`
-through `Pipeline.execute_ash_action/2` returns `{:ok, %{}}` — zero rows
-changed, no error at all — for a row the actor does not own, even though
-`execute_destroy_action/3` sets `authorize_changeset_with:` to `:error` for
-any data layer that supports `:expr_error` (`Ash.DataLayer.Ets` does).
+**Symptom.** `Ash.bulk_destroy/4` or `Ash.bulk_update/4` with
+`authorize_query_with: :error` or `authorize_with: :error`, run as an actor
+an `expr/1` policy denies, raises instead of returning `Forbidden`:
 
-**Why.** Neither `execute_destroy_action/3` nor `execute_update_action/3`
-sets `authorize_with:` or `authorize_query_with:` on the bulk call, so the
-QUERY half of the operation — the internal lookup that finds the row to
-mutate — keeps Ash's own default, `filter_with: :filter`
-(`deps/ash/lib/ash/actions/destroy/bulk.ex:1370`). A policy written as a
-plain `expr/1` (e.g. `owner_id == ^actor(:id)`) is trivially filterable, so
-Ash excludes the unowned row from that lookup before the changeset-level
-`:error` strategy ever runs. Tracked as a known gap, not fixed, in #107.
+```
+** (ArgumentError) ... :erlang.function_exported("Ash.Policy.Authorizer", :exception, 2)
+```
 
-**What we do.** A test that needs a genuine `Forbidden` from a destroy or
-update uses an `Ash.Policy.SimpleCheck` (see
-`AshIntrospection.Test.Policy.OwnerCheck`), never a plain `expr/1`. A
-`SimpleCheck` has no filter form, so Ash cannot push it into the query and
-falls back to the `:stream` strategy, which loads the row and evaluates the
-check for real.
+**Why.** `Ash.Can` builds `error(Ash.Error.Forbidden.Placeholder,
+%{authorizer: ^inspect(authorizer)})`, a string. Postgres decodes it through
+`Placeholder.from_json/1`; ETS evaluates `Ash.Query.Function.Error` directly,
+which does not turn the string back into a module. Measured on ash 3.33.4
+(#106) and 3.33.11 (#107), both options.
 
-**A related dead end.** Forcing the filterable check through instead, with
-`authorize_with: :error` passed straight to the bulk call, looked like the
-fix but hits a live bug: on `Ash.DataLayer.Ets` the compiled `:atomic`-
-strategy match spec embeds the policy authorizer as a string rather than the
-module atom, and raises `** (ArgumentError) ...
-:erlang.function_exported("Ash.Policy.Authorizer", ...)` from
-`deps/ash/lib/ash/actions/destroy/bulk.ex:805` — Ash's own "please report a
-bug" placeholder error. Reproduced 2026-09-27 on ash 3.33.4; not filed
-upstream. Do not reach for `authorize_with: :error` on an ETS-backed
-resource without expecting this.
+**What we do.** Leave the bulk lookup on Ash's default, which filters a
+hidden row out. `Rpc.Pipeline.resolve_zero_rows/3` then runs one
+unauthorized `Ash.exists?/2` to answer `forbidden` or `not_found`; see the
+2026-09-27 entry in `docs/decisions.md`. A test that needs Ash's own
+`Forbidden.Policy` from a write uses a readable row and an
+`Ash.Policy.SimpleCheck` (`AshIntrospection.Test.Policy.OwnerCheck`).
 
 ## CI and the definition of green
 

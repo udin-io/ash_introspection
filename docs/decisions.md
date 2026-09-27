@@ -13,6 +13,28 @@ recorded nowhere in the repo. This page replaces ADRs; there is no `adr/`
 directory here and none should be created. A decision that no longer shapes the
 code is deleted, not archived, because git keeps the history.
 
+## 2026-09-27 — A zero-row write runs one existence check to say why
+
+**Decided.** When `Ash.bulk_update/4` or `Ash.bulk_destroy/4` changes zero
+rows, `Rpc.Pipeline.resolve_zero_rows/3` runs one `Ash.exists?/2` with
+`authorize?: false` on the write's own query: same identity filter, tenant and
+context, through the RPC action's `read_action` or the primary read. A row
+exists: `forbidden`. No row: `not_found`. Issue #107; the owner confirmed this
+over Ash's switch in chat on 2026-09-27.
+
+**Why.** Ash's own answer, `authorize_query_with: :error` or
+`authorize_with: :error`, raises `ArgumentError` on `Ash.DataLayer.Ets` for
+the forbidden row (ash 3.33.11, re-measured for #107): `Ash.Can` embeds the
+authorizer as a string in an `error(...)` expression, which Postgres decodes
+and ETS does not. This repo tests on ETS only, so that switch could not be
+tested here. The check behaves the same on both data layers.
+
+**What it cost.** One more query, only on the zero-row path. A `forbidden`
+answer tells the client the record exists; see risk T7 in
+[risks.md](risks.md). The error the check builds carries no policies, so it
+never renders a policy breakdown. Reverse this once Ash's switch works on
+ETS: it would carry the real breakdown and save the query.
+
 ## 2026-09-27 — A composite aggregate needs a field list, and selects attributes only
 
 **Decided.** A `first` or `list` aggregate over an embedded resource or a
