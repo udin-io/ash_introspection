@@ -517,9 +517,31 @@ defmodule AshIntrospection.Manifest.Decorator do
 
         The `:entrypoint_name` callback must return a name that is unique
         across the whole manifest — the lookup is global, not per resource.
+        #{same_resource_action_hint(existing, entrypoint)}\
         """
     end
   end
+
+  # The pair `build_entrypoints/3` preserves when a codegen author exposes one
+  # action under two names — see #76 — is exactly the case a 2-arity
+  # `:entrypoint_name` cannot tell apart: `(resource, action_name)` is the same
+  # for both. Point at the 3-arity form, which also receives each
+  # entrypoint's own `config`, only when that is actually the shape of the
+  # collision.
+  defp same_resource_action_hint(
+         %Manifest.Entrypoint{resource: resource, action: %{name: action_name}},
+         %Manifest.Entrypoint{resource: resource, action: %{name: action_name}}
+       ) do
+    """
+
+    Both entrypoints are #{inspect(resource)}.#{action_name} with a different
+    `config`. Give `:entrypoint_name` a 3-arity form,
+    `fn resource, action_name, config -> ... end`, so each can be named from
+    the `config` it declared.
+    """
+  end
+
+  defp same_resource_action_hint(_existing, _entrypoint), do: ""
 
   # ---------------------------------------------------------------------------
   # Internals

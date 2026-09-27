@@ -243,6 +243,19 @@ defmodule AshIntrospection.Manifest.DecoratorTest do
       assert error.message =~ "arity 2 or 3"
       assert error.message =~ "arity 1"
     end
+
+    test "a 2-arity callback over the duplicate pair raises, and the message names the 3-arity form" do
+      manifest = duplicate_user_read_manifest("everything", "everything")
+      config = %{entrypoint_name: fn _resource, _action_name -> "everything" end}
+
+      error =
+        assert_raise ArgumentError, fn ->
+          Decorator.decorate(manifest, :ash_introspection, config)
+        end
+
+      assert error.message =~ "Two entrypoints claim the client-facing name"
+      assert error.message =~ "3-arity"
+    end
   end
 
   describe "the namespace is a parameter" do
