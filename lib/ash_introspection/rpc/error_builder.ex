@@ -562,6 +562,154 @@ defmodule AshIntrospection.Rpc.ErrorBuilder do
           }
         }
 
+      # === QUERY OPTION ERRORS ===
+      # A relationship query envelope (`filter`, `sort`, `page`, `limit`,
+      # `offset`) the relationship cannot take, thrown by `FieldSelector`, and
+      # a top-level `filter`, `sort` or `page` the action cannot use, returned
+      # by `Pipeline.execute_ash_action/2`. Shapes follow upstream
+      # `ash_typescript`, so both libraries' clients read one contract.
+
+      {:query_opts_on_to_one, field, path} when is_list(path) ->
+        query_opts_error(
+          field,
+          path,
+          "Relationship %{field} is to-one and does not accept query options",
+          "Use a plain nested field list for to-one relationships",
+          formatter,
+          field_formatter_module
+        )
+
+      {:query_opts_on_non_relationship, field, _kind, path} when is_list(path) ->
+        query_opts_error(
+          field,
+          path,
+          "Field %{field} is not a relationship and does not accept query options",
+          "Query options apply to to-many relationships only",
+          formatter,
+          field_formatter_module
+        )
+
+      {:args_and_query_opts_combined, field, path} when is_list(path) ->
+        query_opts_error(
+          field,
+          path,
+          "Field %{field} combines args with query options; they are mutually exclusive",
+          "Remove the args key — relationships do not take arguments",
+          formatter,
+          field_formatter_module
+        )
+
+      {:page_and_limit_offset_combined, field, path} when is_list(path) ->
+        query_opts_error(
+          field,
+          path,
+          "Field %{field} combines page with bare limit/offset; use one or the other",
+          "Use page for paginated results or bare limit/offset for a plain slice",
+          formatter,
+          field_formatter_module
+        )
+
+      {:limit_requires_page, field, path} when is_list(path) ->
+        query_opts_error(
+          field,
+          path,
+          "Relationship %{field} requires pagination; send page instead of bare limit/offset",
+          "Replace limit/offset with page: {limit, offset}",
+          formatter,
+          field_formatter_module
+        )
+
+      {:nested_pagination_not_supported, field, path} when is_list(path) ->
+        full_field_path =
+          build_complete_field_path(path, field, formatter, field_formatter_module)
+
+        %{
+          type: "pagination_not_supported",
+          message: "Relationship %{field} does not support pagination",
+          short_message: "Pagination not supported",
+          vars: %{field: full_field_path},
+          path: format_path(path, formatter, field_formatter_module),
+          fields: [full_field_path],
+          details: %{
+            reason: :unsupported,
+            suggestion:
+              "The relationship's read action has no pagination configured. Use bare limit/offset, or add pagination to the destination read action",
+            hint: @stale_generated_file_hint
+          }
+        }
+
+      {:filter_not_supported, :top_level, reason} ->
+        top_level_query_error(
+          "filter_not_supported",
+          "This action does not support the filter parameter",
+          "Filter not supported",
+          reason,
+          "Remove the filter parameter. It is unavailable because the action is not a list read (get?/non-read) or filtering is disabled via enable_filter?: false"
+        )
+
+      {:sort_not_supported, :top_level, reason} ->
+        top_level_query_error(
+          "sort_not_supported",
+          "This action does not support the sort parameter",
+          "Sort not supported",
+          reason,
+          "Remove the sort parameter. It is unavailable because the action is not a list read (get?/non-read) or sorting is disabled via enable_sort?: false"
+        )
+
+      {:pagination_not_supported, :top_level, reason} ->
+        top_level_query_error(
+          "pagination_not_supported",
+          "This action does not support the page parameter",
+          "Pagination not supported",
+          reason,
+          "Remove the page parameter. It is unavailable because the action is not a list read (get?/non-read) or has no pagination configured"
+        )
+
+      {:filter_not_supported, field, reason, path} when is_list(path) ->
+        nested_query_error(
+          "filter_not_supported",
+          "Relationship %{field} does not support filtering",
+          "Filter not supported",
+          field,
+          reason,
+          path,
+          "Remove the filter key. Filtering is unavailable because the RPC action disables it (enable_filter?: false) or the relationship is not filterable?",
+          formatter,
+          field_formatter_module
+        )
+
+      {:sort_not_supported, field, reason, path} when is_list(path) ->
+        nested_query_error(
+          "sort_not_supported",
+          "Relationship %{field} does not support sorting",
+          "Sort not supported",
+          field,
+          reason,
+          path,
+          "Remove the sort key. Sorting is unavailable because the RPC action disables it (enable_sort?: false) or the relationship is not sortable?",
+          formatter,
+          field_formatter_module
+        )
+
+      {:invalid_nested_page, field, reason, path} when is_list(path) ->
+        full_field_path =
+          build_complete_field_path(path, field, formatter, field_formatter_module)
+
+        %{
+          type: "invalid_pagination",
+          message: "Invalid page configuration for relationship %{field}",
+          short_message: "Invalid pagination",
+          vars: %{field: full_field_path},
+          path: format_path(path, formatter, field_formatter_module),
+          fields: [full_field_path],
+          details: %{
+            reason: inspect(reason),
+            suggestion:
+              "Provide page keys valid for the relationship's pagination type (offset: limit/offset/count, keyset: limit/after/before/count)",
+            hint: @stale_generated_file_hint
+          }
+        }
+
       # === IDENTITY VALIDATION ERRORS ===
 
       {:identity_not_supported, %{action: action_name}} ->
@@ -724,6 +872,56 @@ defmodule AshIntrospection.Rpc.ErrorBuilder do
           }
         }
     end
+  end
+
+  defp query_opts_error(field, path, message, suggestion, formatter, field_formatter_module) do
+    full_field_path = build_complete_field_path(path, field, formatter, field_formatter_module)
+
+    %{
+      type: "invalid_query_opts",
+      message: message,
+      short_message: "Invalid query options",
+      vars: %{field: full_field_path},
+      path: format_path(path, formatter, field_formatter_module),
+      fields: [full_field_path],
+      details: %{suggestion: suggestion, hint: @stale_generated_file_hint}
+    }
+  end
+
+  defp top_level_query_error(type, message, short_message, reason, suggestion) do
+    %{
+      type: type,
+      message: message,
+      short_message: short_message,
+      vars: %{},
+      path: [],
+      fields: [],
+      details: %{reason: reason, suggestion: suggestion, hint: @stale_generated_file_hint}
+    }
+  end
+
+  defp nested_query_error(
+         type,
+         message,
+         short_message,
+         field,
+         reason,
+         path,
+         suggestion,
+         formatter,
+         field_formatter_module
+       ) do
+    full_field_path = build_complete_field_path(path, field, formatter, field_formatter_module)
+
+    %{
+      type: type,
+      message: message,
+      short_message: short_message,
+      vars: %{field: full_field_path},
+      path: format_path(path, formatter, field_formatter_module),
+      fields: [full_field_path],
+      details: %{reason: reason, suggestion: suggestion, hint: @stale_generated_file_hint}
+    }
   end
 
   defp format_field_type(:primitive_type), do: "primitive type"

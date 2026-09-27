@@ -94,4 +94,24 @@ defmodule AshIntrospection.Rpc.PipelineIdentityOnReadTest do
       assert MapSet.member?(ids, bob.id)
     end
   end
+
+  # A list read used to apply `get_by` only when the action was `get?`, so a
+  # lookup for one record returned every record. It now runs as the same
+  # single-record lookup a `get?` read runs (#24, decision 3 on PR #111).
+  describe "get_by on a list read" do
+    test "returns the one record it names", %{alice: alice} do
+      assert {:ok, %Account{} = record} = execute(request(:read, %{get_by: %{id: alice.id}}))
+      assert record.id == alice.id
+    end
+
+    test "returns NotFound when it names no record" do
+      assert {:error, %Ash.Error.Query.NotFound{}} =
+               execute(request(:read, %{get_by: %{id: Ash.UUID.generate()}}))
+    end
+
+    test "refuses a non-scalar value, as a get? read does" do
+      assert {:error, {:invalid_get_by, _}} =
+               execute(request(:read, %{get_by: %{name: %{"in" => ["Alice", "Bob"]}}}))
+    end
+  end
 end

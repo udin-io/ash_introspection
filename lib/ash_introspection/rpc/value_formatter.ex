@@ -500,6 +500,24 @@ defmodule AshIntrospection.Rpc.ValueFormatter do
     end)
   end
 
+  # The page map `ResultProcessor.build_page_map/2` builds, at the top of a
+  # paginated read or in a paginated relationship. The records under
+  # `:results` format by the element type; the page's own keys format as the
+  # element resource's fields would, and none of them is a field, so each
+  # value passes through untouched.
+  defp format_array(
+         %{results: results, has_more: _} = page,
+         inner_type,
+         inner_constraints,
+         :output,
+         config
+       )
+       when is_list(results) do
+    page
+    |> Map.put(:results, format_array(results, inner_type, inner_constraints, :output, config))
+    |> format(inner_type, inner_constraints, :output, config)
+  end
+
   defp format_array(value, _inner_type, _inner_constraints, _direction, _config), do: value
 
   # ---------------------------------------------------------------------------

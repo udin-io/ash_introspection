@@ -274,14 +274,15 @@ test resource needs writing, give it `private? true` at birth.
 **Symptom.** A load restriction that works for every other field is silently
 ignored for the one you just added, and no test fails.
 
-**Why.** `AshIntrospection.Rpc.LoadRestrictions` is enforced at the seven points
+**Why.** `AshIntrospection.Rpc.LoadRestrictions` is enforced at the eight points
 where `Rpc.FieldProcessing.FieldSelector` appends to the Ash load statement,
 not by walking the finished load statement. That is deliberate — a separate
 traversal has to re-derive which parts of a load list are loads and which are
 selects, and upstream's did it wrong (`ash_typescript` `3aaae6b`). The price is
-that an eighth append site added later is unguarded by default and nothing
+that a ninth append site added later is unguarded by default and nothing
 says so. #25 added the seventh: a `first` or `list` aggregate with a nested
-selection, which loads the bare aggregate.
+selection, which loads the bare aggregate. #24 added the eighth: a
+relationship loaded through an `%Ash.Query{}` query envelope.
 
 **What we do.** Check that every hit of this grep has a
 `check_load_allowed!(path, internal_name, config)` above it:
@@ -291,10 +292,7 @@ grep -n 'load ++ \|load_acc ++' \
   lib/ash_introspection/rpc/field_processing/field_selector.ex
 ```
 
-#24 (relationship query envelopes) adds the eighth: a relationship loaded
-through an `%Ash.Query{}` envelope.
-
-**Two of the seven cannot be made to refuse.** The embedded-attribute and
+**Two of the eight cannot be made to refuse.** The embedded-attribute and
 union-member sites only fire when a nested selection already produced a load,
 and that nested load passed the check one level deeper; a passing child implies
 a passing parent under both `:allow` and `:deny`. Do not write a test that

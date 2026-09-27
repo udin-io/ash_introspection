@@ -465,6 +465,29 @@ defmodule AshIntrospection.ResourceInfo do
   end
 
   @doc """
+  Whether a relationship query envelope may filter the relationship `name`.
+
+  The relationship's own `filterable?` option, `true` unless it says
+  otherwise. In Ash the option says whether a parent can be filtered through
+  the relationship; #24 reads it, as upstream `ash_typescript` does, to refuse
+  a nested `filter` too, so a generated client never offers what the server
+  refuses. Read off the manifest's `%Ash.Info.Manifest.Relationship{}`, which
+  copies the option, or live for a relationship the manifest does not carry.
+  """
+  @spec relationship_filterable?(module(), atom(), config()) :: boolean()
+  def relationship_filterable?(resource, name, config \\ %{}),
+    do: relationship_flag(config, resource, name, :filterable?)
+
+  @doc """
+  Whether a relationship query envelope may sort the relationship `name`.
+
+  The relationship's own `sortable?` option; see `relationship_filterable?/3`.
+  """
+  @spec relationship_sortable?(module(), atom(), config()) :: boolean()
+  def relationship_sortable?(resource, name, config \\ %{}),
+    do: relationship_flag(config, resource, name, :sortable?)
+
+  @doc """
   The read action the `:many` relationship `name` loads through, or `nil`.
 
   The relationship's own `read_action` when it names one, the destination's
@@ -798,6 +821,19 @@ defmodule AshIntrospection.ResourceInfo do
   # the decorator runs at compile time, where a referenced module may not be
   # compiled yet, and an unloaded module would answer as though it declared
   # nothing.
+  defp relationship_flag(config, resource, name, flag) do
+    relationship =
+      case decorated_relationship(config, resource, name) do
+        {relationship, _namespace} -> relationship
+        nil -> Ash.Resource.Info.relationship(resource, name)
+      end
+
+    case relationship do
+      nil -> true
+      relationship -> Map.get(relationship, flag, true) != false
+    end
+  end
+
   defp live_read_action(resource, name) do
     with %{cardinality: :many, destination: destination} = relationship <-
            Ash.Resource.Info.relationship(resource, name),

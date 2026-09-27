@@ -82,6 +82,7 @@ defmodule AshIntrospection.Rpc.Pipeline do
   """
 
   alias AshIntrospection.{ErrorFormatter, FieldFormatter}
+  alias AshIntrospection.Codegen.ActionIntrospection
   alias AshIntrospection.ResourceInfo
   alias AshIntrospection.Rpc.{Request, ResultProcessor, ValueFormatter}
   alias AshIntrospection.TypeSystem.Introspection
@@ -127,7 +128,7 @@ defmodule AshIntrospection.Rpc.Pipeline do
       context: request.context
     ]
 
-    result =
+    with :ok <- validate_query_params(request) do
       case request.action.type do
         :read ->
           execute_read_action(request, opts, config)
@@ -144,8 +145,60 @@ defmodule AshIntrospection.Rpc.Pipeline do
         :action ->
           execute_generic_action(request, opts)
       end
+    end
+  end
 
-    result
+  # A top-level `filter`, `sort` or `page` the action cannot use is refused,
+  # never dropped. Only a list read applies them: a `get?` read, a `get_by`
+  # lookup, a create, an update, a destroy and a generic action all used to
+  # succeed while ignoring them, so the client could not tell an unfiltered
+  # answer from a filtered one. Absent never errors; `page: %{}` is present.
+  # Upstream `ash_typescript`'s `validate_top_level_query_params/5`.
+  defp validate_query_params(%Request{} = request) do
+    rpc_action = request.rpc_action || %{}
+    list_read? = list_read?(request, rpc_action)
+
+    with :ok <-
+           validate_query_param(
+             request.filter,
+             list_read?,
+             Map.get(rpc_action, :enable_filter?, true),
+             :filter_not_supported
+           ),
+         :ok <-
+           validate_query_param(
+             request.sort,
+             list_read?,
+             Map.get(rpc_action, :enable_sort?, true),
+             :sort_not_supported
+           ) do
+      validate_page_param(request.pagination, list_read?, request.action)
+    end
+  end
+
+  defp list_read?(%Request{action: action} = request, rpc_action) do
+    action.type == :read and not Map.get(action, :get?, false) and is_nil(request.get_by) and
+      (Map.get(rpc_action, :get_by) || []) == [] and not Map.get(rpc_action, :get?, false)
+  end
+
+  defp validate_query_param(nil, _list_read?, _enabled?, _error), do: :ok
+
+  defp validate_query_param(_present, list_read?, enabled?, error) do
+    cond do
+      not list_read? -> {:error, {error, :top_level, :unsupported}}
+      enabled? == false -> {:error, {error, :top_level, :disabled}}
+      true -> :ok
+    end
+  end
+
+  defp validate_page_param(nil, _list_read?, _action), do: :ok
+
+  defp validate_page_param(_present, list_read?, action) do
+    if list_read? and ActionIntrospection.action_supports_pagination?(action) do
+      :ok
+    else
+      {:error, {:pagination_not_supported, :top_level, :unsupported}}
+    end
   end
 
   # ---------------------------------------------------------------------------
@@ -297,8 +350,11 @@ defmodule AshIntrospection.Rpc.Pipeline do
     {:error, {:identity_not_supported, %{action: request.action.name}}}
   end
 
+  # A `get_by` value makes any read a single-record lookup. A list read used to
+  # apply it only when the action was `get?`, so a lookup for one record
+  # returned every record (#24).
   defp execute_read_action(%Request{} = request, opts, config) do
-    if Map.get(request.action, :get?, false) do
+    if Map.get(request.action, :get?, false) or not is_nil(request.get_by) do
       with {:ok, query} <-
              request.resource
              |> Ash.Query.for_read(request.action.name, request.input, opts)
@@ -820,25 +876,17 @@ defmodule AshIntrospection.Rpc.Pipeline do
     end
   end
 
-  # A read hands stage 4 one of three shapes and only one of them used to
-  # format. `ValueFormatter.format/5` unwraps a collection when the *type* says
-  # `{:array, _}`, and this is the only caller that knows the data is a
-  # collection of `resource`, because a resource module carries no cardinality.
-  # #57: passing the bare module for a list left every record with internal
-  # atom keys, and the paginated page — a map with `:results` — formatted its
-  # own envelope and nothing inside it, since `:results` is not a field on the
-  # resource so `ResourceFields.get_field_type_info/2` answers `{nil, []}`.
-  # Both measured on `main` at `51a9c27`.
-  #
-  # The page clause formats `:results` first and then runs the page through the
-  # resource path for its envelope names. That is not a double pass: the
-  # already-formatted list sits under a key the resource does not define, and
-  # `format/5` returns any value whose type is `nil` untouched.
+  # A read hands stage 4 one of three shapes: a record, a list, or the page
+  # map `ResultProcessor.build_page_map/2` builds. A resource module carries no
+  # cardinality, so this is the only caller that knows a list or a page holds
+  # records of `resource`, and it says so with `{:array, resource}`.
+  # `ValueFormatter.format/5` then formats each record, and a page's records
+  # and its envelope names. #57: passing the bare module for a list left every
+  # record with internal atom keys.
   #
   # It matches on `:has_more` as well as `:results` because a single record is
   # also a map here, keyed by the extraction template, and a resource is free
-  # to name an attribute `results`. Both keys come from `ResultProcessor.process/4`,
-  # which sets them on the offset page and the keyset page alike.
+  # to name an attribute `results`.
   defp format_resource_output(data, resource, formatter, config) when is_list(data) do
     format_value(data, {:array, resource}, formatter, config)
   end
@@ -850,9 +898,7 @@ defmodule AshIntrospection.Rpc.Pipeline do
          config
        )
        when is_list(results) do
-    page
-    |> Map.put(:results, format_value(results, {:array, resource}, formatter, config))
-    |> format_value(resource, formatter, config)
+    format_value(page, {:array, resource}, formatter, config)
   end
 
   defp format_resource_output(data, resource, formatter, config) do
@@ -1110,57 +1156,10 @@ defmodule AshIntrospection.Rpc.Pipeline do
   # ---------------------------------------------------------------------------
 
   @doc """
-  Formats a sort string by converting field names from client format to internal format.
+  Formats a sort string from client format to internal format.
 
-  Handles Ash.Query.sort_input format:
-  - "name" or "+name" (ascending)
-  - "++name" (ascending with nils first)
-  - "-name" (descending)
-  - "--name" (descending with nils last)
-  - "-name,++title" (multiple fields with different modifiers)
-
-  Preserves sort modifiers while converting field names using the input formatter.
-
-  ## Examples
-
-      iex> format_sort_string("--startDate,++insertedAt", :camel_case)
-      "--start_date,++inserted_at"
-
-      iex> format_sort_string("-userName", :camel_case)
-      "-user_name"
-
-      iex> format_sort_string(nil, :camel_case)
-      nil
+  Delegates to `AshIntrospection.FieldFormatter.format_sort_string/2`, which
+  the relationship query envelopes in `FieldSelector` share.
   """
-  def format_sort_string(nil, _formatter), do: nil
-
-  def format_sort_string(sort_string, formatter) when is_binary(sort_string) do
-    sort_string
-    |> String.split(",")
-    |> Enum.map_join(",", &format_single_sort_field(&1, formatter))
-  end
-
-  defp format_single_sort_field(field_with_modifier, formatter) do
-    case field_with_modifier do
-      "++" <> field_name ->
-        formatted_field = FieldFormatter.parse_input_field(field_name, formatter)
-        "++#{formatted_field}"
-
-      "--" <> field_name ->
-        formatted_field = FieldFormatter.parse_input_field(field_name, formatter)
-        "--#{formatted_field}"
-
-      "+" <> field_name ->
-        formatted_field = FieldFormatter.parse_input_field(field_name, formatter)
-        "+#{formatted_field}"
-
-      "-" <> field_name ->
-        formatted_field = FieldFormatter.parse_input_field(field_name, formatter)
-        "-#{formatted_field}"
-
-      field_name ->
-        formatted_field = FieldFormatter.parse_input_field(field_name, formatter)
-        "#{formatted_field}"
-    end
-  end
+  defdelegate format_sort_string(sort_string, formatter), to: FieldFormatter
 end

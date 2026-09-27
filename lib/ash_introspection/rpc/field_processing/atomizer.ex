@@ -16,6 +16,9 @@ defmodule AshIntrospection.Rpc.FieldProcessing.Atomizer do
   Language-specific behavior is configured via the config parameter.
   """
 
+  @query_option_keys [:filter, :sort, :page, :limit, :offset]
+  @envelope_keys [:args, :fields | @query_option_keys]
+
   @type config :: %{
           optional(:input_field_formatter) => atom(),
           optional(:resource_info_module) => module(),
@@ -82,7 +85,7 @@ defmodule AshIntrospection.Rpc.FieldProcessing.Atomizer do
       is_interop_resource? && get_original_field_name && resource ->
         if is_interop_resource?.(resource) do
           case get_original_field_name.(resource, field_name) do
-            original when is_atom(original) -> original
+            original when is_atom(original) and not is_nil(original) -> original
             _ -> field_name
           end
         else
@@ -101,7 +104,7 @@ defmodule AshIntrospection.Rpc.FieldProcessing.Atomizer do
 
         if is_resource? do
           case apply(resource_info_module, :get_original_field_name, [resource, field_name]) do
-            original when is_atom(original) -> original
+            original when is_atom(original) and not is_nil(original) -> original
             _ -> field_name
           end
         else
@@ -119,13 +122,26 @@ defmodule AshIntrospection.Rpc.FieldProcessing.Atomizer do
   end
 
   def process_field(%{} = field_map, formatter, resource, config) do
-    is_calc_args = is_calculation_args_map?(field_map)
+    if envelope?(field_map) do
+      Enum.into(field_map, %{}, fn {key, value} ->
+        case envelope_key(key) do
+          nil ->
+            atom_key = convert_map_key_to_atom(key, formatter, resource, config)
+            {atom_key, process_field_value(value, formatter, resource, config, true)}
 
-    Enum.into(field_map, %{}, fn {key, value} ->
-      atom_key = convert_map_key_to_atom(key, formatter, resource, config)
-      processed_value = process_field_value(value, formatter, resource, config, is_calc_args)
-      {atom_key, processed_value}
-    end)
+          option when option in @query_option_keys ->
+            {key, value}
+
+          _envelope_key ->
+            {key, process_field_value(value, formatter, resource, config, true)}
+        end
+      end)
+    else
+      Enum.into(field_map, %{}, fn {key, value} ->
+        atom_key = convert_map_key_to_atom(key, formatter, resource, config)
+        {atom_key, process_field_value(value, formatter, resource, config, false)}
+      end)
+    end
   end
 
   def process_field(other, _formatter, _resource, _config) do
@@ -142,7 +158,7 @@ defmodule AshIntrospection.Rpc.FieldProcessing.Atomizer do
       is_interop_resource? && get_original_field_name && resource ->
         if is_interop_resource?.(resource) do
           case get_original_field_name.(resource, key) do
-            original when is_atom(original) -> original
+            original when is_atom(original) and not is_nil(original) -> original
             _ -> key
           end
         else
@@ -161,7 +177,7 @@ defmodule AshIntrospection.Rpc.FieldProcessing.Atomizer do
 
         if is_resource? do
           case apply(resource_info_module, :get_original_field_name, [resource, key]) do
-            original when is_atom(original) -> original
+            original when is_atom(original) and not is_nil(original) -> original
             _ -> key
           end
         else
@@ -178,10 +194,21 @@ defmodule AshIntrospection.Rpc.FieldProcessing.Atomizer do
     key
   end
 
-  defp is_calculation_args_map?(map) when is_map(map) do
-    Map.has_key?(map, "args") or Map.has_key?(map, :args) or
-      Map.has_key?(map, "fields") or Map.has_key?(map, :fields)
+  # An envelope is a calculation's `args`/`fields` map or a relationship's
+  # query options. Its own keys name envelope slots, not fields of `resource`,
+  # so they never go through the field-name callback. The query options carry
+  # client values - a filter, a sort string, a page map - that `FieldSelector`
+  # resolves against the relationship's destination, so they pass through.
+  defp envelope?(map) do
+    Enum.any?(map, fn {key, _value} -> not is_nil(envelope_key(key)) end)
   end
+
+  for key <- @envelope_keys do
+    defp envelope_key(unquote(key)), do: unquote(key)
+    defp envelope_key(unquote(Atom.to_string(key))), do: unquote(key)
+  end
+
+  defp envelope_key(_key), do: nil
 
   @doc """
   Processes field values, handling lists and nested maps.

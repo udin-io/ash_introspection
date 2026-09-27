@@ -174,6 +174,24 @@ defmodule Mix.Tasks.AshIntrospection.UpgradeTest do
     end
   end
 
+  describe "0.7.0" do
+    test "names the refused query parameters and the aggregate field list, rewrites nothing" do
+      "Pipeline.execute_ash_action(request, config)"
+      |> upgrade(from: "0.6.0", to: "0.7.0")
+      |> assert_unchanged("lib/my_app/rpc.ex")
+      |> assert_has_notice(&(&1 =~ "filter_not_supported"))
+      |> assert_has_notice(&(&1 =~ "sort_not_supported"))
+      |> assert_has_notice(&(&1 =~ "pagination_not_supported"))
+      |> assert_has_notice(&(&1 =~ "requires_field_selection"))
+    end
+
+    test "does not fire when 0.7.0 falls outside the range" do
+      igniter = upgrade("error.code", from: "0.5.0", to: "0.6.0")
+
+      refute Enum.any?(igniter.notices, &(&1 =~ "filter_not_supported"))
+    end
+  end
+
   describe "version selection" do
     test "does not rewrite code when 0.3.0 falls outside the range" do
       "error.code"

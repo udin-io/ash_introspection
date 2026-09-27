@@ -14,6 +14,16 @@ and this project adheres to
 
 ## [Unreleased]
 
+**Breaking: a top-level `filter`, `sort` or `page` the action cannot use is
+refused.** Sent to a `get?` read, a read sent `get_by`, a create, an update, a
+destroy or a generic action, each now returns `filter_not_supported`,
+`sort_not_supported` or `pagination_not_supported`, where it used to be
+ignored and the call succeeded. A list read with `enable_filter?: false` or
+`enable_sort?: false` refuses them with `reason: "disabled"`. `page: {}`
+counts as sent. Leave the parameter out. `mix ash_introspection.upgrade`
+prints this as a notice
+([#24](https://github.com/udin-io/ash_introspection/issues/24)).
+
 **Breaking: a flat request for a composite aggregate needs a field list.** A
 `first` or `list` aggregate over an embedded resource or a union, asked for
 without naming fields, now gets a `requires_field_selection` error, the same
@@ -28,6 +38,24 @@ Name the fields: `firstTag: ["displayName"]`
   ([#25](https://github.com/udin-io/ash_introspection/issues/25)).
 
 ### Added
+
+- A relationship in a field selection accepts `filter`, `sort`, `page`, or
+  bare `limit` and `offset`, at any depth:
+  `books: {fields: ["title"], filter: {title: {eq: "b"}}, sort: "-title"}`.
+  `filter` and `sort` resolve field names on the related resource. A
+  relationship marked `filterable?: false` or `sortable?: false` refuses them
+  ([#24](https://github.com/udin-io/ash_introspection/issues/24)).
+- A relationship loaded with `page` returns the top-level page shape:
+  `results`, `hasMore`, `type`, and `limit`/`offset`/`count` or the keyset
+  cursors `previousPage`/`nextPage`. Only the selected fields come back
+  ([#24](https://github.com/udin-io/ash_introspection/issues/24)).
+- `books: {fields: [...]}` is another spelling of `books: [...]`, on a to-one
+  relationship too
+  ([#24](https://github.com/udin-io/ash_introspection/issues/24)).
+- `FieldSelector.process/4` takes `:enable_filter?` and `:enable_sort?`, and
+  `ResourceInfo` gains `relationship_filterable?/3` and
+  `relationship_sortable?/3`
+  ([#24](https://github.com/udin-io/ash_introspection/issues/24)).
 
 - A client can select fields of a `first` or `list` aggregate over an
   embedded resource or a union: `firstTag: ["displayName"]` returns
@@ -46,6 +74,15 @@ Name the fields: `firstTag: ["displayName"]`
   ([#76](https://github.com/udin-io/ash_introspection/issues/76)).
 
 ### Fixed
+
+- A list read sent a `get_by` value returns the one record it names, or
+  `NotFound`, the way a `get?` read does. It returned every record
+  ([#24](https://github.com/udin-io/ash_introspection/issues/24)).
+
+- `Atomizer` keeps a field name or key that a `get_original_field_name`
+  callback maps to `nil`. It turned each into a `nil` key, so `fields`,
+  `args`, `filter` and `sort` collapsed into one key and all but one value was
+  lost ([#24](https://github.com/udin-io/ash_introspection/issues/24)).
 
 - Selecting fields of a calculation that returns an embedded resource, a
   `:struct` of a resource, an array of either, or a union returns those

@@ -65,32 +65,9 @@ defmodule AshIntrospection.Rpc.ResultProcessor do
   @spec process(term(), map(), module() | nil, config()) :: term()
   def process(result, extraction_template, resource \\ nil, config \\ %{}) do
     case result do
-      %Ash.Page.Offset{results: results} = page ->
-        processed_results = extract_list_fields(results, extraction_template, resource, config)
-
-        page
-        |> Map.take([:limit, :offset, :count])
-        |> Map.put(:results, processed_results)
-        |> Map.put(:has_more, page.more? || false)
-        |> Map.put(:type, :offset)
-
-      %Ash.Page.Keyset{results: results} = page ->
-        processed_results = extract_list_fields(results, extraction_template, resource, config)
-
-        {previous_page_cursor, next_page_cursor} =
-          if Enum.empty?(results) do
-            {nil, nil}
-          else
-            {List.first(results).__metadata__.keyset, List.last(results).__metadata__.keyset}
-          end
-
-        page
-        |> Map.take([:before, :after, :limit, :count])
-        |> Map.put(:has_more, page.more? || false)
-        |> Map.put(:results, processed_results)
-        |> Map.put(:previous_page, previous_page_cursor)
-        |> Map.put(:next_page, next_page_cursor)
-        |> Map.put(:type, :keyset)
+      %page_struct{results: results} = page
+      when page_struct in [Ash.Page.Offset, Ash.Page.Keyset] ->
+        build_page_map(page, extract_list_fields(results, extraction_template, resource, config))
 
       [] ->
         []
@@ -105,6 +82,41 @@ defmodule AshIntrospection.Rpc.ResultProcessor do
       result ->
         extract_single_result(result, extraction_template, resource, config)
     end
+  end
+
+  @doc """
+  The client page map for an `%Ash.Page.Offset{}` or `%Ash.Page.Keyset{}`,
+  with `processed_results` in place of the page's raw records.
+
+  One shape for a paginated read and a paginated relationship: `results`,
+  `has_more` and `type`, plus `limit`/`offset`/`count` for an offset page or
+  `limit`/`after`/`before`/`count`/`previous_page`/`next_page` for a keyset
+  page. The cursors are read off the raw records' keyset metadata.
+  """
+  @spec build_page_map(Ash.Page.Offset.t() | Ash.Page.Keyset.t(), list()) :: map()
+  def build_page_map(%Ash.Page.Offset{} = page, processed_results) do
+    page
+    |> Map.take([:limit, :offset, :count])
+    |> Map.put(:results, processed_results)
+    |> Map.put(:has_more, page.more? || false)
+    |> Map.put(:type, :offset)
+  end
+
+  def build_page_map(%Ash.Page.Keyset{results: results} = page, processed_results) do
+    {previous_page_cursor, next_page_cursor} =
+      if Enum.empty?(results) do
+        {nil, nil}
+      else
+        {List.first(results).__metadata__.keyset, List.last(results).__metadata__.keyset}
+      end
+
+    page
+    |> Map.take([:before, :after, :limit, :count])
+    |> Map.put(:has_more, page.more? || false)
+    |> Map.put(:results, processed_results)
+    |> Map.put(:previous_page, previous_page_cursor)
+    |> Map.put(:next_page, next_page_cursor)
+    |> Map.put(:type, :keyset)
   end
 
   # ─────────────────────────────────────────────────────────────────────────────
@@ -394,6 +406,23 @@ defmodule AshIntrospection.Rpc.ResultProcessor do
       end
     end)
     |> Enum.reject(&is_nil/1)
+  end
+
+  # A relationship loaded with `page` holds a page struct where a list would
+  # be. Without this clause it passed through whole, every unselected field of
+  # every record included.
+  defp extract_array_value(
+         %page_struct{results: results} = page,
+         inner_type,
+         inner_constraints,
+         template,
+         config
+       )
+       when page_struct in [Ash.Page.Offset, Ash.Page.Keyset] do
+    build_page_map(
+      page,
+      extract_array_value(results, inner_type, inner_constraints, template, config)
+    )
   end
 
   defp extract_array_value(value, _inner_type, _inner_constraints, _template, _config), do: value
