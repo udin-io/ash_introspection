@@ -99,6 +99,7 @@ defmodule AshIntrospection.MixProject do
 
   defp deps do
     [
+      {:simple_sat, "~> 0.1", only: [:test]},
       # Floor below is a security floor, not a preference. ash 3.33.4 is the
       # first release fixing EEF-CVE-2026-86338.
       {:ash, "~> 3.33 and >= 3.33.4"},
