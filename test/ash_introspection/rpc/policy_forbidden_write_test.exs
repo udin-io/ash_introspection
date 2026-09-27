@@ -135,8 +135,37 @@ defmodule AshIntrospection.Rpc.PolicyForbiddenWriteTest do
       end)
     end
 
-    test "a forbidden destroy still returns one forbidden error", %{note: note} do
-      assert [%{type: "forbidden"}] = errors!(execute(write(:destroy, note.id, @stranger)))
+    test "a forbidden destroy returns plain forbidden, with no breakdown", %{note: note} do
+      assert [error] = errors!(execute(write(:destroy, note.id, @stranger)))
+      assert error.type == "forbidden"
+      assert error.message == "forbidden"
+    end
+
+    test "a forbidden update returns plain forbidden, with no breakdown", %{note: note} do
+      assert [error] = errors!(execute(write(:update, note.id, @stranger, %{title: "x"})))
+      assert error.message == "forbidden"
+    end
+
+    test "a policy error Ash built keeps its breakdown" do
+      memo =
+        AshIntrospection.Test.Policy.Memo
+        |> Ash.Changeset.for_create(:create, %{
+          slug: "m-#{System.unique_integer()}",
+          body: "b",
+          owner_id: "o1"
+        })
+        |> Ash.create!()
+
+      request = %{
+        write(:destroy, memo.id, %{id: "o2"})
+        | resource: AshIntrospection.Test.Policy.Memo,
+          action: Ash.Resource.Info.action(AshIntrospection.Test.Policy.Memo, :destroy),
+          select: [:id],
+          extraction_template: [:id]
+      }
+
+      assert [error] = errors!(execute(request))
+      assert error.message =~ "Policy Breakdown"
     end
   end
 
