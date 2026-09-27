@@ -26,6 +26,10 @@ defmodule AshIntrospection.MixProject do
       description: @description,
       source_url: "https://github.com/udin-io/ash_introspection",
       homepage_url: "https://hexdocs.pm/ash_introspection",
+      test_coverage: [
+        ignore_modules: [~r/^(?!AshIntrospection\.Rpc\.)/],
+        summary: [threshold: 67]
+      ],
       consolidate_protocols: Mix.env() != :test
     ]
   end
