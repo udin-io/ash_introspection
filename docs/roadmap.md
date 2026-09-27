@@ -57,6 +57,14 @@ which come first. Numbers in parentheses are GitHub issues on
   refused instead of ignored. Also fixed: `Atomizer` kept a `nil` key for a
   name its callback does not map, and a list read sent `get_by` returned every
   record. PR #111, `695631c`.
+- **#107 — a zero-row update or destroy says why, the last slice of #100.** A
+  record the actor's policies hide returns `forbidden`; a missing record, an
+  invalid key, a row the action's own change filter skips, or any zero-row
+  write on an RPC action with no identity returns `not_found`. One unauthorized
+  existence check, plus one as the actor when the row exists, runs only on the
+  zero-row path. Breaking: a destroy of a missing record used to succeed.
+  Also fixed: an Ash error class with no inner error returned no error at all.
+  PR #114, `31bbbb2`.
 
 ### 0.6.0 — 2026-09-23
 
@@ -520,13 +528,12 @@ merged commit on `main`.
 
 ## In progress
 
-- **#107 — a forbidden update or destroy returns `forbidden`, a missing one
-  `not_found`.** Last slice of #100 before 0.7.0, breaking, ships beside #24.
-  PR #114.
+Nothing is in progress right now.
 
 ## Next
 
-All five slices of #100 (#89 and #85, #76, #25, #24, #18) shipped, above.
+All six slices of #100 (#89 and #85, #76, #25, #24, #18, #107) shipped,
+above.
 What is left, in order:
 
 1. **#99 — the upgrade task's notice never fires during the upgrade that
