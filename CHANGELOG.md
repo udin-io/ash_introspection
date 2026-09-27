@@ -14,6 +14,18 @@ and this project adheres to
 
 ## [Unreleased]
 
+### Added
+
+- `Manifest.Decorator`'s `:entrypoint_name` callback accepts a 3-arity form,
+  `fn resource, action_name, config -> ... end`, which also receives the
+  entrypoint's own `config`. Two entrypoints on the same resource and action
+  — the shape a codegen author gets from exposing one action under two names
+  — can now each get their own client-facing name. The 2-arity form keeps
+  working unchanged. A callback of any other arity now raises `ArgumentError`
+  at compile time, naming the accepted arities; it used to be silently
+  ignored, leaving every entrypoint's `client_name` `nil`
+  ([#76](https://github.com/udin-io/ash_introspection/issues/76)).
+
 ### Fixed
 
 - A nested selection on a tuple inside a generic action's map result returns
