@@ -517,11 +517,27 @@ defmodule AshIntrospection.Rpc.Pipeline do
   # An update or destroy that changes zero rows did so for one of two reasons:
   # no row matches the identity, or the actor's read policy filtered the row
   # out of the bulk lookup before any write check ran (Ash's `filter_with:
-  # :filter` default). One unauthorized existence check tells them apart. It
-  # reuses the write's query, so the identity filter, tenant and context match. Ash's own `authorize_query_with:
-  # :error` would do this inside the bulk call, but on `Ash.DataLayer.Ets` it
-  # raises for the forbidden row (ash 3.33.11); see `docs/decisions.md`.
+  # :filter` default). One unauthorized existence check on the write's own
+  # query (identity filter, tenant, context) tells them apart. Ash's own
+  # `authorize_query_with: :error` would do this inside the bulk call, but on
+  # `Ash.DataLayer.Ets` it raises for the forbidden row (ash 3.33.11); see
+  # `docs/decisions.md`.
+  #
+  # An RPC action with no identity names no record, so the check would only
+  # tell the caller whether the table is empty. It answers `not_found`.
   defp resolve_zero_rows(query, %Request{} = request, opts) do
+    if Map.get(request.rpc_action, :identities, [:_primary_key]) == [] do
+      not_found(request)
+    else
+      case hidden_row_exists(query, request, opts) do
+        {:ok, true} -> forbidden(request)
+        {:ok, false} -> not_found(request)
+        {:error, error} -> {:error, error}
+      end
+    end
+  end
+
+  defp hidden_row_exists(query, request, opts) do
     read_action =
       Map.get(request.rpc_action, :read_action) ||
         Ash.Resource.Info.primary_action!(request.resource, :read).name
@@ -529,18 +545,15 @@ defmodule AshIntrospection.Rpc.Pipeline do
     query
     |> Ash.Query.for_read(read_action, %{}, actor: opts[:actor], authorize?: false)
     |> Ash.exists(authorize?: false, domain: request.domain)
-    |> case do
-      {:ok, true} ->
-        {:error,
-         Ash.Error.Forbidden.Policy.exception(resource: request.resource, action: request.action)}
-
-      {:ok, false} ->
-        {:error, Ash.Error.Query.NotFound.exception(resource: request.resource)}
-
-      {:error, error} ->
-        {:error, error}
-    end
   end
+
+  defp forbidden(request),
+    do:
+      {:error,
+       Ash.Error.Forbidden.Policy.exception(resource: request.resource, action: request.action)}
+
+  defp not_found(request),
+    do: {:error, Ash.Error.Query.NotFound.exception(resource: request.resource)}
 
   defp execute_generic_action(%Request{} = request, opts) do
     action_result =

@@ -123,6 +123,22 @@ defmodule AshIntrospection.Rpc.PolicyForbiddenWriteTest do
     end
   end
 
+  describe "an rpc action with no identity" do
+    test "a zero-row destroy returns not_found while another owner's row exists", %{note: note} do
+      request = %{write(:destroy, note.id, @stranger, %{}, identities: []) | identity: nil}
+      assert [%{type: "not_found"}] = errors!(execute(request))
+    end
+
+    test "a zero-row update returns not_found while another owner's row exists", %{note: note} do
+      request = %{
+        write(:update, note.id, @stranger, %{title: "x"}, identities: [])
+        | identity: nil
+      }
+
+      assert [%{type: "not_found"}] = errors!(execute(request))
+    end
+  end
+
   describe "with policy breakdowns shown" do
     setup do
       previous = Application.get_env(:ash_introspection, :policies)
@@ -185,7 +201,7 @@ defmodule AshIntrospection.Rpc.PolicyForbiddenWriteTest do
       domain: Domain,
       resource: Note,
       action: Ash.Resource.Info.action(Note, action),
-      rpc_action: Map.new([identities: [:_primary_key]] ++ rpc_opts),
+      rpc_action: Map.new(Keyword.merge([identities: [:_primary_key]], rpc_opts)),
       input: input,
       context: %{},
       actor: actor,
