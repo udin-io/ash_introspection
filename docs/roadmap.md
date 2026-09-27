@@ -25,6 +25,18 @@ which come first. Numbers in parentheses are GitHub issues on
   action never declared is dropped. An action with no return type refuses a
   non-empty `fields` with `invalid_field_selection` and answers `data: {}`
   to any template a consumer builds itself. PR #101.
+- **#76 — entrypoint names, slice 2 of #100.** `Manifest.Decorator`'s
+  `:entrypoint_name` callback accepts a 3-arity form that also receives the
+  entrypoint's `config`, so two entrypoints on one resource and action each
+  get their own client name. Any other arity raises at compile time. PR #103,
+  `3429006`.
+- **#25 — composite calculations and aggregates, slice 3 of #100.** Selecting
+  fields of a calculation that returns an embedded resource, a `:struct` of a
+  resource, an array of either, or a union returns those fields; the request
+  used to fail with `InvalidLoad`. A `first` or `list` aggregate over an
+  embedded resource or a union takes a nested selection, attributes only.
+  Breaking: asked flat, it gets `requires_field_selection`. PR #104,
+  `2e0e18e`.
 
 ### 0.6.0 — 2026-09-23
 
@@ -492,39 +504,29 @@ Nothing is in progress right now.
 
 ## Next
 
-Ordered by #100's slice sequence, then by what is left over. Slice 1 of #100
-(#89 and #85) already shipped, above.
+Ordered by #100's slice sequence, then by what is left over. Slices 1 to 3
+of #100 (#89 and #85, #76, #25) already shipped, above.
 
-1. **#76 — slice 2 of #100.** `entrypoint_client_name/2` cannot tell two
-   entrypoints on one resource and action apart, so a consumer cannot pass
-   `:entrypoint_name` for `rpc_action :list_todos, :read` beside
-   `rpc_action :get_todo, :read`. Touches `Manifest.Decorator` only.
-2. **#25 — slice 3 of #100.** A calculation returning a resource and one
-   returning a typed map share one load clause, so one of them is always
-   loaded wrong; a `first` aggregate over an embedded resource or a union
-   cannot be field-selected at all. Touches
-   `FieldSelector.process_nested_resource_field/6`, `ResultProcessor` and
-   `TypeSystem.ResourceFields`.
-3. **#24 — slice 4 of #100.** A relationship cannot be filtered, sorted or
+1. **#24 — slice 4 of #100.** A relationship cannot be filtered, sorted or
    paginated inside a field selection, and an unusable top-level `filter`,
    `sort` or `page` is dropped in silence instead of refused. Breaking: top-
    level params error instead of nil-ing, and it ships in a minor release.
    Touches `Atomizer`, `FieldSelector`, `Pipeline` and `ErrorBuilder`, and
    adds an eighth `check_load_allowed!/3` site on top of the seven #25 leaves.
-4. **#18 — slice 5 of #100, the RPC test floor.** `Atomizer` is 20% covered,
+2. **#18 — slice 5 of #100, the RPC test floor.** `Atomizer` is 20% covered,
    `ErrorBuilder` 30% and `ValueFormatter` 45%, with no coverage floor and no
    test resource carrying a policy. `test/ash_introspection/rpc/` already
-   holds 29 test files and 523 tests; what is left is the floor and a policy
-   fixture. Last, because the floor is set on the number the other slices
-   leave.
-5. **#99 — the upgrade task's notice never fires during the upgrade that
+   holds 33 test files and 297 tests (measured at `2e0e18e`); what is left
+   is the floor and a policy fixture. Last, because the floor is set on the
+   number the other slices leave.
+3. **#99 — the upgrade task's notice never fires during the upgrade that
    needs it.** Igniter runs the installed copy of
    `Mix.Tasks.AshIntrospection.Upgrade`, whose `upgrades` map does not yet
    carry the new version's key — that key ships inside the new tarball. Found
    moving `ash_kotlin_multiplatform` from 0.5.3 to 0.6.0. Whether this is ours
    to fix depends on whether Igniter intends the behavior; three options are
    open, none decided.
-6. **#83 — stage 5b, manifest-shaped return values.** Replace the Ash structs
+4. **#83 — stage 5b, manifest-shaped return values.** Replace the Ash structs
    `ResourceInfo` and `Manifest.Custom` return with manifest-shaped values
    (`%Ash.Info.Manifest.Field{}` / `%Ash.Info.Manifest.Action{}`), as upstream
    `ash_typescript` does. 12 `ResourceInfo` readers and their 12 `Custom`
