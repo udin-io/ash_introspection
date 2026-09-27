@@ -125,9 +125,13 @@ defimpl AshIntrospection.Rpc.Error, for: Ash.Error.Forbidden.Policy do
   #
   # Mirrors ash_graphql's separate `show_policy_descriptions?` setting, and
   # ports upstream ash_typescript ef29ceb.
+  #
+  # An error with no `policies` has no breakdown to show. `Rpc.Pipeline` builds
+  # one after a zero-row write finds the row hidden (#107), and Ash's report
+  # renders it as "No policies defined. unknown actor", which is false.
   def to_error(error) do
     message =
-      if show_policy_breakdowns?() do
+      if show_policy_breakdowns?() and error.policies != [] do
         Ash.Error.Forbidden.Policy.report(error, help_text?: false)
       else
         "forbidden"
@@ -147,6 +151,21 @@ defimpl AshIntrospection.Rpc.Error, for: Ash.Error.Forbidden.Policy do
     :ash_introspection
     |> Application.get_env(:policies, [])
     |> Keyword.get(:show_policy_breakdowns?, false)
+  end
+end
+
+# The error class itself reaches here only when it carries no inner error;
+# `Errors.unwrap_errors/1` renders each inner error on its own otherwise.
+defimpl AshIntrospection.Rpc.Error, for: Ash.Error.Forbidden do
+  def to_error(error) do
+    %{
+      message: "forbidden",
+      short_message: "Forbidden",
+      vars: %{},
+      type: "forbidden",
+      fields: [],
+      path: error.path || []
+    }
   end
 end
 

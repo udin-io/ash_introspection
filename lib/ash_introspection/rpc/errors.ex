@@ -71,6 +71,12 @@ defmodule AshIntrospection.Rpc.Errors do
   Unwraps nested error structures from Ash error classes.
   """
   @spec unwrap_errors(term()) :: list(term())
+  # An error class with no inner error is kept whole, so the client gets one
+  # error instead of `success: false` with an empty list (#107).
+  # `Ash.Authorizer.exception/3` builds an empty `Ash.Error.Forbidden` for any
+  # authorizer without its own `exception/2`.
+  def unwrap_errors(%{__exception__: true, errors: []} = error_class), do: [error_class]
+
   def unwrap_errors(%{errors: errors}) when is_list(errors) do
     Enum.flat_map(errors, &unwrap_errors/1)
   end

@@ -5,18 +5,10 @@
 defmodule AshIntrospection.Rpc.PolicyForbiddenDestroyTest do
   @moduledoc """
   Pins the wire shape a client gets back when a real `Ash.Policy.Authorizer`
-  denial reaches it through `Pipeline.execute_ash_action/2`.
-
-  Every other RPC test resource carries no policy, so this path was exercised
-  only by hand-building an `Ash.Error.Forbidden.Policy` struct
-  (`error_detail_leak_test.exs`), never by a genuine policy decision. A
-  destroy carries the assertion rather than a read, because a read action
-  filters unauthorized rows out (`authorize_with: :filter`) instead of
-  returning `Forbidden`. `AshIntrospection.Test.Policy.Memo` reads are open to
-  any actor and destroy is owner-only — see its `@moduledoc` and
-  `AshIntrospection.Test.Policy.OwnerCheck`'s for why the reverse (an
-  owner-scoped read, or a plain `expr/1` check on destroy) cannot produce a
-  genuine `Forbidden` through this pipeline's actual bulk-destroy options.
+  denial on a readable row reaches it through `Pipeline.execute_ash_action/2`.
+  `AshIntrospection.Test.Policy.Memo` reads are open and destroy is
+  owner-only, so Ash itself returns the `Forbidden.Policy`. A row the read
+  policy hides is `policy_forbidden_write_test.exs`'s case.
   """
   use ExUnit.Case, async: false
 

@@ -185,6 +185,13 @@ defmodule Mix.Tasks.AshIntrospection.UpgradeTest do
       |> assert_has_notice(&(&1 =~ "requires_field_selection"))
     end
 
+    test "names the forbidden and not_found answers to a zero-row update or destroy" do
+      "Pipeline.execute_ash_action(request, config)"
+      |> upgrade(from: "0.6.0", to: "0.7.0")
+      |> assert_unchanged("lib/my_app/rpc.ex")
+      |> assert_has_notice(&(&1 =~ "forbidden" and &1 =~ "not_found" and &1 =~ "destroy"))
+    end
+
     test "does not fire when 0.7.0 falls outside the range" do
       igniter = upgrade("error.code", from: "0.5.0", to: "0.6.0")
 

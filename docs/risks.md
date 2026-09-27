@@ -275,6 +275,32 @@ the right answer here is a `decorated?/2` assertion in the consumer's own test
 suite rather than a warning from this library, which cannot tell a skipped
 module from one nobody decorates.
 
+### T7 — `forbidden` on a write confirms the record exists
+
+**The risk.** Since #107 an update or destroy of a record the actor's
+policies hide returns `forbidden`, and one of a record that does not exist
+returns `not_found`. A client that sends ids it may not read learns which of
+them exist. Reads still hide the difference: a hidden record reads as absent.
+
+**Why it bites.** A resource whose key is guessable (a sequential integer, a
+slug, an email) lets a caller enumerate records it may not see, one write
+request per guess. The write itself never lands.
+
+A second limit: on a data layer without `:expr_error` (Ash's `:filter` bulk
+strategy), a write whose own change filter or precondition skips a row the
+actor may write also answers `forbidden`. There a write-policy denial skips
+the row the same way, so the pipeline cannot tell the two apart. On
+`:expr_error` data layers (Postgres, ETS) it answers `not_found`.
+
+**What we watch.** `policy_forbidden_write_test.exs` pins both answers and
+the `:filter` limit. The owner accepted the trade on 2026-09-27 for update and
+destroy, where a UUID key makes guessing impractical. An RPC action with no
+identity answers `not_found` without the check, so it reveals nothing.
+
+**What we would do.** If a consumer exposes a write on a guessable key, give
+the RPC action a `read_action` that scopes the lookup, or return `not_found`
+for both cases behind a per-action option.
+
 ## Operational
 
 ### O1 — Security drift in the dependency floor

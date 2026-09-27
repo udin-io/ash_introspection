@@ -520,7 +520,9 @@ merged commit on `main`.
 
 ## In progress
 
-Nothing is in progress right now.
+- **#107 — a forbidden update or destroy returns `forbidden`, a missing one
+  `not_found`.** Last slice of #100 before 0.7.0, breaking, ships beside #24.
+  PR #114.
 
 ## Next
 

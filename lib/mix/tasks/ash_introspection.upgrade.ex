@@ -83,12 +83,12 @@ if Code.ensure_loaded?(Igniter) do
     # with no replacement: a manifest carries only what was declared, so it
     # cannot say what was not.
     #
-    # ## 0.7.0 — refused query parameters and aggregate field lists
+    # ## 0.7.0 — refused query parameters, aggregate field lists, zero-row writes
     #
-    # A notice again. Both breaks are decided by what a client sends at
+    # A notice again. Each break is decided by what a client sends at
     # runtime: a top-level `filter`, `sort` or `page` on an action that cannot
-    # use it (#24), and a flat request for a composite `first` or `list`
-    # aggregate (#25). No consumer call site changes, and the requests that
+    # use it (#24), a flat request for a composite `first` or `list`
+    # aggregate (#25), and an update or destroy that changes no row (#107). No consumer call site changes, and the requests that
     # break live in generated client code, which is regenerated, not rewritten.
     @moduledoc false
 
@@ -241,6 +241,17 @@ if Code.ensure_loaded?(Igniter) do
         Name the fields: `firstTag: ["displayName"]`.
     """
 
+    @zero_row_write_notice """
+    ash_introspection 0.7.0 says why an update or destroy changed no row.
+
+      * A record the actor's policies hide returns `forbidden`. A destroy used
+        to succeed with every field `null`; an update returned `not_found`.
+      * A destroy of a record that does not exist, including an identity that
+        is not a valid key, returns `not_found`. It used to succeed.
+      * Reads are unchanged: a hidden record still reads as absent. A
+        `forbidden` answer confirms the record exists.
+    """
+
     @impl Igniter.Mix.Task
     def info(_argv, _composing_task) do
       %Igniter.Mix.Task.Info{
@@ -303,7 +314,9 @@ if Code.ensure_loaded?(Igniter) do
     # Touches no file. See the 0.7.0 section of this module's comment.
     @doc false
     def notify_0_7_0_breaks(igniter, _opts) do
-      Igniter.add_notice(igniter, @query_params_notice)
+      igniter
+      |> Igniter.add_notice(@query_params_notice)
+      |> Igniter.add_notice(@zero_row_write_notice)
     end
 
     # `Igniter.update_all_elixir_files/2` leans on `Igniter.include_glob/2` to
