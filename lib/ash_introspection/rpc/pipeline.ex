@@ -526,16 +526,19 @@ defmodule AshIntrospection.Rpc.Pipeline do
       Map.get(request.rpc_action, :read_action) ||
         Ash.Resource.Info.primary_action!(request.resource, :read).name
 
-    exists? =
-      query
-      |> Ash.Query.for_read(read_action, %{}, actor: opts[:actor], authorize?: false)
-      |> Ash.exists?(authorize?: false)
+    query
+    |> Ash.Query.for_read(read_action, %{}, actor: opts[:actor], authorize?: false)
+    |> Ash.exists(authorize?: false, domain: request.domain)
+    |> case do
+      {:ok, true} ->
+        {:error,
+         Ash.Error.Forbidden.Policy.exception(resource: request.resource, action: request.action)}
 
-    if exists? do
-      {:error,
-       Ash.Error.Forbidden.Policy.exception(resource: request.resource, action: request.action)}
-    else
-      {:error, Ash.Error.Query.NotFound.exception(resource: request.resource)}
+      {:ok, false} ->
+        {:error, Ash.Error.Query.NotFound.exception(resource: request.resource)}
+
+      {:error, error} ->
+        {:error, error}
     end
   end
 
