@@ -264,6 +264,61 @@ defmodule AshIntrospection.FieldFormatter do
   end
 
   @doc """
+  Formats a sort string by converting field names from client format to internal format.
+
+  Handles Ash.Query.sort_input format:
+  - "name" or "+name" (ascending)
+  - "++name" (ascending with nils first)
+  - "-name" (descending)
+  - "--name" (descending with nils last)
+  - "-name,++title" (multiple fields with different modifiers)
+
+  Preserves sort modifiers while converting field names using the input formatter.
+
+  ## Examples
+
+      iex> AshIntrospection.FieldFormatter.format_sort_string("--startDate,++insertedAt", :camel_case)
+      "--start_date,++inserted_at"
+
+      iex> AshIntrospection.FieldFormatter.format_sort_string("-userName", :camel_case)
+      "-user_name"
+
+      iex> AshIntrospection.FieldFormatter.format_sort_string(nil, :camel_case)
+      nil
+  """
+  def format_sort_string(nil, _formatter), do: nil
+
+  def format_sort_string(sort_string, formatter) when is_binary(sort_string) do
+    sort_string
+    |> String.split(",")
+    |> Enum.map_join(",", &format_single_sort_field(&1, formatter))
+  end
+
+  defp format_single_sort_field(field_with_modifier, formatter) do
+    case field_with_modifier do
+      "++" <> field_name ->
+        formatted_field = parse_input_field(field_name, formatter)
+        "++#{formatted_field}"
+
+      "--" <> field_name ->
+        formatted_field = parse_input_field(field_name, formatter)
+        "--#{formatted_field}"
+
+      "+" <> field_name ->
+        formatted_field = parse_input_field(field_name, formatter)
+        "+#{formatted_field}"
+
+      "-" <> field_name ->
+        formatted_field = parse_input_field(field_name, formatter)
+        "-#{formatted_field}"
+
+      field_name ->
+        formatted_field = parse_input_field(field_name, formatter)
+        "#{formatted_field}"
+    end
+  end
+
+  @doc """
   Resolves a field name to the atom that already names that field.
 
   Atoms pass through unchanged. A string is parsed into internal form by the
