@@ -87,6 +87,15 @@ defmodule AshIntrospection.Rpc.PolicyForbiddenWriteTest do
       assert [%{type: "not_found"}] =
                errors!(execute(write(:update, @missing_id, @owner, %{title: "x"})))
     end
+
+    test "a stranger's destroy returns not_found while another owner's row exists" do
+      assert [%{type: "not_found"}] = errors!(execute(write(:destroy, @missing_id, @stranger)))
+    end
+
+    test "a stranger's update returns not_found while another owner's row exists" do
+      assert [%{type: "not_found"}] =
+               errors!(execute(write(:update, @missing_id, @stranger, %{title: "x"})))
+    end
   end
 
   describe "a record the rpc action's read_action hides" do
@@ -96,6 +105,16 @@ defmodule AshIntrospection.Rpc.PolicyForbiddenWriteTest do
 
     test "destroy returns not_found, not forbidden", %{archived: archived} do
       request = write(:destroy, archived.id, @owner, %{}, read_action: :active)
+      assert [%{type: "not_found"}] = errors!(execute(request))
+    end
+
+    test "destroy by a stranger returns not_found", %{archived: archived} do
+      request = write(:destroy, archived.id, @stranger, %{}, read_action: :active)
+      assert [%{type: "not_found"}] = errors!(execute(request))
+    end
+
+    test "update by a stranger returns not_found", %{archived: archived} do
+      request = write(:update, archived.id, @stranger, %{title: "x"}, read_action: :active)
       assert [%{type: "not_found"}] = errors!(execute(request))
     end
 
@@ -109,19 +128,32 @@ defmodule AshIntrospection.Rpc.PolicyForbiddenWriteTest do
     setup do
       tenant_note =
         TenantNote
-        |> Ash.Changeset.for_create(:create, %{title: "a's", org_id: "org-a"}, tenant: "org-a")
+        |> Ash.Changeset.for_create(
+          :create,
+          %{title: "a's", org_id: "org-a", owner_id: @owner.id},
+          tenant: "org-a"
+        )
         |> Ash.create!()
 
       %{tenant_note: tenant_note}
     end
 
-    test "destroy returns not_found", %{tenant_note: tenant_note} do
-      request = %{tenant_write(:destroy, tenant_note.id) | tenant: "org-b"}
+    test "destroy by its owner returns not_found", %{tenant_note: tenant_note} do
+      request = %{tenant_write(:destroy, tenant_note.id, @owner) | tenant: "org-b"}
       assert [%{type: "not_found"}] = errors!(execute(request))
     end
 
-    test "update returns not_found", %{tenant_note: tenant_note} do
-      request = %{tenant_write(:update, tenant_note.id, %{title: "b's"}) | tenant: "org-b"}
+    test "destroy by a stranger returns not_found", %{tenant_note: tenant_note} do
+      request = %{tenant_write(:destroy, tenant_note.id, @stranger) | tenant: "org-b"}
+      assert [%{type: "not_found"}] = errors!(execute(request))
+    end
+
+    test "update by a stranger returns not_found", %{tenant_note: tenant_note} do
+      request = %{
+        tenant_write(:update, tenant_note.id, @stranger, %{title: "b's"})
+        | tenant: "org-b"
+      }
+
       assert [%{type: "not_found"}] = errors!(execute(request))
     end
   end
@@ -273,7 +305,7 @@ defmodule AshIntrospection.Rpc.PolicyForbiddenWriteTest do
     })
   end
 
-  defp tenant_write(action, id, input \\ %{}) do
+  defp tenant_write(action, id, actor, input \\ %{}) do
     Request.new(%{
       domain: Domain,
       resource: TenantNote,
@@ -281,7 +313,7 @@ defmodule AshIntrospection.Rpc.PolicyForbiddenWriteTest do
       rpc_action: %{identities: [:_primary_key]},
       input: input,
       context: %{},
-      actor: nil,
+      actor: actor,
       select: [:id, :title],
       load: [],
       extraction_template: [:id, :title],
