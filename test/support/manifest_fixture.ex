@@ -109,7 +109,9 @@ defmodule AshIntrospection.Test.ManifestFixture do
     {Test.Shelf, :all_content},
     {Test.Post, :get_stats},
     {Test.Post, :get_task_stats},
-    {Test.Post, :get_bounds}
+    {Test.Post, :get_bounds},
+    {Test.LoadThrough.Owner, :read},
+    {Test.LoadThrough.Item, :read}
   ]
 
   @doc "The `{resource, action}` pairs the fixture manifest is generated from."
