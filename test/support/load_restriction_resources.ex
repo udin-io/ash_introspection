@@ -57,6 +57,10 @@ defmodule AshIntrospection.Test.LoadRestrictions.Author do
     domain: AshIntrospection.Test.LoadRestrictions.Domain,
     data_layer: Ash.DataLayer.Ets
 
+  ets do
+    private? true
+  end
+
   attributes do
     uuid_primary_key :id
     attribute :name, :string, public?: true
@@ -80,6 +84,10 @@ defmodule AshIntrospection.Test.LoadRestrictions.Comment do
   use Ash.Resource,
     domain: AshIntrospection.Test.LoadRestrictions.Domain,
     data_layer: Ash.DataLayer.Ets
+
+  ets do
+    private? true
+  end
 
   attributes do
     uuid_primary_key :id
@@ -113,6 +121,10 @@ defmodule AshIntrospection.Test.LoadRestrictions.Article do
   use Ash.Resource,
     domain: AshIntrospection.Test.LoadRestrictions.Domain,
     data_layer: Ash.DataLayer.Ets
+
+  ets do
+    private? true
+  end
 
   attributes do
     uuid_primary_key :id

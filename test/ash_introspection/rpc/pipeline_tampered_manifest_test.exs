@@ -35,6 +35,7 @@ defmodule AshIntrospection.Rpc.PipelineTamperedManifestTest do
   alias AshIntrospection.Test.DossierDomain
   alias AshIntrospection.Test.EmbeddedUnscoped
   alias AshIntrospection.Test.Ledger
+  alias AshIntrospection.Test.RelPagination.Library
   alias AshIntrospection.Test.ManifestFixture
   alias AshIntrospection.Test.ManifestTamper
   alias AshIntrospection.Test.RpcDomain
@@ -171,6 +172,21 @@ defmodule AshIntrospection.Rpc.PipelineTamperedManifestTest do
 
       assert {:error, {:unknown_field, :email, Account, []}} =
                FieldSelector.process(Account, :read, [:id, :email], tampered)
+    end
+
+    test "a relationship the tampered manifest seals refuses a nested filter and sort" do
+      tampered = prepared(ManifestTamper.seal_relationship(decorated(), Library, :books))
+      filter = [%{"books" => %{"fields" => ["title"], "filter" => %{"title" => %{"eq" => "b"}}}}]
+      sort = [%{"books" => %{"fields" => ["title"], "sort" => "title"}}]
+
+      assert {:ok, _} = FieldSelector.process(Library, :read, filter, decorated_config())
+      assert {:ok, _} = FieldSelector.process(Library, :read, sort, decorated_config())
+
+      assert {:error, {:filter_not_supported, :books, :unsupported, []}} =
+               FieldSelector.process(Library, :read, filter, tampered)
+
+      assert {:error, {:sort_not_supported, :books, :unsupported, []}} =
+               FieldSelector.process(Library, :read, sort, tampered)
     end
   end
 

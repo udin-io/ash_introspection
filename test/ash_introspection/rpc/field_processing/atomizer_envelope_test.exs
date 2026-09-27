@@ -45,6 +45,19 @@ defmodule AshIntrospection.Rpc.FieldProcessing.AtomizerEnvelopeTest do
     assert atomized["sort"] == "-title"
   end
 
+  test "a filter value's keys come back unchanged" do
+    # `name` is a field of the parent, so treating the filter as a field
+    # selection would turn it into `:name`.
+    filter = %{"name" => %{"eq" => "b"}, "or" => [%{"title" => %{"eq" => "c"}}]}
+
+    assert [%{books: %{"filter" => ^filter}}] =
+             Atomizer.atomize_requested_fields(
+               [%{"books" => %{"fields" => ["title"], "filter" => filter}}],
+               Library,
+               @config
+             )
+  end
+
   test "a page value comes back unchanged" do
     assert [%{books: %{"page" => %{"limit" => 1, "offset" => 2}}}] =
              Atomizer.atomize_requested_fields(

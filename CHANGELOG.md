@@ -39,6 +39,20 @@ Name the fields: `firstTag: ["displayName"]`
 
 ### Added
 
+- A relationship in a field selection accepts `filter`, `sort`, `page`, or
+  bare `limit` and `offset`, at any depth:
+  `books: {fields: ["title"], filter: {title: {eq: "b"}}, sort: "-title"}`.
+  `filter` and `sort` resolve field names on the related resource. A
+  relationship marked `filterable?: false` or `sortable?: false` refuses them
+  ([#24](https://github.com/udin-io/ash_introspection/issues/24)).
+- `books: {fields: [...]}` is another spelling of `books: [...]`, on a to-one
+  relationship too
+  ([#24](https://github.com/udin-io/ash_introspection/issues/24)).
+- `FieldSelector.process/4` takes `:enable_filter?` and `:enable_sort?`, and
+  `ResourceInfo` gains `relationship_filterable?/3` and
+  `relationship_sortable?/3`
+  ([#24](https://github.com/udin-io/ash_introspection/issues/24)).
+
 - A client can select fields of a `first` or `list` aggregate over an
   embedded resource or a union: `firstTag: ["displayName"]` returns
   `{"firstTag": {"displayName": "Red"}}`. Attributes only; Ash cannot load a

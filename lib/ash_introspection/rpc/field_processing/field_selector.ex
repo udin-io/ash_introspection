@@ -48,6 +48,8 @@ defmodule AshIntrospection.Rpc.FieldProcessing.FieldSelector do
   alias AshIntrospection.TypeSystem.Introspection
   alias AshIntrospection.TypeSystem.ResourceFields
 
+  @query_opt_keys [:filter, :sort, :page, :limit, :offset]
+
   @type select_result :: {select :: [atom()], load :: [term()], template :: [term()]}
 
   @type config :: %{
@@ -57,6 +59,8 @@ defmodule AshIntrospection.Rpc.FieldProcessing.FieldSelector do
           optional(:is_interop_resource?) => (module() -> boolean()),
           optional(:get_original_field_name) => (module(), term() -> atom() | nil),
           optional(:load_restrictions) => term(),
+          optional(:enable_filter?) => boolean(),
+          optional(:enable_sort?) => boolean(),
           optional(:manifest) => Ash.Info.Manifest.t() | ResourceInfo.Source.t() | nil,
           optional(:manifest_namespace) => atom() | nil
         }
@@ -217,7 +221,10 @@ defmodule AshIntrospection.Rpc.FieldProcessing.FieldSelector do
           process_nested_resource_field(resource, field_name, nested_fields, path, acc, config)
 
         {:with_args, calc_name, args, fields} ->
-          process_calculation_with_args(resource, calc_name, args, fields, path, acc, config)
+          process_resource_envelope(resource, calc_name, args, fields, path, acc, config)
+
+        {:with_query_opts, field_name, opts, fields} ->
+          process_relationship_query(resource, field_name, opts, fields, path, acc, config)
 
         {:multi_nested, entries} ->
           Enum.reduce(entries, acc, fn {field_name, nested_fields}, inner_acc ->
@@ -233,9 +240,20 @@ defmodule AshIntrospection.Rpc.FieldProcessing.FieldSelector do
                 )
 
               is_map(nested_fields) ->
-                case get_args_and_fields(nested_fields) do
-                  {:ok, args, fields} ->
-                    process_calculation_with_args(
+                case classify_nested_map(nested_fields) do
+                  {:with_query_opts, opts, fields} ->
+                    process_relationship_query(
+                      resource,
+                      field_name,
+                      opts,
+                      fields,
+                      path,
+                      inner_acc,
+                      config
+                    )
+
+                  {:with_args, args, fields} ->
+                    process_resource_envelope(
                       resource,
                       field_name,
                       args,
@@ -473,6 +491,252 @@ defmodule AshIntrospection.Rpc.FieldProcessing.FieldSelector do
 
     {select, load ++ [load_spec], template ++ [template_item]}
   end
+
+  # `{fields: [...]}` with no `args` on a relationship is another spelling of
+  # the plain nested list, for either cardinality. Anything else in this shape
+  # is a calculation's `{args, fields}` envelope.
+  defp process_resource_envelope(resource, field_name, nil, fields, path, acc, config) do
+    internal_name = resolve_resource_field_name(resource, field_name, config)
+
+    if relationship_field?(resource, internal_name, config) do
+      Validation.validate_non_empty(fields, internal_name, path, :relationship)
+      process_nested_resource_field(resource, field_name, fields, path, acc, config)
+    else
+      process_calculation_with_args(resource, field_name, nil, fields, path, acc, config)
+    end
+  end
+
+  defp process_resource_envelope(resource, field_name, args, fields, path, acc, config),
+    do: process_calculation_with_args(resource, field_name, args, fields, path, acc, config)
+
+  defp relationship_field?(resource, internal_name, config) do
+    is_atom(internal_name) and not Map.get(config, :attributes_only, false) and
+      is_nil(ResourceInfo.public_attribute(resource, internal_name, config)) and
+      not is_nil(ResourceInfo.public_relationship(resource, internal_name, config))
+  end
+
+  # A relationship loaded through an `%Ash.Query{}`: `filter`, `sort`, `page`
+  # or bare `limit`/`offset` on a `:many` relationship. The query carries no
+  # action; Ash reads through the relationship's own read action and applies
+  # the parent's actor when it runs the load.
+  defp process_relationship_query(
+         resource,
+         field_name,
+         opts,
+         fields,
+         path,
+         {select, load, template},
+         config
+       ) do
+    internal_name = resolve_resource_field_name(resource, field_name, config)
+    rel = validate_query_opts!(resource, internal_name, opts, fields, path, config)
+    dest = rel.destination
+    new_path = path ++ [internal_name]
+
+    {nested_select, nested_load, nested_template} =
+      select_fields(dest, [], fields, new_path, config)
+
+    pagination = ResourceInfo.relationship_pagination(resource, internal_name, config)
+
+    query =
+      dest
+      |> Ash.Query.new()
+      |> maybe_query(opts, :filter, fn q, filter ->
+        Ash.Query.filter_input(q, filter_input(filter, dest, config))
+      end)
+      |> maybe_query(opts, :sort, fn q, sort ->
+        Ash.Query.sort_input(q, sort_input(sort, config))
+      end)
+      |> maybe_query(opts, :page, fn q, page ->
+        Ash.Query.page(q, page_opts(page, internal_name, path, pagination, config))
+      end)
+      |> maybe_query(opts, :limit, &Ash.Query.limit/2)
+      |> maybe_query(opts, :offset, &Ash.Query.offset/2)
+      |> Ash.Query.select(nested_select)
+      |> Ash.Query.load(nested_load)
+
+    check_load_allowed!(path, internal_name, config)
+
+    {select, load ++ [{internal_name, query}], template ++ [{internal_name, nested_template}]}
+  end
+
+  defp maybe_query(query, opts, key, fun) do
+    case Map.fetch(opts, key) do
+      {:ok, nil} -> query
+      {:ok, value} -> fun.(query, value)
+      :error -> query
+    end
+  end
+
+  @offset_page_keys [:limit, :offset, :count]
+  @keyset_page_keys [:limit, :after, :before, :count]
+
+  # Upstream `ash_typescript`'s order, so the two libraries refuse a request
+  # with the same error: relationship, cardinality, destination, args, page
+  # capability, filter, sort, page against bare limit/offset, then fields.
+  # Bare limit/offset on a read that requires pagination is ours: Ash refuses
+  # it with a `LimitRequired` that does not say to send `page`.
+  defp validate_query_opts!(resource, internal_name, opts, fields, path, config) do
+    rel =
+      if is_atom(internal_name) and not Map.get(config, :attributes_only, false),
+        do: ResourceInfo.public_relationship(resource, internal_name, config)
+
+    rel =
+      case rel do
+        nil ->
+          {_type, _constraints, category} =
+            get_resource_field_info(resource, internal_name, path, config)
+
+          throw({:query_opts_on_non_relationship, internal_name, category, path})
+
+        %{cardinality: :one} ->
+          throw({:query_opts_on_to_one, internal_name, path})
+
+        rel ->
+          rel
+      end
+
+    unless is_interop_resource?(rel.destination, config) do
+      throw({:unknown_field, internal_name, resource, path})
+    end
+
+    if not is_nil(Map.get(opts, :args)) do
+      throw({:args_and_query_opts_combined, internal_name, path})
+    end
+
+    if present?(opts, :page) and
+         ResourceInfo.relationship_pagination(resource, internal_name, config) == :none do
+      throw({:nested_pagination_not_supported, internal_name, path})
+    end
+
+    if present?(opts, :filter) do
+      cond do
+        not Map.get(config, :enable_filter?, true) ->
+          throw({:filter_not_supported, internal_name, :disabled, path})
+
+        not ResourceInfo.relationship_filterable?(resource, internal_name, config) ->
+          throw({:filter_not_supported, internal_name, :unsupported, path})
+
+        true ->
+          :ok
+      end
+    end
+
+    if present?(opts, :sort) do
+      cond do
+        not Map.get(config, :enable_sort?, true) ->
+          throw({:sort_not_supported, internal_name, :disabled, path})
+
+        not ResourceInfo.relationship_sortable?(resource, internal_name, config) ->
+          throw({:sort_not_supported, internal_name, :unsupported, path})
+
+        true ->
+          :ok
+      end
+    end
+
+    bare_slice? = present?(opts, :limit) or present?(opts, :offset)
+
+    if present?(opts, :page) and bare_slice? do
+      throw({:page_and_limit_offset_combined, internal_name, path})
+    end
+
+    if bare_slice? and relationship_requires_page?(resource, internal_name, rel, config) do
+      throw({:limit_requires_page, internal_name, path})
+    end
+
+    if is_nil(fields) or fields == [] do
+      throw({:requires_field_selection, :relationship, internal_name, path})
+    end
+
+    rel
+  end
+
+  defp present?(opts, key), do: not is_nil(Map.get(opts, key))
+
+  defp relationship_requires_page?(resource, internal_name, rel, config) do
+    with action_name when not is_nil(action_name) <-
+           ResourceInfo.relationship_read_action(resource, internal_name, config),
+         %{pagination: %{required?: true}} <-
+           ResourceInfo.action(rel.destination, action_name, config) do
+      true
+    else
+      _ -> false
+    end
+  end
+
+  # Filter keys resolve against the destination, and stay strings: Ash's
+  # `filter_input/2` takes string keys, and a string never grows the atom
+  # table. A key the destination does not declare reaches Ash unchanged and
+  # comes back as Ash's own "no such field" error.
+  defp filter_input(filter, dest, config) when is_map(filter) do
+    Map.new(filter, fn {key, value} ->
+      {filter_key(key, dest, config), filter_input(value, dest, config)}
+    end)
+  end
+
+  defp filter_input(list, dest, config) when is_list(list),
+    do: Enum.map(list, &filter_input(&1, dest, config))
+
+  defp filter_input(value, _dest, _config), do: value
+
+  defp filter_key(key, _dest, _config) when is_atom(key), do: Atom.to_string(key)
+
+  defp filter_key(key, dest, config) when is_binary(key) do
+    original =
+      if is_interop_resource?(dest, config), do: get_original_field_name(dest, key, config)
+
+    if is_atom(original) and not is_nil(original) do
+      Atom.to_string(original)
+    else
+      key |> resolve_field_name(config) |> to_string()
+    end
+  end
+
+  defp filter_key(key, _dest, _config), do: key
+
+  defp sort_input(sort, config) when is_binary(sort) do
+    FieldFormatter.format_sort_string(sort, Map.get(config, :input_field_formatter, :camel_case))
+  end
+
+  defp sort_input(sort, _config), do: sort
+
+  defp page_opts(page, internal_name, path, pagination, config) when is_map(page) do
+    allowed =
+      case pagination do
+        :offset -> @offset_page_keys
+        :keyset -> @keyset_page_keys
+        _ -> Enum.uniq(@offset_page_keys ++ @keyset_page_keys)
+      end
+
+    {valid, invalid} =
+      Enum.reduce(page, {[], []}, fn {key, value}, {valid, invalid} ->
+        case page_key(key, allowed, config) do
+          nil -> {valid, invalid ++ [key]}
+          atom -> {valid ++ [{atom, value}], invalid}
+        end
+      end)
+
+    if invalid != [] do
+      throw({:invalid_nested_page, internal_name, {:unknown_keys, invalid}, path})
+    end
+
+    valid
+  end
+
+  defp page_opts(_page, internal_name, path, _pagination, _config) do
+    throw({:invalid_nested_page, internal_name, :not_a_map, path})
+  end
+
+  defp page_key(key, allowed, _config) when is_atom(key),
+    do: if(key in allowed, do: key)
+
+  defp page_key(key, allowed, config) when is_binary(key) do
+    resolved = resolve_field_name(key, config)
+    if resolved in allowed, do: resolved
+  end
+
+  defp page_key(_key, _allowed, _config), do: nil
 
   defp get_resource_field_info(resource, field_name, path, config) do
     cond do
@@ -993,13 +1257,7 @@ defmodule AshIntrospection.Rpc.FieldProcessing.FieldSelector do
         {:simple, field_name}
 
       {field_name, %{} = nested} when is_map(nested) ->
-        case get_args_and_fields(nested) do
-          {:ok, args, fields} ->
-            {:with_args, field_name, args, fields}
-
-          :not_args_structure ->
-            {:nested, field_name, nested}
-        end
+        classify_field_request(field_name, nested)
 
       {field_name, nested_fields} when is_list(nested_fields) ->
         {:nested, field_name, nested_fields}
@@ -1009,13 +1267,7 @@ defmodule AshIntrospection.Rpc.FieldProcessing.FieldSelector do
 
         case nested_fields do
           %{} = nested when is_map(nested) ->
-            case get_args_and_fields(nested) do
-              {:ok, args, fields} ->
-                {:with_args, field_name, args, fields}
-
-              :not_args_structure ->
-                {:nested, field_name, nested}
-            end
+            classify_field_request(field_name, nested)
 
           nested_fields when is_list(nested_fields) ->
             {:nested, field_name, nested_fields}
@@ -1067,6 +1319,41 @@ defmodule AshIntrospection.Rpc.FieldProcessing.FieldSelector do
     do: atomize_field_name(value, resource, config)
 
   defp atomize_nested_value(value, _resource, _config), do: value
+
+  defp classify_field_request(field_name, nested) do
+    case classify_nested_map(nested) do
+      {:with_query_opts, opts, fields} -> {:with_query_opts, field_name, opts, fields}
+      {:with_args, args, fields} -> {:with_args, field_name, args, fields}
+      :not_args_structure -> {:nested, field_name, nested}
+    end
+  end
+
+  # A map holding any query option is a relationship query envelope, whatever
+  # else it holds; `args` rides along so validation can refuse it. Otherwise
+  # it is a calculation's `{args, fields}` envelope, or a plain nested map.
+  defp classify_nested_map(nested) do
+    opts =
+      Enum.reduce(@query_opt_keys, %{}, fn key, acc ->
+        case fetch_either_key(nested, key) do
+          {:ok, value} -> Map.put(acc, key, value)
+          :error -> acc
+        end
+      end)
+
+    case get_args_and_fields(nested) do
+      {:ok, args, fields} when opts != %{} ->
+        {:with_query_opts, Map.put(opts, :args, args), fields}
+
+      :not_args_structure when opts != %{} ->
+        {:with_query_opts, Map.put(opts, :args, nil), nil}
+
+      {:ok, args, fields} ->
+        {:with_args, args, fields}
+
+      :not_args_structure ->
+        :not_args_structure
+    end
+  end
 
   # A calculation envelope names `:args` and `:fields` under either key form:
   # a wire request carries strings, an internally built request carries atoms.

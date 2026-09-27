@@ -115,6 +115,9 @@ defmodule AshIntrospection.Test.RelPagination.Library do
   `keyset?` or `offset?`". So `:notes` reports `:mixed`, and the only `:many`
   relationship that reports `:none` is `:found_books`, whose read is
   `get? true` — a get action carries `pagination: false`.
+
+  `:sealed_books` is `filterable?: false, sortable?: false`, so a relationship
+  query envelope's `filter` or `sort` on it is refused.
   """
   use Ash.Resource,
     domain: AshIntrospection.Test.RelPagination.Domain,
@@ -142,6 +145,11 @@ defmodule AshIntrospection.Test.RelPagination.Library do
     has_many :found_books, AshIntrospection.Test.RelPagination.Book,
       public?: true,
       read_action: :find
+
+    has_many :sealed_books, AshIntrospection.Test.RelPagination.Book,
+      public?: true,
+      filterable?: false,
+      sortable?: false
   end
 
   actions do

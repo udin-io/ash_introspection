@@ -77,6 +77,34 @@ defmodule AshIntrospection.Test.ManifestTamper do
   end
 
   @doc """
+  Marks one manifest relationship `filterable?: false, sortable?: false`.
+
+  Edits the manifest's own `%Ash.Info.Manifest.Relationship{}`, which is where
+  `ResourceInfo.relationship_filterable?/3` and `relationship_sortable?/3`
+  read the flags; the decorated relationship record does not carry them.
+  """
+  @spec seal_relationship(Ash.Info.Manifest.t(), module(), atom()) :: Ash.Info.Manifest.t()
+  def seal_relationship(manifest, module, name) do
+    resources =
+      Enum.map(manifest.resources, fn
+        %{module: ^module} = resource ->
+          relationships =
+            Map.update!(
+              resource.relationships,
+              name,
+              &%{&1 | filterable?: false, sortable?: false}
+            )
+
+          %{resource | relationships: relationships}
+
+        other ->
+          other
+      end)
+
+    %{manifest | resources: resources}
+  end
+
+  @doc """
   Moves `module` from the manifest's `types` into its `resources`.
 
   An embedded resource is carried under `types` with
