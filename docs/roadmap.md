@@ -37,6 +37,18 @@ which come first. Numbers in parentheses are GitHub issues on
   embedded resource or a union takes a nested selection, attributes only.
   Breaking: asked flat, it gets `requires_field_selection`. PR #104,
   `2e0e18e`.
+- **#18 — the RPC test floor, slice 5 of #100.** CI's `mix test --cover` now
+  fails the build when weighted coverage across `AshIntrospection.Rpc.*`
+  drops below 67%. A new `Test.Policy.Memo` fixture carries a real
+  `Ash.Policy.Authorizer` policy — read/create/update open, destroy
+  owner-only via a `SimpleCheck` — so a policy denial reaching the client as
+  `Forbidden` is exercised for real for the first time, not only synthetic
+  construction. PR #106, `120a0679`.
+- **#108 — ash security bump.** `ash` 3.33.4 carried EEF-CVE-2026-93477: bulk
+  destroy and bulk update matched every key in a caller's parameter map
+  against an action's arguments with no `public?` check, so a private
+  argument could be set from untrusted input. Bumped to `>= 3.33.11 and <
+  4.0.0-0`. PR #109, `6acf1211`.
 
 ### 0.6.0 — 2026-09-23
 
@@ -505,7 +517,7 @@ Nothing is in progress right now.
 ## Next
 
 Ordered by #100's slice sequence, then by what is left over. Slices 1 to 3
-of #100 (#89 and #85, #76, #25) already shipped, above.
+and 5 of #100 (#89 and #85, #76, #25, #18) already shipped, above.
 
 1. **#24 — slice 4 of #100.** A relationship cannot be filtered, sorted or
    paginated inside a field selection, and an unusable top-level `filter`,
@@ -513,20 +525,14 @@ of #100 (#89 and #85, #76, #25) already shipped, above.
    level params error instead of nil-ing, and it ships in a minor release.
    Touches `Atomizer`, `FieldSelector`, `Pipeline` and `ErrorBuilder`, and
    adds an eighth `check_load_allowed!/3` site on top of the seven #25 leaves.
-2. **#18 — slice 5 of #100, the RPC test floor.** `Atomizer` is 20% covered,
-   `ErrorBuilder` 30% and `ValueFormatter` 45%, with no coverage floor and no
-   test resource carrying a policy. `test/ash_introspection/rpc/` already
-   holds 33 test files and 297 tests (measured at `2e0e18e`); what is left
-   is the floor and a policy fixture. Last, because the floor is set on the
-   number the other slices leave.
-3. **#99 — the upgrade task's notice never fires during the upgrade that
+2. **#99 — the upgrade task's notice never fires during the upgrade that
    needs it.** Igniter runs the installed copy of
    `Mix.Tasks.AshIntrospection.Upgrade`, whose `upgrades` map does not yet
    carry the new version's key — that key ships inside the new tarball. Found
    moving `ash_kotlin_multiplatform` from 0.5.3 to 0.6.0. Whether this is ours
    to fix depends on whether Igniter intends the behavior; three options are
    open, none decided.
-4. **#83 — stage 5b, manifest-shaped return values.** Replace the Ash structs
+3. **#83 — stage 5b, manifest-shaped return values.** Replace the Ash structs
    `ResourceInfo` and `Manifest.Custom` return with manifest-shaped values
    (`%Ash.Info.Manifest.Field{}` / `%Ash.Info.Manifest.Action{}`), as upstream
    `ash_typescript` does. 12 `ResourceInfo` readers and their 12 `Custom`
