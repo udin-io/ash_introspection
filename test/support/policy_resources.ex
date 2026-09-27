@@ -90,7 +90,8 @@ defmodule AshIntrospection.Test.Policy.Note do
   An owner-scoped record: an actor reads, updates and destroys only its own
   notes, through one `expr/1` policy. A read filters another owner's note out,
   so an update or destroy of it changes zero rows. `:active` hides archived
-  notes, for a write through `read_action`.
+  notes, for a write through `read_action`. `:rename_live` and `:purge_live`
+  skip archived notes with a change-level filter, which the read does not see.
   """
   use Ash.Resource,
     domain: AshIntrospection.Test.Policy.Domain,
@@ -123,6 +124,15 @@ defmodule AshIntrospection.Test.Policy.Note do
 
     read :active do
       filter(expr(archived == false))
+    end
+
+    update :rename_live do
+      accept([:title])
+      change(filter(expr(archived == false)))
+    end
+
+    destroy :purge_live do
+      change(filter(expr(archived == false)))
     end
   end
 end

@@ -118,6 +118,8 @@ defmodule AshIntrospection.Test.ManifestFixture do
     {Test.Policy.Note, :active},
     {Test.Policy.Note, :update},
     {Test.Policy.Note, :destroy},
+    {Test.Policy.Note, :rename_live},
+    {Test.Policy.Note, :purge_live},
     {Test.Policy.TenantNote, :update},
     {Test.Policy.TenantNote, :destroy}
   ]

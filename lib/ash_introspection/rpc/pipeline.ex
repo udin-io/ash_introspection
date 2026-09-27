@@ -441,7 +441,7 @@ defmodule AshIntrospection.Rpc.Pipeline do
           {:ok, record}
 
         %Ash.BulkResult{status: :success, records: []} ->
-          resolve_zero_rows(query_with_identity, request, opts)
+          resolve_zero_rows(query_with_identity, request, opts, config)
 
         %Ash.BulkResult{errors: errors} when errors != [] ->
           {:error, errors}
@@ -503,7 +503,7 @@ defmodule AshIntrospection.Rpc.Pipeline do
           {:ok, record}
 
         %Ash.BulkResult{status: :success, records: []} ->
-          resolve_zero_rows(query_with_identity, request, opts)
+          resolve_zero_rows(query_with_identity, request, opts, config)
 
         %Ash.BulkResult{errors: errors} when errors != [] ->
           {:error, errors}
@@ -523,28 +523,48 @@ defmodule AshIntrospection.Rpc.Pipeline do
   # `Ash.DataLayer.Ets` it raises for the forbidden row (ash 3.33.11); see
   # `docs/decisions.md`.
   #
+  # A row the actor can see was skipped by the write itself: a change-level
+  # filter or precondition the read does not carry. Under the `:error` bulk
+  # strategy a write-policy denial raises instead of skipping, so a second
+  # check as the actor tells the two apart and answers `not_found`. Under
+  # `:filter` both causes skip the row the same way, so it stays `forbidden`.
+  #
   # An RPC action with no identity names no record, so the check would only
   # tell the caller whether the table is empty. It answers `not_found`.
-  defp resolve_zero_rows(query, %Request{} = request, opts) do
+  defp resolve_zero_rows(query, %Request{} = request, opts, config) do
     if Map.get(request.rpc_action, :identities, [:_primary_key]) == [] do
       not_found(request)
     else
-      case hidden_row_exists(query, request, opts) do
-        {:ok, true} -> forbidden(request)
+      case row_exists(query, request, opts, false) do
+        {:ok, true} -> resolve_existing_row(query, request, opts, config)
         {:ok, false} -> not_found(request)
         {:error, error} -> {:error, error}
       end
     end
   end
 
-  defp hidden_row_exists(query, request, opts) do
+  defp resolve_existing_row(query, request, opts, config) do
+    case ResourceInfo.authorize_bulk_strategy(request.resource, config) do
+      :filter ->
+        forbidden(request)
+
+      :error ->
+        case row_exists(query, request, opts, true) do
+          {:ok, true} -> not_found(request)
+          {:ok, false} -> forbidden(request)
+          {:error, error} -> {:error, error}
+        end
+    end
+  end
+
+  defp row_exists(query, request, opts, authorize?) do
     read_action =
       Map.get(request.rpc_action, :read_action) ||
         Ash.Resource.Info.primary_action!(request.resource, :read).name
 
     query
-    |> Ash.Query.for_read(read_action, %{}, actor: opts[:actor], authorize?: false)
-    |> Ash.exists(authorize?: false, domain: request.domain)
+    |> Ash.Query.for_read(read_action, %{}, actor: opts[:actor], authorize?: authorize?)
+    |> Ash.exists(actor: opts[:actor], authorize?: authorize?, domain: request.domain)
   end
 
   defp forbidden(request),

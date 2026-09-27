@@ -19,8 +19,13 @@ code is deleted, not archived, because git keeps the history.
 rows, `Rpc.Pipeline.resolve_zero_rows/3` runs one `Ash.exists?/2` with
 `authorize?: false` on the write's own query: same identity filter, tenant and
 context, through the RPC action's `read_action` or the primary read. A row
-exists: `forbidden`. No row: `not_found`. Issue #107; the owner confirmed this
-over Ash's switch in chat on 2026-09-27.
+exists: `forbidden`. No row: `not_found`. When the row exists and the bulk
+strategy is `:error`, a second check runs as the actor: a row the actor can
+see was skipped by the write's own change filter, so the answer is
+`not_found`. An RPC action with no identity answers `not_found` without a
+check. Issue #107; the owner confirmed this over Ash's switch in chat on
+2026-09-27, and chose the second check and the no-identity answer after the
+review.
 
 **Why.** Ash's own answer, `authorize_query_with: :error` or
 `authorize_with: :error`, raises `ArgumentError` on `Ash.DataLayer.Ets` for
@@ -29,11 +34,11 @@ authorizer as a string in an `error(...)` expression, which Postgres decodes
 and ETS does not. This repo tests on ETS only, so that switch could not be
 tested here. The check behaves the same on both data layers.
 
-**What it cost.** One more query, only on the zero-row path. A `forbidden`
-answer tells the client the record exists; see risk T7 in
+**What it cost.** One or two more queries, only on the zero-row path. A
+`forbidden` answer tells the client the record exists; see risk T7 in
 [risks.md](risks.md). The error the check builds carries no policies, so it
 never renders a policy breakdown. Reverse this once Ash's switch works on
-ETS: it would carry the real breakdown and save the query.
+ETS: it would carry the real breakdown and save the queries.
 
 ## 2026-09-27 — A composite aggregate needs a field list, and selects attributes only
 

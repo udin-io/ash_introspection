@@ -10,6 +10,8 @@ defmodule AshIntrospection.Rpc.PolicyForbiddenWriteTest do
   """
   use ExUnit.Case, async: false
 
+  alias AshIntrospection.Manifest.Custom
+  alias AshIntrospection.ResourceInfo
   alias AshIntrospection.Rpc.ErrorBuilder
   alias AshIntrospection.Rpc.Pipeline
   alias AshIntrospection.Rpc.Request
@@ -123,6 +125,38 @@ defmodule AshIntrospection.Rpc.PolicyForbiddenWriteTest do
     end
   end
 
+  describe "a write whose change filter skips the owner's row" do
+    setup do
+      %{archived: create_note(%{title: "old", owner_id: @owner.id, archived: true})}
+    end
+
+    test "update returns not_found and leaves the row", %{archived: archived} do
+      request = write(:rename_live, archived.id, @owner, %{title: "x"})
+      assert [%{type: "not_found"}] = errors!(execute(request))
+      assert {:ok, %{title: "old"}} = Ash.get(Note, archived.id, actor: @owner)
+    end
+
+    test "destroy returns not_found", %{archived: archived} do
+      assert [%{type: "not_found"}] = errors!(execute(write(:purge_live, archived.id, @owner)))
+    end
+
+    test "another owner still gets forbidden", %{archived: archived} do
+      request = write(:rename_live, archived.id, @stranger, %{title: "x"})
+      assert [%{type: "forbidden"}] = errors!(execute(request))
+    end
+
+    # Under `authorize_changeset_with: :filter` a write-policy denial also
+    # leaves a readable row unwritten, so the two causes look the same and the
+    # answer stays `forbidden`. Risk T7 in `docs/risks.md` records it.
+    test "a data layer on the :filter strategy answers forbidden", %{archived: archived} do
+      request = write(:rename_live, archived.id, @owner, %{title: "x"})
+      config = %{manifest: ResourceInfo.prepare(filter_strategy_manifest())}
+
+      assert {:error, errors} = Pipeline.execute_ash_action(request, config)
+      assert [%{type: "forbidden"}] = ErrorBuilder.build_error_response(errors)
+    end
+  end
+
   describe "an rpc action with no identity" do
     test "a zero-row destroy returns not_found while another owner's row exists", %{note: note} do
       request = %{write(:destroy, note.id, @stranger, %{}, identities: []) | identity: nil}
@@ -189,6 +223,22 @@ defmodule AshIntrospection.Rpc.PolicyForbiddenWriteTest do
     do: Pipeline.execute_ash_action(request, ManifestFixture.decorated_config())
 
   defp errors!({:error, errors}), do: ErrorBuilder.build_error_response(errors)
+
+  defp filter_strategy_manifest do
+    namespace = Custom.default_namespace()
+    manifest = ManifestFixture.decorated()
+
+    resources =
+      Enum.map(manifest.resources, fn
+        %{module: Note} = resource ->
+          put_in(resource.custom[namespace][:authorize_bulk_strategy], :filter)
+
+        resource ->
+          resource
+      end)
+
+    %{manifest | resources: resources}
+  end
 
   defp create_note(attrs) do
     Note

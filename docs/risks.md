@@ -286,9 +286,16 @@ them exist. Reads still hide the difference: a hidden record reads as absent.
 slug, an email) lets a caller enumerate records it may not see, one write
 request per guess. The write itself never lands.
 
-**What we watch.** `policy_forbidden_write_test.exs` pins both answers. The
-owner accepted the trade on 2026-09-27 for update and destroy, where a UUID
-key makes guessing impractical.
+A second limit: on a data layer without `:expr_error` (Ash's `:filter` bulk
+strategy), a write whose own change filter or precondition skips a row the
+actor may write also answers `forbidden`. There a write-policy denial skips
+the row the same way, so the pipeline cannot tell the two apart. On
+`:expr_error` data layers (Postgres, ETS) it answers `not_found`.
+
+**What we watch.** `policy_forbidden_write_test.exs` pins both answers and
+the `:filter` limit. The owner accepted the trade on 2026-09-27 for update and
+destroy, where a UUID key makes guessing impractical. An RPC action with no
+identity answers `not_found` without the check, so it reveals nothing.
 
 **What we would do.** If a consumer exposes a write on a guessable key, give
 the RPC action a `read_action` that scopes the lookup, or return `not_found`
