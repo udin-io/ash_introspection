@@ -113,7 +113,13 @@ defmodule AshIntrospection.Test.ManifestFixture do
     {Test.LoadThrough.Owner, :read},
     {Test.LoadThrough.Item, :read},
     {Test.Policy.Memo, :create},
-    {Test.Policy.Memo, :destroy}
+    {Test.Policy.Memo, :destroy},
+    {Test.Policy.Note, :read},
+    {Test.Policy.Note, :active},
+    {Test.Policy.Note, :update},
+    {Test.Policy.Note, :destroy},
+    {Test.Policy.TenantNote, :update},
+    {Test.Policy.TenantNote, :destroy}
   ]
 
   @doc "The `{resource, action}` pairs the fixture manifest is generated from."

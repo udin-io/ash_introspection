@@ -66,6 +66,8 @@ defmodule AshIntrospection.Test.Policy.Domain do
 
   resources do
     resource(AshIntrospection.Test.Policy.Memo)
+    resource(AshIntrospection.Test.Policy.Note)
+    resource(AshIntrospection.Test.Policy.TenantNote)
   end
 end
 
@@ -113,6 +115,79 @@ defmodule AshIntrospection.Test.Policy.Memo do
     policy action_type(:destroy) do
       authorize_if(AshIntrospection.Test.Policy.OwnerCheck)
     end
+  end
+
+  actions do
+    defaults([:read, :destroy, create: :*, update: :*])
+  end
+end
+
+defmodule AshIntrospection.Test.Policy.Note do
+  @moduledoc """
+  An owner-scoped record: an actor reads, updates and destroys only its own
+  notes, through one `expr/1` policy. A read filters another owner's note out,
+  so an update or destroy of it changes zero rows. `:active` hides archived
+  notes, for a write through `read_action`.
+  """
+  use Ash.Resource,
+    domain: AshIntrospection.Test.Policy.Domain,
+    data_layer: Ash.DataLayer.Ets,
+    authorizers: [Ash.Policy.Authorizer]
+
+  ets do
+    private?(true)
+  end
+
+  attributes do
+    uuid_primary_key(:id)
+    attribute(:title, :string, allow_nil?: false, public?: true)
+    attribute(:owner_id, :string, allow_nil?: false, public?: true)
+    attribute(:archived, :boolean, allow_nil?: false, default: false, public?: true)
+  end
+
+  policies do
+    policy action_type(:create) do
+      authorize_if(always())
+    end
+
+    policy action_type([:read, :update, :destroy]) do
+      authorize_if(expr(owner_id == ^actor(:id)))
+    end
+  end
+
+  actions do
+    defaults([:read, :destroy, create: :*, update: :*])
+
+    read :active do
+      filter(expr(archived == false))
+    end
+  end
+end
+
+defmodule AshIntrospection.Test.Policy.TenantNote do
+  @moduledoc """
+  A note under attribute multitenancy. `global?` lets a query without a tenant
+  see every tenant's rows, so a lookup that drops the tenant finds a row it
+  should not.
+  """
+  use Ash.Resource,
+    domain: AshIntrospection.Test.Policy.Domain,
+    data_layer: Ash.DataLayer.Ets
+
+  ets do
+    private?(true)
+  end
+
+  multitenancy do
+    strategy(:attribute)
+    attribute(:org_id)
+    global?(true)
+  end
+
+  attributes do
+    uuid_primary_key(:id)
+    attribute(:title, :string, allow_nil?: false, public?: true)
+    attribute(:org_id, :string, allow_nil?: false, public?: true)
   end
 
   actions do

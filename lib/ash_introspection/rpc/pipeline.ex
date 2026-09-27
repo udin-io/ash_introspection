@@ -441,7 +441,7 @@ defmodule AshIntrospection.Rpc.Pipeline do
           {:ok, record}
 
         %Ash.BulkResult{status: :success, records: []} ->
-          {:error, Ash.Error.Query.NotFound.exception(resource: request.resource)}
+          resolve_zero_rows(query_with_identity, request, opts)
 
         %Ash.BulkResult{errors: errors} when errors != [] ->
           {:error, errors}
@@ -503,7 +503,7 @@ defmodule AshIntrospection.Rpc.Pipeline do
           {:ok, record}
 
         %Ash.BulkResult{status: :success, records: []} ->
-          {:ok, %{}}
+          resolve_zero_rows(query_with_identity, request, opts)
 
         %Ash.BulkResult{errors: errors} when errors != [] ->
           {:error, errors}
@@ -511,6 +511,31 @@ defmodule AshIntrospection.Rpc.Pipeline do
         other ->
           {:error, other}
       end
+    end
+  end
+
+  # An update or destroy that changes zero rows did so for one of two reasons:
+  # no row matches the identity, or the actor's read policy filtered the row
+  # out of the bulk lookup before any write check ran (Ash's `filter_with:
+  # :filter` default). One unauthorized existence check tells them apart. It
+  # reuses the write's query, so the identity filter, tenant and context match. Ash's own `authorize_query_with:
+  # :error` would do this inside the bulk call, but on `Ash.DataLayer.Ets` it
+  # raises for the forbidden row (ash 3.33.11); see `docs/decisions.md`.
+  defp resolve_zero_rows(query, %Request{} = request, opts) do
+    read_action =
+      Map.get(request.rpc_action, :read_action) ||
+        Ash.Resource.Info.primary_action!(request.resource, :read).name
+
+    exists? =
+      query
+      |> Ash.Query.for_read(read_action, %{}, actor: opts[:actor], authorize?: false)
+      |> Ash.exists?(authorize?: false)
+
+    if exists? do
+      {:error,
+       Ash.Error.Forbidden.Policy.exception(resource: request.resource, action: request.action)}
+    else
+      {:error, Ash.Error.Query.NotFound.exception(resource: request.resource)}
     end
   end
 
