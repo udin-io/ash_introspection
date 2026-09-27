@@ -47,6 +47,11 @@ Name the fields: `firstTag: ["displayName"]`
 
 ### Fixed
 
+- `Atomizer` keeps a field name or key that a `get_original_field_name`
+  callback maps to `nil`. It turned each into a `nil` key, so `fields`,
+  `args`, `filter` and `sort` collapsed into one key and all but one value was
+  lost ([#24](https://github.com/udin-io/ash_introspection/issues/24)).
+
 - Selecting fields of a calculation that returns an embedded resource, a
   `:struct` of a resource, an array of either, or a union returns those
   fields. The whole request failed with Ash's `InvalidLoad` or `NoSuchInput`

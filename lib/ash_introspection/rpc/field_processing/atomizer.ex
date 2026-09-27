@@ -82,7 +82,7 @@ defmodule AshIntrospection.Rpc.FieldProcessing.Atomizer do
       is_interop_resource? && get_original_field_name && resource ->
         if is_interop_resource?.(resource) do
           case get_original_field_name.(resource, field_name) do
-            original when is_atom(original) -> original
+            original when is_atom(original) and not is_nil(original) -> original
             _ -> field_name
           end
         else
@@ -101,7 +101,7 @@ defmodule AshIntrospection.Rpc.FieldProcessing.Atomizer do
 
         if is_resource? do
           case apply(resource_info_module, :get_original_field_name, [resource, field_name]) do
-            original when is_atom(original) -> original
+            original when is_atom(original) and not is_nil(original) -> original
             _ -> field_name
           end
         else
@@ -142,7 +142,7 @@ defmodule AshIntrospection.Rpc.FieldProcessing.Atomizer do
       is_interop_resource? && get_original_field_name && resource ->
         if is_interop_resource?.(resource) do
           case get_original_field_name.(resource, key) do
-            original when is_atom(original) -> original
+            original when is_atom(original) and not is_nil(original) -> original
             _ -> key
           end
         else
@@ -161,7 +161,7 @@ defmodule AshIntrospection.Rpc.FieldProcessing.Atomizer do
 
         if is_resource? do
           case apply(resource_info_module, :get_original_field_name, [resource, key]) do
-            original when is_atom(original) -> original
+            original when is_atom(original) and not is_nil(original) -> original
             _ -> key
           end
         else
