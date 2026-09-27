@@ -121,7 +121,9 @@ defmodule AshIntrospection.Test.ManifestFixture do
     {Test.Policy.Note, :rename_live},
     {Test.Policy.Note, :purge_live},
     {Test.Policy.TenantNote, :update},
-    {Test.Policy.TenantNote, :destroy}
+    {Test.Policy.TenantNote, :destroy},
+    {Test.Policy.LooseNote, :update},
+    {Test.Policy.LooseNote, :destroy}
   ]
 
   @doc "The `{resource, action}` pairs the fixture manifest is generated from."

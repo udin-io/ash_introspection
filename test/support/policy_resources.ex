@@ -40,6 +40,7 @@ defmodule AshIntrospection.Test.Policy.Domain do
     resource(AshIntrospection.Test.Policy.Memo)
     resource(AshIntrospection.Test.Policy.Note)
     resource(AshIntrospection.Test.Policy.TenantNote)
+    resource(AshIntrospection.Test.Policy.LooseNote)
   end
 end
 
@@ -161,6 +162,27 @@ defmodule AshIntrospection.Test.Policy.TenantNote do
     uuid_primary_key(:id)
     attribute(:title, :string, allow_nil?: false, public?: true)
     attribute(:org_id, :string, allow_nil?: false, public?: true)
+  end
+
+  actions do
+    defaults([:read, :destroy, create: :*, update: :*])
+  end
+end
+
+defmodule AshIntrospection.Test.Policy.LooseNote do
+  @moduledoc """
+  A resource that names no domain of its own. Every action call must pass
+  `domain:`, so a pipeline call that forgets it fails.
+  """
+  use Ash.Resource, domain: nil, data_layer: Ash.DataLayer.Ets
+
+  ets do
+    private?(true)
+  end
+
+  attributes do
+    uuid_primary_key(:id)
+    attribute(:title, :string, allow_nil?: false, public?: true)
   end
 
   actions do

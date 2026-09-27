@@ -17,6 +17,7 @@ defmodule AshIntrospection.Rpc.PolicyForbiddenWriteTest do
   alias AshIntrospection.Rpc.Request
   alias AshIntrospection.Test.ManifestFixture
   alias AshIntrospection.Test.Policy.Domain
+  alias AshIntrospection.Test.Policy.LooseNote
   alias AshIntrospection.Test.Policy.Note
   alias AshIntrospection.Test.Policy.TenantNote
 
@@ -173,6 +174,16 @@ defmodule AshIntrospection.Rpc.PolicyForbiddenWriteTest do
     end
   end
 
+  describe "a resource that names no domain of its own" do
+    test "a zero-row destroy returns not_found" do
+      assert [%{type: "not_found"}] = errors!(execute(loose_write(:destroy)))
+    end
+
+    test "a zero-row update returns not_found" do
+      assert [%{type: "not_found"}] = errors!(execute(loose_write(:update, %{title: "x"})))
+    end
+  end
+
   describe "with policy breakdowns shown" do
     setup do
       previous = Application.get_env(:ash_introspection, :policies)
@@ -275,6 +286,22 @@ defmodule AshIntrospection.Rpc.PolicyForbiddenWriteTest do
       load: [],
       extraction_template: [:id, :title],
       identity: id
+    })
+  end
+
+  defp loose_write(action, input \\ %{}) do
+    Request.new(%{
+      domain: Domain,
+      resource: LooseNote,
+      action: Ash.Resource.Info.action(LooseNote, action),
+      rpc_action: %{identities: [:_primary_key]},
+      input: input,
+      context: %{},
+      actor: nil,
+      select: [:id, :title],
+      load: [],
+      extraction_template: [:id, :title],
+      identity: @missing_id
     })
   end
 

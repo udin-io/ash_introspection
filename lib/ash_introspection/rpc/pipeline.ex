@@ -563,8 +563,12 @@ defmodule AshIntrospection.Rpc.Pipeline do
         Ash.Resource.Info.primary_action!(request.resource, :read).name
 
     query
-    |> Ash.Query.for_read(read_action, %{}, actor: opts[:actor], authorize?: authorize?)
-    |> Ash.exists(actor: opts[:actor], authorize?: authorize?, domain: request.domain)
+    |> Ash.Query.for_read(read_action, %{},
+      actor: opts[:actor],
+      authorize?: authorize?,
+      domain: request.domain
+    )
+    |> Ash.exists(authorize?: authorize?)
   end
 
   defp forbidden(request),
