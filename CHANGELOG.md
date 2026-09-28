@@ -14,6 +14,8 @@ and this project adheres to
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-09-28
+
 Breaking releases ship a codemod and a notice. Bump the version, then run
 `mix igniter.upgrade ash_introspection` and `mix ash_introspection.upgrade
 <old> <new>` — see "Upgrading" in the README for why both commands matter.
@@ -186,6 +188,25 @@ exists. `mix ash_introspection.upgrade` prints this as a notice
   itself. `ash_kotlin_multiplatform` sends the owner's public attributes when
   its client sends no `fields`, and got one `null` per attribute
   ([#85](https://github.com/udin-io/ash_introspection/issues/85)).
+
+### Security
+
+- `mix.exs` raises the `ash` floor to `>= 3.33.11 and < 4.0.0-0`, fixing
+  EEF-CVE-2026-93477: the bulk destroy and bulk update paths matched every
+  key in a caller's parameter map against an action's arguments with no
+  `public?` check, so a private argument could be set from untrusted input
+  ([#108](https://github.com/udin-io/ash_introspection/issues/108)). Ash
+  3.33.10 added an `is_list` guard to `Ash.Page.page_opts/1`, rejecting the
+  atom-keyed pagination map `apply_pagination/2` used to hand
+  `Ash.Query.page/2` as-is; it now turns `request.pagination` into a keyword
+  list first.
+- `mix.exs` floors `mint` at `>= 1.11.0`, fixing EEF-CVE-2026-91043 (HIGH,
+  HPACK-indexed cookie fields bypassing `max_header_list_size`),
+  EEF-CVE-2026-92103 (oversized frames buffered before `max_frame_size` is
+  enforced) and EEF-CVE-2026-94194 (chunked framing applied when it is not
+  the final transfer coding, enabling response smuggling)
+  ([#121](https://github.com/udin-io/ash_introspection/issues/121)). Mint is
+  transitive here through `finch` and `req`; this pins the floor directly.
 
 ## [0.6.0] - 2026-09-23
 

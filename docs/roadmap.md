@@ -15,7 +15,7 @@ which come first. Numbers in parentheses are GitHub issues on
 
 ## Shipped
 
-### Unreleased
+### 0.7.0 — 2026-09-28
 
 - **#89 and #85 — generic action results, slice 1 of #100.** A generic
   action's map, struct or keyword result is typed from its declared return
