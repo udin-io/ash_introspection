@@ -12,6 +12,39 @@ if Code.ensure_loaded?(Igniter) do
     # when its key falls in `> from and <= to`, so there is one entry per
     # releasing version and never a range.
     #
+    # ## Notices print to Mix.shell, not Igniter.add_notice (#99)
+    #
+    # Every notice below goes through the private `notify/2`, which calls
+    # `Mix.shell().info/1` directly, instead of `Igniter.add_notice/2`. Two
+    # separate paths run this task during `mix igniter.upgrade
+    # ash_introspection`, and an ordinary Igniter notice reaches the screen on
+    # neither of them (measured on a scratch project, Elixir 1.18.4, OTP 27,
+    # igniter 0.8.4, `ash_introspection 0.5.3` upgrading to 0.6.0):
+    #
+    #   * **The `igniter_new` archive installed** (the common setup). The
+    #     archive's `wrap_task/3` runs the upgrade through
+    #     `Igniter.CopiedTasks.upgrade/1`, which fetches the new release,
+    #     recompiles deps, composes THIS task from the NEW tarball, and
+    #     returns the resulting igniter without ever calling
+    #     `Igniter.do_or_dry_run/2`. A notice added the ordinary way is built
+    #     and then silently discarded (ash-project/igniter#402, open on
+    #     `main` as of this writing).
+    #   * **No archive** (`MIX_ARCHIVES` pointed at hex only). The copy of
+    #     this task already loaded in the VM, from BEFORE the dep recompile,
+    #     runs — its own `upgrades` map has no entry for the version that
+    #     ships inside the tarball being fetched, so it prints nothing and
+    #     the codemods do not run either (ash-project/igniter#403). Running
+    #     `mix ash_introspection.upgrade <old> <new>` directly afterwards
+    #     always runs the just-installed copy, so it reprints every notice in
+    #     range and reruns every codemod; the README's "Upgrading" section
+    #     says so.
+    #
+    # `notify/2` reaches the screen under the archive, since it never depends
+    # on `do_or_dry_run/2`. Nothing ships that reaches the screen when no
+    # archive is installed and the copy already in the VM predates the break
+    # — see `notify_unknown_version/3` below for the one thing this library
+    # can do about that case, starting the release that ships it.
+    #
     # ## 0.3.0 — `error.code` becomes `error.type`
     #
     # The RPC error payload named its class under `code` on some paths and
