@@ -45,6 +45,18 @@ defmodule AshIntrospection.Rpc.Errors do
   - `action` - The action name (optional)
   - `context` - Additional context map
   - `config` - Language-specific configuration (see type definition)
+
+  ## `show_raised_errors?`
+
+  A domain whose RPC section sets `show_raised_errors?: true` sends every
+  exception's raw `Exception.message/1` to the client, in place of its
+  `AshIntrospection.Rpc.Error` implementation. That text can carry database
+  hosts, file paths and values the server holds. It is for development
+  only; never set it in production.
+
+  A forbidden error keeps its implementation even then, so a policy breakdown
+  still needs `config :ash_introspection, :policies,
+  show_policy_breakdowns?: true` (#113).
   """
   @spec to_errors(term(), module() | nil, module() | nil, atom() | nil, map(), config()) ::
           list(map())
@@ -100,7 +112,7 @@ defmodule AshIntrospection.Rpc.Errors do
 
     transformed_error =
       if show_raised_errors? and is_exception(error) and not always_via_protocol?(error) do
-        # When show_raised_errors? is true, always expose the actual exception message
+        # Raw exception text, by design: see "show_raised_errors?" in to_errors/6.
         %{
           message: Exception.message(error),
           short_message: error.__struct__ |> Module.split() |> List.last(),
