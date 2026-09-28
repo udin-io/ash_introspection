@@ -69,12 +69,12 @@ defmodule AshIntrospection.Rpc.ErrorBuilder do
         }
 
       # Tenant resolution errors
-      {:tenant_required, resource} ->
+      {:tenant_required, _resource} ->
         %{
           type: "tenant_required",
-          message: "Tenant parameter is required for multitenant resource %{resource}",
+          message: "Tenant parameter is required",
           short_message: "Tenant required",
-          vars: %{resource: inspect(resource)},
+          vars: %{},
           path: [],
           fields: [],
           details: %{
@@ -128,7 +128,7 @@ defmodule AshIntrospection.Rpc.ErrorBuilder do
           }
         }
 
-      {:unknown_field, field_atom, resource, path} when is_list(path) ->
+      {:unknown_field, field_atom, _resource, path} when is_list(path) ->
         full_field_path =
           build_complete_field_path(path, field_atom, formatter, field_formatter_module)
 
@@ -136,9 +136,9 @@ defmodule AshIntrospection.Rpc.ErrorBuilder do
 
         %{
           type: "unknown_field",
-          message: "Unknown field %{field} for resource %{resource}",
+          message: "Unknown field %{field}",
           short_message: "Unknown field",
-          vars: %{field: full_field_path, resource: inspect(resource)},
+          vars: %{field: full_field_path},
           path: formatted_path,
           fields: [full_field_path],
           details: %{

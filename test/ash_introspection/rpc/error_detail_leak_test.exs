@@ -196,6 +196,31 @@ defmodule AshIntrospection.Rpc.ErrorDetailLeakTest do
       assert response.path == ["books"]
       refute_internal(response)
     end
+
+    test "unknown_field: a resource module is not named" do
+      response = build({:unknown_field, :nope, AshIntrospection.Test.Policy.Memo, []})
+
+      assert response.type == "unknown_field"
+      assert response.message == "Unknown field %{field}"
+      refute Map.has_key?(response.vars, :resource)
+      refute_internal(response)
+    end
+
+    test "unknown_field: a container label is not named" do
+      response = build({:unknown_field, :nope, "tuple", []})
+
+      refute Map.has_key?(response.vars, :resource)
+      refute_internal(response, ["tuple"])
+    end
+
+    test "tenant_required tuple does not name the resource" do
+      response = build({:tenant_required, AshIntrospection.Test.Policy.Memo})
+
+      assert response.type == "tenant_required"
+      assert response.message == "Tenant parameter is required"
+      assert response.vars == %{}
+      refute_internal(response)
+    end
   end
 
   describe "ErrorBuilder clauses that hand the error to Errors" do
