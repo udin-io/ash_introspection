@@ -471,6 +471,24 @@ defmodule AshIntrospection.Rpc.ErrorDetailLeakTest do
       assert vars == %{status: "archived", none: nil, yes: true, no: false}
     end
 
+    test "vars: a module atom as a keyword key is replaced" do
+      refute_internal(vars_of(opts: [{AshIntrospection.Test.Policy.Memo, 1}]))
+    end
+
+    test "vars: an improper list is replaced and the payload encodes" do
+      vars = vars_of(tail: [1 | 2])
+
+      assert vars.tail == "#Term<>"
+      assert {:ok, _} = Jason.encode(vars)
+    end
+
+    test "vars: a map key with no JSON form is replaced and the payload encodes" do
+      vars = vars_of(map: %{{:a, 1} => "x", 7 => "y"})
+
+      assert vars.map == %{"#Term<>" => "x", 7 => "y"}
+      assert {:ok, _} = Jason.encode(vars)
+    end
+
     test "path: a module atom is replaced" do
       [response] =
         Errors.to_errors(

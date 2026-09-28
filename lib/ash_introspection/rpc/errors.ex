@@ -438,6 +438,8 @@ defmodule AshIntrospection.Rpc.Errors do
   # which raises on anything it has no representation for - the request would then
   # die at the encoder instead of returning the error. This walks the payload and
   # reduces every value to something an encoder accepts.
+  @opaque_term "#Term<>"
+
   defp serialize_error(nil), do: nil
 
   defp serialize_error(value) when is_binary(value), do: value
@@ -459,9 +461,13 @@ defmodule AshIntrospection.Rpc.Errors do
       value == [] ->
         []
 
+      # `[1 | 2]` has no JSON form, and every walk below raises on it.
+      not proper_list?(value) ->
+        @opaque_term
+
       Keyword.keyword?(value) ->
         Enum.into(value, %{}, fn {key, val} ->
-          {to_string(key), serialize_error(val)}
+          {client_atom(key), serialize_error(val)}
         end)
 
       List.ascii_printable?(value) ->
@@ -510,11 +516,17 @@ defmodule AshIntrospection.Rpc.Errors do
   defp serialize_error(value), do: value
 
   # Atom keys stay atoms, so a consumer reading `vars` by atom still finds them.
+  # A key a JSON encoder cannot name, such as a tuple, becomes a placeholder.
   defp serialize_key(key) when is_atom(key) do
     if module_atom?(key), do: opaque_module(key), else: key
   end
 
-  defp serialize_key(key), do: key
+  defp serialize_key(key) when is_binary(key) or is_number(key), do: key
+  defp serialize_key(_key), do: @opaque_term
+
+  defp proper_list?([]), do: true
+  defp proper_list?([_ | tail]), do: proper_list?(tail)
+  defp proper_list?(_tail), do: false
 
   defp opaque_term(module), do: "##{inspect(module)}<>"
 
