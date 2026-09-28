@@ -844,6 +844,25 @@ defmodule AshIntrospection.Rpc.ErrorBuilder do
           }
         }
 
+      # === FIELD SELECTION FORMAT ERRORS ===
+      # Thrown by `FieldSelector` for a map that names several nested fields
+      # where one is allowed, or a calculation envelope where none is.
+
+      {:invalid_field_format, _field, path} when is_list(path) ->
+        %{
+          type: "invalid_field_format",
+          message: "Name one nested field per map in fields",
+          short_message: "Invalid field format",
+          vars: %{},
+          path: format_path(path, formatter, field_formatter_module),
+          fields: [],
+          details: %{
+            suggestion: "Split the map into one map per nested field",
+            hint: @stale_generated_file_hint
+          }
+        }
+
+      # === FALLBACKS ===
       # The term is server-side: it goes to the log under an error id, and the
       # client gets the id (#113).
 

@@ -187,6 +187,17 @@ defmodule AshIntrospection.Rpc.ErrorDetailLeakTest do
     end
   end
 
+  describe "ErrorBuilder clauses that named a module or echoed a term" do
+    test "invalid_field_format answers its own type, sends no term" do
+      response = build({:invalid_field_format, %{"a" => 1, "b" => 2}, [:books]})
+
+      assert response.type == "invalid_field_format"
+      assert response.message == "Name one nested field per map in fields"
+      assert response.path == ["books"]
+      refute_internal(response)
+    end
+  end
+
   describe "ErrorBuilder clauses that hand the error to Errors" do
     test "RunStepError: the step's term sends nothing internal" do
       error = Reactor.Error.Invalid.RunStepError.exception(error: "db host=10.0.0.5", step: :s)
