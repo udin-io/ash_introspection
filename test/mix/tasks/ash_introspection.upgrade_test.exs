@@ -11,10 +11,20 @@ defmodule Mix.Tasks.AshIntrospection.UpgradeTest do
   name — so it is gated on the receiver being a bare variable named for an
   error. These tests pin both halves of that bargain: what it rewrites, and
   what it deliberately leaves for a human.
+
+  The task prints every notice straight to `Mix.shell()` instead of adding it
+  to `igniter.notices` (see the module comment on `Mix.Tasks.AshIntrospection.
+  Upgrade` for why). `Mix.shell/1` sets a process-global default, so this
+  module is `async: false` — the only other place using `Igniter.Test` is
+  this file.
   """
-  use ExUnit.Case, async: true
+  use ExUnit.Case, async: false
 
   import Igniter.Test
+
+  setup do
+    on_exit(fn -> Mix.shell(Mix.Shell.IO) end)
+  end
 
   describe "reading code off a variable named for an error" do
     test "rewrites dot access" do
@@ -105,22 +115,22 @@ defmodule Mix.Tasks.AshIntrospection.UpgradeTest do
     end
   end
 
-  describe "the notice" do
-    test "names the shapes a human still has to check" do
-      "error.code"
-      |> upgrade()
-      |> assert_has_notice(&(&1 =~ "%{code:"))
+  describe "the 0.3.0 manual-check notice" do
+    test "prints the shapes a human still has to check to the shell" do
+      {_igniter, notices} = upgrade_notices("error.code")
+
+      assert Enum.any?(notices, &(&1 =~ "%{code:"))
     end
   end
 
   describe "0.4.0" do
-    test "notices the three breaks, and rewrites nothing" do
-      "error.code"
-      |> upgrade(from: "0.3.0", to: "0.4.0")
-      |> assert_unchanged("lib/my_app/rpc.ex")
-      |> assert_has_notice(&(&1 =~ "identity_not_supported"))
-      |> assert_has_notice(&(&1 =~ "invalid_identity"))
-      |> assert_has_notice(&(&1 =~ "normalize_primitive/1"))
+    test "prints the three breaks to the shell, and rewrites nothing" do
+      {igniter, notices} = upgrade_notices("error.code", from: "0.3.0", to: "0.4.0")
+
+      assert_unchanged(igniter, "lib/my_app/rpc.ex")
+      assert Enum.any?(notices, &(&1 =~ "identity_not_supported"))
+      assert Enum.any?(notices, &(&1 =~ "invalid_identity"))
+      assert Enum.any?(notices, &(&1 =~ "normalize_primitive/1"))
     end
 
     test "leaves an identity a read genuinely uses alone" do
@@ -133,80 +143,130 @@ defmodule Mix.Tasks.AshIntrospection.UpgradeTest do
       |> assert_unchanged("lib/my_app/rpc.ex")
     end
 
-    test "does not fire when 0.4.0 falls outside the range" do
-      igniter = upgrade("error.code", from: "0.2.0", to: "0.3.0")
+    test "prints nothing when 0.4.0 falls outside the range" do
+      {_igniter, notices} = upgrade_notices("error.code", from: "0.2.0", to: "0.3.0")
 
-      refute Enum.any?(igniter.notices, &(&1 =~ "identity_not_supported"))
+      refute Enum.any?(notices, &(&1 =~ "identity_not_supported"))
     end
   end
 
   describe "0.5.0" do
-    test "names the removed module and its replacement, rewrites nothing" do
-      "TypeDiscovery.find_embedded_resources(:my_app, config)"
-      |> upgrade(from: "0.4.2", to: "0.5.0")
-      |> assert_unchanged("lib/my_app/rpc.ex")
-      |> assert_has_notice(&(&1 =~ "AshIntrospection.Codegen.TypeDiscovery"))
-      |> assert_has_notice(&(&1 =~ "manifest.types"))
+    test "names the removed module and its replacement, prints to the shell, rewrites nothing" do
+      {igniter, notices} =
+        upgrade_notices("TypeDiscovery.find_embedded_resources(:my_app, config)",
+          from: "0.4.2",
+          to: "0.5.0"
+        )
+
+      assert_unchanged(igniter, "lib/my_app/rpc.ex")
+      assert Enum.any?(notices, &(&1 =~ "AshIntrospection.Codegen.TypeDiscovery"))
+      assert Enum.any?(notices, &(&1 =~ "manifest.types"))
     end
 
-    test "does not fire when 0.5.0 falls outside the range" do
-      igniter = upgrade("error.code", from: "0.3.0", to: "0.4.0")
+    test "prints nothing when 0.5.0 falls outside the range" do
+      {_igniter, notices} = upgrade_notices("error.code", from: "0.3.0", to: "0.4.0")
 
-      refute Enum.any?(igniter.notices, &(&1 =~ "Codegen.TypeDiscovery"))
+      refute Enum.any?(notices, &(&1 =~ "Codegen.TypeDiscovery"))
     end
   end
 
   describe "0.6.0" do
-    test "names the required key and the four entry points, rewrites nothing" do
-      "Pipeline.execute_ash_action(request, config)"
-      |> upgrade(from: "0.5.3", to: "0.6.0")
-      |> assert_unchanged("lib/my_app/rpc.ex")
-      |> assert_has_notice(&(&1 =~ "AshIntrospection.ManifestError"))
-      |> assert_has_notice(&(&1 =~ "execute_ash_action/2"))
-      |> assert_has_notice(&(&1 =~ "FieldSelector.process/4"))
-      |> assert_has_notice(&(&1 =~ "Manifest.Decorator.decorate/3"))
+    test "names the required key and the four entry points, prints to the shell, rewrites nothing" do
+      {igniter, notices} =
+        upgrade_notices("Pipeline.execute_ash_action(request, config)",
+          from: "0.5.3",
+          to: "0.6.0"
+        )
+
+      assert_unchanged(igniter, "lib/my_app/rpc.ex")
+      assert Enum.any?(notices, &(&1 =~ "AshIntrospection.ManifestError"))
+      assert Enum.any?(notices, &(&1 =~ "execute_ash_action/2"))
+      assert Enum.any?(notices, &(&1 =~ "FieldSelector.process/4"))
+      assert Enum.any?(notices, &(&1 =~ "Manifest.Decorator.decorate/3"))
     end
 
-    test "does not fire when 0.6.0 falls outside the range" do
-      igniter = upgrade("error.code", from: "0.4.0", to: "0.5.0")
+    test "prints nothing when 0.6.0 falls outside the range" do
+      {_igniter, notices} = upgrade_notices("error.code", from: "0.4.0", to: "0.5.0")
 
-      refute Enum.any?(igniter.notices, &(&1 =~ "ManifestError"))
+      refute Enum.any?(notices, &(&1 =~ "ManifestError"))
     end
   end
 
   describe "0.7.0" do
-    test "names the refused query parameters and the aggregate field list, rewrites nothing" do
-      "Pipeline.execute_ash_action(request, config)"
-      |> upgrade(from: "0.6.0", to: "0.7.0")
-      |> assert_unchanged("lib/my_app/rpc.ex")
-      |> assert_has_notice(&(&1 =~ "filter_not_supported"))
-      |> assert_has_notice(&(&1 =~ "sort_not_supported"))
-      |> assert_has_notice(&(&1 =~ "pagination_not_supported"))
-      |> assert_has_notice(&(&1 =~ "requires_field_selection"))
+    test "names the refused query parameters and the aggregate field list, prints to the shell, rewrites nothing" do
+      {igniter, notices} =
+        upgrade_notices("Pipeline.execute_ash_action(request, config)",
+          from: "0.6.0",
+          to: "0.7.0"
+        )
+
+      assert_unchanged(igniter, "lib/my_app/rpc.ex")
+      assert Enum.any?(notices, &(&1 =~ "filter_not_supported"))
+      assert Enum.any?(notices, &(&1 =~ "sort_not_supported"))
+      assert Enum.any?(notices, &(&1 =~ "pagination_not_supported"))
+      assert Enum.any?(notices, &(&1 =~ "requires_field_selection"))
     end
 
-    test "names the forbidden and not_found answers to a zero-row update or destroy" do
-      "Pipeline.execute_ash_action(request, config)"
-      |> upgrade(from: "0.6.0", to: "0.7.0")
-      |> assert_unchanged("lib/my_app/rpc.ex")
-      |> assert_has_notice(&(&1 =~ "forbidden" and &1 =~ "not_found" and &1 =~ "destroy"))
+    test "names the forbidden and not_found answers to a zero-row update or destroy, prints to the shell" do
+      {igniter, notices} =
+        upgrade_notices("Pipeline.execute_ash_action(request, config)",
+          from: "0.6.0",
+          to: "0.7.0"
+        )
+
+      assert_unchanged(igniter, "lib/my_app/rpc.ex")
+      assert Enum.any?(notices, &(&1 =~ "forbidden" and &1 =~ "not_found" and &1 =~ "destroy"))
     end
 
-    test "names the error fields that no longer carry terms or module names" do
-      "Pipeline.execute_ash_action(request, config)"
-      |> upgrade(from: "0.6.0", to: "0.7.0")
-      |> assert_unchanged("lib/my_app/rpc.ex")
-      |> assert_has_notice(&(&1 =~ "details.error" and &1 =~ "vars.resource"))
-      |> assert_has_notice(&(&1 =~ "no_such_input" and &1 =~ "tenant_required"))
-      |> assert_has_notice(&(&1 =~ "vars.value" and &1 =~ "record not found"))
-      |> assert_has_notice(&(&1 =~ "show_raised_errors?"))
+    test "names the error fields that no longer carry terms or module names, prints to the shell" do
+      {igniter, notices} =
+        upgrade_notices("Pipeline.execute_ash_action(request, config)",
+          from: "0.6.0",
+          to: "0.7.0"
+        )
+
+      assert_unchanged(igniter, "lib/my_app/rpc.ex")
+      assert Enum.any?(notices, &(&1 =~ "details.error" and &1 =~ "vars.resource"))
+      assert Enum.any?(notices, &(&1 =~ "no_such_input" and &1 =~ "tenant_required"))
+      assert Enum.any?(notices, &(&1 =~ "vars.value" and &1 =~ "record not found"))
+      assert Enum.any?(notices, &(&1 =~ "show_raised_errors?"))
     end
 
-    test "does not fire when 0.7.0 falls outside the range" do
-      igniter = upgrade("error.code", from: "0.5.0", to: "0.6.0")
+    test "prints nothing when 0.7.0 falls outside the range" do
+      {_igniter, notices} = upgrade_notices("error.code", from: "0.5.0", to: "0.6.0")
 
-      refute Enum.any?(igniter.notices, &(&1 =~ "filter_not_supported"))
-      refute Enum.any?(igniter.notices, &(&1 =~ "details.error"))
+      refute Enum.any?(notices, &(&1 =~ "filter_not_supported"))
+      refute Enum.any?(notices, &(&1 =~ "details.error"))
+    end
+  end
+
+  describe "a version newer than any this copy knows" do
+    test "prints the fallback naming the newest known version and the target" do
+      {_igniter, notices} = upgrade_notices("error.code", from: "0.7.0", to: "0.8.0")
+
+      assert Enum.any?(notices, &(&1 =~ "mix ash_introspection.upgrade 0.7.0 0.8.0"))
+    end
+
+    test "prints nothing extra when to equals the newest known version" do
+      {_igniter, notices} = upgrade_notices("error.code", from: "0.6.0", to: "0.7.0")
+
+      refute Enum.any?(notices, &(&1 =~ "knows releases up to"))
+    end
+
+    test "counts a pre-release to as newer than the newest known version" do
+      {_igniter, notices} = upgrade_notices("error.code", from: "0.7.0", to: "0.8.0-rc.1")
+
+      assert Enum.any?(notices, &(&1 =~ "mix ash_introspection.upgrade 0.7.0 0.8.0-rc.1"))
+    end
+
+    test "does not count a pre-release of the newest known version as newer" do
+      # A plain string comparison gets this backwards: "0.7.0-rc.1" sorts
+      # AFTER "0.7.0" lexically (it is the longer string with a shared
+      # prefix), but a pre-release is semantically OLDER than its release.
+      # This pins `Version.compare/2`, not `>`, as the comparison.
+      {_igniter, notices} = upgrade_notices("error.code", from: "0.6.0", to: "0.7.0-rc.1")
+
+      refute Enum.any?(notices, &(&1 =~ "knows releases up to"))
     end
   end
 
@@ -235,6 +295,26 @@ defmodule Mix.Tasks.AshIntrospection.UpgradeTest do
     [files: %{"lib/my_app/rpc.ex" => module_with(receiver, body)}]
     |> test_project()
     |> Igniter.compose_task("ash_introspection.upgrade", [from, to])
+  end
+
+  # Runs the task with `Mix.shell()` set to `Mix.Shell.Process` and returns
+  # every message it printed, in the order sent. `notify/2` prints straight
+  # to the shell instead of calling `Igniter.add_notice/2`, so this is the
+  # only way a test observes what the task actually shows a developer.
+  defp upgrade_notices(body, opts \\ []) do
+    Mix.shell(Mix.Shell.Process)
+
+    igniter = upgrade(body, opts)
+
+    {igniter, collect_shell_info()}
+  end
+
+  defp collect_shell_info(acc \\ []) do
+    receive do
+      {:mix_shell, :info, [text]} -> collect_shell_info([text | acc])
+    after
+      0 -> Enum.reverse(acc)
+    end
   end
 
   defp module_with(receiver, body) do

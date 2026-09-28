@@ -14,6 +14,10 @@ and this project adheres to
 
 ## [Unreleased]
 
+Breaking releases ship a codemod and a notice. Bump the version, then run
+`mix igniter.upgrade ash_introspection` and `mix ash_introspection.upgrade
+<old> <new>` — see "Upgrading" in the README for why both commands matter.
+
 **Breaking: a top-level `filter`, `sort` or `page` the action cannot use is
 refused.** Sent to a `get?` read, a read sent `get_by`, a create, an update, a
 destroy or a generic action, each now returns `filter_not_supported`,
@@ -136,6 +140,14 @@ exists. `mix ash_introspection.upgrade` prints this as a notice
 
 ### Fixed
 
+- The upgrade task's notices print to the screen during `mix igniter.upgrade
+  ash_introspection`, through `Mix.shell()` instead of `Igniter.add_notice/2`.
+  The `igniter_new` archive's wrapper discarded every notice added the
+  ordinary way; the copy of the task already loaded when no archive is
+  installed has never heard of the release being upgraded to either way. A
+  new fallback notice fires when `<to>` is newer than every release the
+  installed copy's `upgrades` map knows, naming the direct task to run
+  ([#99](https://github.com/udin-io/ash_introspection/issues/99)).
 - An Ash error class with no inner error returns one error: `forbidden` for
   `Ash.Error.Forbidden`, `internal_error` for the others. It returned an empty
   `errors` list

@@ -12,6 +12,39 @@ if Code.ensure_loaded?(Igniter) do
     # when its key falls in `> from and <= to`, so there is one entry per
     # releasing version and never a range.
     #
+    # ## Notices print to Mix.shell, not Igniter.add_notice (#99)
+    #
+    # Every notice below goes through the private `notify/2`, which calls
+    # `Mix.shell().info/1` directly, instead of `Igniter.add_notice/2`. Two
+    # separate paths run this task during `mix igniter.upgrade
+    # ash_introspection`, and an ordinary Igniter notice reaches the screen on
+    # neither of them (measured on a scratch project, Elixir 1.18.4, OTP 27,
+    # igniter 0.8.4, `ash_introspection 0.5.3` upgrading to 0.6.0):
+    #
+    #   * **The `igniter_new` archive installed** (the common setup). The
+    #     archive's `wrap_task/3` runs the upgrade through
+    #     `Igniter.CopiedTasks.upgrade/1`, which fetches the new release,
+    #     recompiles deps, composes THIS task from the NEW tarball, and
+    #     returns the resulting igniter without ever calling
+    #     `Igniter.do_or_dry_run/2`. A notice added the ordinary way is built
+    #     and then silently discarded (ash-project/igniter#402, open on
+    #     `main` as of this writing).
+    #   * **No archive** (`MIX_ARCHIVES` pointed at hex only). The copy of
+    #     this task already loaded in the VM, from BEFORE the dep recompile,
+    #     runs — its own `upgrades` map has no entry for the version that
+    #     ships inside the tarball being fetched, so it prints nothing and
+    #     the codemods do not run either (ash-project/igniter#403). Running
+    #     `mix ash_introspection.upgrade <old> <new>` directly afterwards
+    #     always runs the just-installed copy, so it reprints every notice in
+    #     range and reruns every codemod; the README's "Upgrading" section
+    #     says so.
+    #
+    # `notify/2` reaches the screen under the archive, since it never depends
+    # on `do_or_dry_run/2`. Nothing ships that reaches the screen when no
+    # archive is installed and the copy already in the VM predates the break
+    # — see `notify_unknown_version/3` below for the one thing this library
+    # can do about that case, starting the release that ships it.
+    #
     # ## 0.3.0 — `error.code` becomes `error.type`
     #
     # The RPC error payload named its class under `code` on some paths and
@@ -299,6 +332,12 @@ if Code.ensure_loaded?(Igniter) do
       }
     end
 
+    @unknown_version_notice """
+    This copy of the ash_introspection upgrade task knows releases up to \
+    %{newest}. Run `mix ash_introspection.upgrade %{newest} %{to}` now to \
+    see what %{to} breaks.
+    """
+
     @impl Igniter.Mix.Task
     def igniter(igniter) do
       positional = igniter.args.positional
@@ -312,9 +351,9 @@ if Code.ensure_loaded?(Igniter) do
         "0.7.0" => [&notify_0_7_0_breaks/2]
       }
 
-      Igniter.Upgrades.run(igniter, positional.from, positional.to, upgrades,
-        custom_opts: options
-      )
+      igniter
+      |> Igniter.Upgrades.run(positional.from, positional.to, upgrades, custom_opts: options)
+      |> notify_unknown_version(positional.to, upgrades)
     end
 
     @doc false
@@ -324,7 +363,7 @@ if Code.ensure_loaded?(Igniter) do
       |> Igniter.update_all_elixir_files(fn zipper ->
         {:ok, Zipper.traverse(zipper, &rewrite_code_read/1)}
       end)
-      |> Igniter.add_notice(@manual_check_notice)
+      |> notify(@manual_check_notice)
     end
 
     # Deliberately touches no file. See the 0.4.0 section of this module's
@@ -332,30 +371,30 @@ if Code.ensure_loaded?(Igniter) do
     @doc false
     def notify_0_4_0_breaks(igniter, _opts) do
       igniter
-      |> Igniter.add_notice(@identity_notice)
-      |> Igniter.add_notice(@removed_functions_notice)
+      |> notify(@identity_notice)
+      |> notify(@removed_functions_notice)
     end
 
     # Touches no file. See the 0.5.0 section of this module's comment.
     @doc false
     def notify_0_5_0_breaks(igniter, _opts) do
-      Igniter.add_notice(igniter, @type_discovery_notice)
+      notify(igniter, @type_discovery_notice)
     end
 
     # Touches no file. See the 0.6.0 section of this module's comment: no
     # consumer call site changes, only the config map they build.
     @doc false
     def notify_0_6_0_breaks(igniter, _opts) do
-      Igniter.add_notice(igniter, @manifest_required_notice)
+      notify(igniter, @manifest_required_notice)
     end
 
     # Touches no file. See the 0.7.0 section of this module's comment.
     @doc false
     def notify_0_7_0_breaks(igniter, _opts) do
       igniter
-      |> Igniter.add_notice(@query_params_notice)
-      |> Igniter.add_notice(@zero_row_write_notice)
-      |> Igniter.add_notice(@error_leak_notice)
+      |> notify(@query_params_notice)
+      |> notify(@zero_row_write_notice)
+      |> notify(@error_leak_notice)
     end
 
     # `Igniter.update_all_elixir_files/2` leans on `Igniter.include_glob/2` to
@@ -374,6 +413,41 @@ if Code.ensure_loaded?(Igniter) do
       |> Enum.reduce(igniter, fn glob, igniter ->
         Igniter.include_glob(igniter, Path.expand(glob))
       end)
+    end
+
+    # Prints straight to the shell instead of `Igniter.add_notice/2`. Under
+    # the `igniter_new` archive, the copy of this task that ships INSIDE the
+    # new release runs, but the wrapper that composes it
+    # (`Igniter.CopiedTasks.upgrade/1`) returns the igniter without ever
+    # calling `Igniter.do_or_dry_run/2` — so a notice added the ordinary way
+    # is silently dropped (ash-project/igniter#402). Printing here reaches
+    # the screen on every path, archive included.
+    defp notify(igniter, text) do
+      Mix.shell().info(text)
+      igniter
+    end
+
+    # The archive's OLD copy of this task is the one that actually runs
+    # during `mix igniter.upgrade ash_introspection`: it was loaded into the
+    # VM before the dep recompile, and its own `upgrades` map has no entry
+    # for a version that ships in the tarball being fetched
+    # (ash-project/igniter#403). Nothing in that release can print a notice
+    # it does not know about. From the release that ships this fallback
+    # onward, the OLD copy can at least say so and point at the direct task,
+    # which always runs the NEW copy.
+    defp notify_unknown_version(igniter, to, upgrades) do
+      newest = upgrades |> Map.keys() |> Enum.max_by(&Version.parse!/1, Version)
+
+      if Version.compare(to, newest) == :gt do
+        notify(
+          igniter,
+          @unknown_version_notice
+          |> String.replace("%{newest}", newest)
+          |> String.replace("%{to}", to)
+        )
+      else
+        igniter
+      end
     end
 
     # `error.code` and `error.code()`.

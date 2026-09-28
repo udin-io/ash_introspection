@@ -765,6 +765,30 @@ template; the offending name goes in `vars` and `fields`, never Ash's
 carries the name as the client sent it, so `ErrorBuilder` does not format it;
 every other error carries a parsed name and is formatted.
 
+### An upgrade notice is invisible under `mix igniter.upgrade` — #99
+
+**Symptom.** `Igniter.add_notice/2` in an upgrade task, and
+`Igniter.Test`'s `assert_has_notice/2` is green. Every test passes. A
+consumer running `mix igniter.upgrade <pkg>` for real sees nothing.
+
+**Why.** Two separate paths run the installed upgrade task, and neither
+prints an ordinary Igniter notice. Under the `igniter_new` archive,
+`Igniter.CopiedTasks.upgrade/1` composes the NEW task and returns the
+igniter without ever calling `Igniter.do_or_dry_run/2` — the notice is built
+and discarded (ash-project/igniter#402). Without the archive, the OLD task
+already loaded in the VM runs — its `upgrades` map predates the break, so it
+never adds the notice at all (ash-project/igniter#403). `Igniter.Test`
+exercises neither path: it calls the task's `igniter/2` directly and reads
+`igniter.notices` off the value it returns.
+
+**What we do.** `Mix.Tasks.AshIntrospection.Upgrade`'s notices go through a
+private `notify/2` that prints straight to `Mix.shell().info/1`, never
+`Igniter.add_notice/2` — see the module comment for both Igniter paths. A
+test captures this with `Mix.shell(Mix.Shell.Process)` and drains
+`{:mix_shell, :info, [text]}`, not `assert_has_notice/2`. To check that a new
+notice reaches a real run, run the task directly:
+`mix ash_introspection.upgrade <old> <new>`.
+
 ## CI and the definition of green
 
 `.github/workflows/ci.yml` runs on every push to `main` and every pull request,
