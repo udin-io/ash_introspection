@@ -189,6 +189,18 @@ exists. `mix ash_introspection.upgrade` prints this as a notice
   its client sends no `fields`, and got one `null` per attribute
   ([#85](https://github.com/udin-io/ash_introspection/issues/85)).
 
+### Security
+
+- `mix.exs` raises the `ash` floor to `>= 3.33.11 and < 4.0.0-0`, fixing
+  EEF-CVE-2026-93477: the bulk destroy and bulk update paths matched every
+  key in a caller's parameter map against an action's arguments with no
+  `public?` check, so a private argument could be set from untrusted input
+  ([#108](https://github.com/udin-io/ash_introspection/issues/108)). Ash
+  3.33.10 added an `is_list` guard to `Ash.Page.page_opts/1`, rejecting the
+  atom-keyed pagination map `apply_pagination/2` used to hand
+  `Ash.Query.page/2` as-is; it now turns `request.pagination` into a keyword
+  list first.
+
 ## [0.6.0] - 2026-09-23
 
 **Breaking: the request path requires a manifest.** Stage 5a PR 6 of
