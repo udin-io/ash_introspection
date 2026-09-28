@@ -65,6 +65,17 @@ which come first. Numbers in parentheses are GitHub issues on
   zero-row path. Breaking: a destroy of a missing record used to succeed.
   Also fixed: an Ash error class with no inner error returned no error at all.
   PR #114, `31bbbb2`.
+- **#113 — error responses carry no Elixir term or module name.** The
+  fallbacks send an error id and log the term under it. `unknown_field` and
+  `tenant_required` name no resource, and an unknown field is named as the
+  client sent it. Structs, modules and ports in `vars` or `path` become fixed
+  placeholders. Six Ash messages that rendered values in Elixir syntax send
+  fixed text, and `vars.value` is sent only when the message names it. An
+  unknown input key, filter field, sort field or filter operator, and a
+  missing tenant, answer `no_such_input`, `no_such_field`,
+  `no_such_filter_predicate` and `tenant_required`; all four answered
+  `internal_error`. Breaking, with a 0.7.0 upgrade notice. PR #117,
+  `4fb1998`.
 - **#99 — the upgrade task's notice never fires during the upgrade that
   needs it.** `Mix.Tasks.AshIntrospection.Upgrade` prints every notice
   through `Mix.shell().info/1`, not `Igniter.add_notice/2`: the
