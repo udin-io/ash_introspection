@@ -223,6 +223,67 @@ defmodule AshIntrospection.Rpc.ErrorDetailLeakTest do
     end
   end
 
+  describe "each Rpc.Error impl" do
+    @memo AshIntrospection.Test.Policy.Memo
+
+    for {label, module, opts} <- [
+          {"NotFound", Ash.Error.Query.NotFound, [resource: @memo, primary_key: %{id: "x"}]},
+          {"Changes.Required", Ash.Error.Changes.Required,
+           [field: :slug, type: :attribute, resource: @memo]},
+          {"Query.Required", Ash.Error.Query.Required,
+           [field: :slug, type: :argument, resource: @memo]},
+          {"InvalidKeyset", Ash.Error.Page.InvalidKeyset, [value: "abc"]},
+          {"InvalidPrimaryKey", Ash.Error.Invalid.InvalidPrimaryKey,
+           [resource: @memo, value: "zz"]},
+          {"ReadActionRequiresActor", Ash.Error.Query.ReadActionRequiresActor, []},
+          {"InvalidChanges", Ash.Error.Changes.InvalidChanges, [fields: [:slug]]},
+          {"InvalidQuery with a message", Ash.Error.Query.InvalidQuery,
+           [field: :slug, message: "is invalid"]},
+          {"InvalidAttribute", Ash.Error.Changes.InvalidAttribute, [field: :slug]},
+          {"Changes.InvalidArgument", Ash.Error.Changes.InvalidArgument, [field: :slug]},
+          {"Query.InvalidArgument", Ash.Error.Query.InvalidArgument, [field: :slug]},
+          {"UnknownError", Ash.Error.Unknown.UnknownError, [error: "host=10.0.0.5"]},
+          {"TenantRequired", Ash.Error.Invalid.TenantRequired, [resource: @memo]},
+          {"NoSuchInput", Ash.Error.Invalid.NoSuchInput,
+           [resource: @memo, action: :create, input: :bogus_key, inputs: [:slug]]},
+          {"NoSuchField", Ash.Error.Query.NoSuchField, [resource: @memo, field: "bogus_field"]},
+          {"NoSuchFilterPredicate", Ash.Error.Query.NoSuchFilterPredicate,
+           [resource: @memo, key: "bogus_op"]}
+        ] do
+      test "impl: #{label} names no module and no struct" do
+        error = unquote(module).exception(unquote(Macro.escape(opts)))
+
+        {[response], _log} = with_log(fn -> Errors.to_errors(error) end)
+
+        refute response.type == "internal_error"
+        refute_internal(response, ["10.0.0.5"])
+      end
+    end
+
+    test "impl: Forbidden with no inner error names no module" do
+      [response] = Errors.to_errors(%Ash.Error.Forbidden{errors: []})
+
+      assert response.type == "forbidden"
+      refute_internal(response)
+    end
+
+    test "impl: InvalidPage names no module" do
+      [response] = Errors.to_errors(Ash.Error.Query.InvalidPage.exception(page: [limit: -1]))
+
+      refute_internal(response, ["Elixir.", "AshIntrospection", "Memo"])
+    end
+
+    test "no impl: an exception answers internal_error and names no module" do
+      error = Ash.Error.Load.InvalidQuery.exception(resource: @memo, relationship: :x)
+
+      {[response], log} = with_log(fn -> Errors.to_errors(error) end)
+
+      assert response.type == "internal_error"
+      assert log =~ response.error_id
+      refute_internal(response)
+    end
+  end
+
   describe "ErrorBuilder clauses that hand the error to Errors" do
     test "RunStepError: the step's term sends nothing internal" do
       error = Reactor.Error.Invalid.RunStepError.exception(error: "db host=10.0.0.5", step: :s)

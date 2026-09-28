@@ -273,6 +273,63 @@ defimpl AshIntrospection.Rpc.Error, for: Ash.Error.Query.ReadActionRequiresActor
   end
 end
 
+# The four below replace Ash's messages, which name the resource module, with
+# fixed templates. `Errors` formats `fields`, `vars.field` and `vars.operator`
+# with the output formatter.
+defimpl AshIntrospection.Rpc.Error, for: Ash.Error.Invalid.NoSuchInput do
+  def to_error(error) do
+    %{
+      message: "Unknown input %{field}",
+      short_message: "Unknown input",
+      vars: %{field: error.input},
+      type: "no_such_input",
+      fields: [error.input],
+      path: error.path || []
+    }
+  end
+end
+
+defimpl AshIntrospection.Rpc.Error, for: Ash.Error.Query.NoSuchField do
+  def to_error(error) do
+    %{
+      message: "Unknown field %{field}",
+      short_message: "Unknown field",
+      vars: %{field: error.field},
+      type: "no_such_field",
+      fields: [error.field],
+      path: error.path || []
+    }
+  end
+end
+
+defimpl AshIntrospection.Rpc.Error, for: Ash.Error.Query.NoSuchFilterPredicate do
+  def to_error(error) do
+    %{
+      message: "Unknown filter operator %{operator}",
+      short_message: "Unknown filter operator",
+      vars: %{operator: error.key},
+      type: "no_such_filter_predicate",
+      fields: [],
+      path: error.path || []
+    }
+  end
+end
+
+# Upstream ash_typescript `8ed1fbb` sends `Exception.message/1`, which names
+# the resource module.
+defimpl AshIntrospection.Rpc.Error, for: Ash.Error.Invalid.TenantRequired do
+  def to_error(error) do
+    %{
+      message: "Tenant parameter is required",
+      short_message: "Tenant required",
+      vars: %{},
+      type: "tenant_required",
+      fields: [],
+      path: error.path || []
+    }
+  end
+end
+
 defimpl AshIntrospection.Rpc.Error, for: Ash.Error.Unknown.UnknownError do
   # This is the bucket every unrecognised exception falls into, so its text is
   # whatever crashed - a database URL, a stack trace, a third-party library's

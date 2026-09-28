@@ -416,6 +416,10 @@ defmodule AshIntrospection.Rpc.Errors do
 
           {:field, formatted}
 
+        {:operator, operator} when is_binary(operator) or is_atom(operator) ->
+          {:operator,
+           apply(field_formatter_module, :format_field_name, [to_string(operator), formatter])}
+
         other ->
           other
       end)
