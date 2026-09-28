@@ -123,6 +123,32 @@ defmodule AshIntrospection.Rpc.ErrorDetailLeakTest do
     end
   end
 
+  # Every way an error leaves `ErrorBuilder` or `Errors` for the client, one
+  # test per row. #113 claims no row sends an Elixir term, a module name or a
+  # server-side value; a row missing here is a path nobody checked.
+  #
+  # | Way out                                   | Row                          |
+  # |-------------------------------------------|------------------------------|
+  # | ErrorBuilder `{atom, term}` fallback      | "fallback: tagged pair"      |
+  # | ErrorBuilder `other ->` fallback          | "fallback: string/tuple/atom"|
+  # | ErrorBuilder list clause                  | "fallback: inside a list"    |
+  # | ErrorBuilder `invalid_field_format`       | "invalid_field_format"       |
+  # | ErrorBuilder `unknown_field` + resource   | "unknown_field: *"           |
+  # | ErrorBuilder `tenant_required`            | "tenant_required tuple"      |
+  # | ErrorBuilder `details.field_spec`         | "unsupported_field_comb..."  |
+  # | ErrorBuilder `vars.received` (3 tuples)   | "received: <shape>" x 18     |
+  # | ErrorBuilder `details.reason`             | "invalid_nested_page: *"     |
+  # | ErrorBuilder `format_field_type/1`        | "field type: *"              |
+  # | ErrorBuilder Reactor clause               | "RunStepError"               |
+  # | ErrorBuilder map clause -> Errors         | "a plain map"                |
+  # | Errors, each `Rpc.Error` impl             | "impl: <module>" x 16        |
+  # | Errors, no impl                           | "no impl"                    |
+  # | Errors.serialize_error, each value shape  | "vars: <shape>"              |
+  # | Errors.format_path_array                  | "path: module atom"          |
+  #
+  # Not rows: `show_raised_errors?: true` sends `Exception.message/1` by
+  # design, and a consumer's own error handler returns what it returns.
+
   # What an Elixir term or module name looks like once it is text: a module
   # (`Ash.Type.String`, `Elixir.Foo`), a struct or map literal, a tuple, an
   # opaque term other than the fixed placeholders.
@@ -220,6 +246,99 @@ defmodule AshIntrospection.Rpc.ErrorDetailLeakTest do
       assert response.message == "Tenant parameter is required"
       assert response.vars == %{}
       refute_internal(response)
+    end
+
+    test "unsupported_field_combination sends no field_spec" do
+      response =
+        build({:unsupported_field_combination, :relationship, :books, %{"a" => 1}, []})
+
+      refute Map.has_key?(response.details, :field_spec)
+      refute_internal(response)
+    end
+
+    test "invalid_nested_page: unknown keys become a code and a list" do
+      response = build({:invalid_nested_page, :books, {:unknown_keys, ["x", "y"]}, []})
+
+      assert response.details.reason == "unknown_keys"
+      assert response.details.unknown_keys == ["x", "y"]
+      refute_internal(response)
+    end
+
+    test "invalid_nested_page: a non-map page becomes a code" do
+      response = build({:invalid_nested_page, :books, :not_a_map, []})
+
+      assert response.details.reason == "not_a_map"
+      refute Map.has_key?(response.details, :unknown_keys)
+    end
+
+    test "field type: an Ash type answers its short name" do
+      response =
+        build({:invalid_field_selection, :primitive_type, Ash.Type.String, ["x"], []})
+
+      assert response.vars.return_type == "string"
+      refute_internal(response)
+    end
+
+    test "field type: an array of an Ash type answers its short name" do
+      response =
+        build({:invalid_field_selection, :primitive_type, {:array, Ash.Type.String}, ["x"], []})
+
+      assert response.vars.return_type == "array of string"
+      refute_internal(response)
+    end
+
+    test "field type: a custom type module is not named" do
+      response =
+        build(
+          {:invalid_field_selection, :primitive_type, AshIntrospection.Test.CustomType, ["x"], []}
+        )
+
+      assert response.vars.return_type == "custom type"
+      refute_internal(response, ["CustomType"])
+    end
+
+    test "field type: an {:ash_type, ...} tuple answers its short name" do
+      response =
+        build({:invalid_field_selection, :field, {:ash_type, Ash.Type.Integer, []}, []})
+
+      assert response.vars.field_type == "integer"
+      refute_internal(response)
+    end
+
+    test "field type: a kind atom answers its bare name" do
+      assert build({:invalid_field_selection, :x, :calculation, []}).vars.field_type ==
+               "calculation"
+
+      assert build({:invalid_field_selection, :x, :aggregate, []}).vars.field_type ==
+               "aggregate"
+    end
+
+    test "field type: a field path string is sent as is" do
+      response = build({:invalid_field_selection, :calculation, "books.title"})
+
+      assert response.vars.field == "books.title"
+      assert response.fields == ["books.title"]
+      assert response.path == ["books", "title"]
+    end
+  end
+
+  describe "vars.received" do
+    for {shape, value, expected} <- [
+          {"string", "client-sent", "string"},
+          {"integer", 42, "number"},
+          {"float", 1.5, "number"},
+          {"boolean", true, "boolean"},
+          {"array", ["client-sent"], "array"},
+          {"object", %{"k" => "client-sent"}, "object"},
+          {"null", nil, "null"}
+        ],
+        tag <- [:invalid_fields_type, :invalid_input_format, :invalid_pagination] do
+      test "received: #{tag} with #{shape} sends the JSON type name" do
+        response = build({unquote(tag), unquote(Macro.escape(value))})
+
+        assert response.vars.received == unquote(expected)
+        refute_internal(response, ["client-sent"])
+      end
     end
   end
 

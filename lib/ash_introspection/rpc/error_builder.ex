@@ -333,7 +333,7 @@ defmodule AshIntrospection.Rpc.ErrorBuilder do
           }
         }
 
-      {:unsupported_field_combination, field_type, field_atom, field_spec, path}
+      {:unsupported_field_combination, field_type, field_atom, _field_spec, path}
       when is_list(path) ->
         full_field_path =
           build_complete_field_path(path, field_atom, formatter, field_formatter_module)
@@ -348,7 +348,6 @@ defmodule AshIntrospection.Rpc.ErrorBuilder do
           path: formatted_path,
           fields: [full_field_path],
           details: %{
-            field_spec: inspect(field_spec),
             suggestion: "Check the documentation for valid field specification formats",
             hint: @stale_generated_file_hint
           }
@@ -361,7 +360,7 @@ defmodule AshIntrospection.Rpc.ErrorBuilder do
           type: "invalid_fields_type",
           message: "Fields parameter must be an array",
           short_message: "Invalid fields type",
-          vars: %{received: inspect(fields)},
+          vars: %{received: json_type(fields)},
           path: [],
           fields: [],
           details: %{
@@ -539,7 +538,7 @@ defmodule AshIntrospection.Rpc.ErrorBuilder do
           type: "invalid_input_format",
           message: "Input parameter must be a map",
           short_message: "Invalid input format",
-          vars: %{received: inspect(invalid_input)},
+          vars: %{received: json_type(invalid_input)},
           path: [],
           fields: [],
           details: %{
@@ -553,7 +552,7 @@ defmodule AshIntrospection.Rpc.ErrorBuilder do
           type: "invalid_pagination",
           message: "Invalid pagination parameter format",
           short_message: "Invalid pagination",
-          vars: %{received: inspect(invalid_value)},
+          vars: %{received: json_type(invalid_value)},
           path: [],
           fields: [],
           details: %{
@@ -702,12 +701,14 @@ defmodule AshIntrospection.Rpc.ErrorBuilder do
           vars: %{field: full_field_path},
           path: format_path(path, formatter, field_formatter_module),
           fields: [full_field_path],
-          details: %{
-            reason: inspect(reason),
-            suggestion:
-              "Provide page keys valid for the relationship's pagination type (offset: limit/offset/count, keyset: limit/after/before/count)",
-            hint: @stale_generated_file_hint
-          }
+          details:
+            reason
+            |> page_reason_details()
+            |> Map.merge(%{
+              suggestion:
+                "Provide page keys valid for the relationship's pagination type (offset: limit/offset/count, keyset: limit/after/before/count)",
+              hint: @stale_generated_file_hint
+            })
         }
 
       # === IDENTITY VALIDATION ERRORS ===
@@ -948,9 +949,38 @@ defmodule AshIntrospection.Rpc.ErrorBuilder do
     Errors.log_internal(:error, "Unhandled error term in RPC.", "Error: #{inspect(term)}\n")
   end
 
+  defp page_reason_details({:unknown_keys, keys}),
+    do: %{reason: "unknown_keys", unknown_keys: keys}
+
+  defp page_reason_details(reason) when is_atom(reason), do: %{reason: Atom.to_string(reason)}
+  defp page_reason_details(_reason), do: %{reason: "invalid"}
+
+  # The JSON type of what the client sent, never the value: it can be large,
+  # and it is the client's own data.
+  defp json_type(nil), do: "null"
+  defp json_type(value) when is_boolean(value), do: "boolean"
+  defp json_type(value) when is_number(value), do: "number"
+  defp json_type(value) when is_binary(value), do: "string"
+  defp json_type(value) when is_list(value), do: "array"
+  defp json_type(value) when is_map(value), do: "object"
+  defp json_type(_value), do: "unknown"
+
+  # A type as the client knows it: an Ash type by its short name, any other
+  # module as "custom type", never a module name (#113).
   defp format_field_type(:primitive_type), do: "primitive type"
-  defp format_field_type({:ash_type, type, _}), do: "#{inspect(type)}"
-  defp format_field_type(other), do: "#{inspect(other)}"
+  defp format_field_type({:ash_type, type, _}), do: format_field_type(type)
+  defp format_field_type({:array, type}), do: "array of " <> format_field_type(type)
+  defp format_field_type(field_path) when is_binary(field_path), do: field_path
+
+  defp format_field_type(type) when is_atom(type) do
+    case Atom.to_string(type) do
+      "Elixir.Ash.Type." <> name -> Macro.underscore(name)
+      "Elixir." <> _ -> "custom type"
+      name -> name
+    end
+  end
+
+  defp format_field_type(_type), do: "custom type"
 
   defp format_path(path, formatter, field_formatter_module) when is_list(path) do
     Enum.map(path, fn field ->
