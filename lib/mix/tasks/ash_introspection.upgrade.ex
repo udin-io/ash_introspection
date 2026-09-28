@@ -355,7 +355,7 @@ if Code.ensure_loaded?(Igniter) do
       igniter
       |> notify(@query_params_notice)
       |> notify(@zero_row_write_notice)
-      |> Igniter.add_notice(@error_leak_notice)
+      |> notify(@error_leak_notice)
     end
 
     # `Igniter.update_all_elixir_files/2` leans on `Igniter.include_glob/2` to
