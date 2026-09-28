@@ -91,6 +91,39 @@ defmodule AshIntrospection.Rpc.ErrorDetailLeakTest do
       assert ErrorProtocol.to_error(policy_error()).message =~ "Policy Breakdown"
     end
 
+    test "does not leak the report through a domain with show_raised_errors? set" do
+      Application.put_env(:ash, :policies, show_policy_breakdowns?: true)
+
+      [result] =
+        Errors.to_errors(
+          policy_error(),
+          AshIntrospection.Test.RaisingErrorsDomain,
+          nil,
+          nil,
+          %{},
+          %{rpc_dsl_section: :typescript_rpc}
+        )
+
+      assert result.message == "forbidden"
+      assert result.type == "forbidden"
+      refute leaks?(result)
+    end
+
+    test "an empty Forbidden class answers forbidden through show_raised_errors?" do
+      [result] =
+        Errors.to_errors(
+          %Ash.Error.Forbidden{errors: []},
+          AshIntrospection.Test.RaisingErrorsDomain,
+          nil,
+          nil,
+          %{},
+          %{rpc_dsl_section: :typescript_rpc}
+        )
+
+      assert result.type == "forbidden"
+      assert result.message == "forbidden"
+    end
+
     test "opted-in payload still encodes to JSON" do
       Application.put_env(:ash_introspection, :policies, show_policy_breakdowns?: true)
 

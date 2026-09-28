@@ -99,7 +99,7 @@ defmodule AshIntrospection.Rpc.Errors do
     show_raised_errors? = get_show_raised_errors?(domain, config)
 
     transformed_error =
-      if show_raised_errors? and is_exception(error) do
+      if show_raised_errors? and is_exception(error) and not always_via_protocol?(error) do
         # When show_raised_errors? is true, always expose the actual exception message
         %{
           message: Exception.message(error),
@@ -153,6 +153,14 @@ defmodule AshIntrospection.Rpc.Errors do
     # Apply default error handler for variable interpolation
     DefaultErrorHandler.handle_error(transformed_error, context)
   end
+
+  # A forbidden error keeps its implementation under `show_raised_errors?`:
+  # `Exception.message/1` renders the policy breakdown, actor included,
+  # whenever Ash's own `show_policy_breakdowns?` is set, and only this
+  # library's switch may open it (#11, #113).
+  defp always_via_protocol?(%Ash.Error.Forbidden.Policy{}), do: true
+  defp always_via_protocol?(%Ash.Error.Forbidden{}), do: true
+  defp always_via_protocol?(_error), do: false
 
   # `Ash.Changeset.add_error/2` copies every option it is given into `vars`,
   # `:value` included, and the value can be anything the server holds. It
