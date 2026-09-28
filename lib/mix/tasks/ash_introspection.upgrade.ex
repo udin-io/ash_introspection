@@ -279,6 +279,15 @@ if Code.ensure_loaded?(Igniter) do
         `tenant_required`. Each used to return `internal_error`. A map that
         names several nested fields where one is allowed returns
         `invalid_field_format`; it returned `unknown_error`.
+      * `vars.value` is sent only when the message names `%{value}`.
+      * `not_found`, `invalid_primary_key`, `invalid_keyset`,
+        `invalid_page`, and `invalid_attribute` or `invalid_argument` with no
+        message send fixed messages: "record not found", "Invalid primary
+        key", "Invalid keyset", "Invalid page option", "is invalid". Ash's
+        messages rendered values in Elixir syntax.
+      * With `show_raised_errors?` set, `forbidden` still answers
+        "forbidden"; the policy breakdown needs this library's own
+        `show_policy_breakdowns?`.
     """
 
     @impl Igniter.Mix.Task

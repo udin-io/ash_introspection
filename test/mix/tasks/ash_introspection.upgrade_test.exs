@@ -198,6 +198,8 @@ defmodule Mix.Tasks.AshIntrospection.UpgradeTest do
       |> assert_unchanged("lib/my_app/rpc.ex")
       |> assert_has_notice(&(&1 =~ "details.error" and &1 =~ "vars.resource"))
       |> assert_has_notice(&(&1 =~ "no_such_input" and &1 =~ "tenant_required"))
+      |> assert_has_notice(&(&1 =~ "vars.value" and &1 =~ "record not found"))
+      |> assert_has_notice(&(&1 =~ "show_raised_errors?"))
     end
 
     test "does not fire when 0.7.0 falls outside the range" do

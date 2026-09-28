@@ -68,8 +68,18 @@ exists. `mix ash_introspection.upgrade` prints this as a notice
   `invalid_pagination` is the JSON type name (`"string"`, `"number"`,
   `"boolean"`, `"array"`, `"object"`, `"null"`), not the value.
 - `vars.operator` is formatted with the output formatter, like `vars.field`.
-- Messages Ash or your application writes, which the existing error types
-  pass through, are unchanged.
+- `vars.value` is sent only when the message template names `%{value}`.
+  `Ash.Changeset.add_error/2` copies its `value:` option into `vars`.
+- `not_found`, `invalid_primary_key`, `invalid_keyset`, `invalid_page`, and
+  `invalid_attribute` or `invalid_argument` built with no message send fixed
+  messages: "record not found", "Invalid primary key", "Invalid keyset",
+  "Invalid page option", "is invalid". Ash's messages rendered values in
+  Elixir syntax (`#Ash.CiString<"x">`). A message your application writes is
+  unchanged.
+- With `show_raised_errors?: true`, a `forbidden` error still goes through its
+  implementation, so the policy breakdown needs
+  `config :ash_introspection, :policies, show_policy_breakdowns?: true`. Ash's
+  own `show_policy_breakdowns?` used to open it.
 
 `mix ash_introspection.upgrade` prints this as a notice ([#113](https://github.com/udin-io/ash_introspection/issues/113)).
 
