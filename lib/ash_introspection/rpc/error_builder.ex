@@ -874,7 +874,7 @@ defmodule AshIntrospection.Rpc.ErrorBuilder do
           type: "field_validation_error",
           message: "Field validation error: %{error_type}. Unique error id: #{error_id}",
           short_message: "Field validation error",
-          vars: %{error_type: to_string(field_error_type)},
+          vars: %{error_type: Errors.client_atom(field_error_type)},
           path: [],
           fields: [],
           error_id: error_id

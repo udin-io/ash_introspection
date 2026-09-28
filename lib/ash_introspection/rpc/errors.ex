@@ -446,9 +446,7 @@ defmodule AshIntrospection.Rpc.Errors do
 
   defp serialize_error(value) when is_boolean(value), do: value
 
-  defp serialize_error(value) when is_atom(value) do
-    if module_atom?(value), do: opaque_module(value), else: Atom.to_string(value)
-  end
+  defp serialize_error(value) when is_atom(value), do: client_atom(value)
 
   defp serialize_error(value) when is_tuple(value) do
     value
@@ -520,8 +518,16 @@ defmodule AshIntrospection.Rpc.Errors do
 
   defp opaque_term(module), do: "##{inspect(module)}<>"
 
-  # An Elixir module name is server code, so the client gets a placeholder and
-  # the log gets the name. Erlang modules (`:crypto`) look like any atom.
+  @doc """
+  An atom as the client may see it: its name, or `"#Module<>"` for an Elixir
+  module, whose name is server code and goes to the log instead.
+  """
+  @spec client_atom(atom()) :: String.t()
+  def client_atom(atom) when is_atom(atom) do
+    if module_atom?(atom), do: opaque_module(atom), else: Atom.to_string(atom)
+  end
+
+  # Erlang modules (`:crypto`) look like any atom.
   defp module_atom?(atom), do: String.starts_with?(Atom.to_string(atom), "Elixir.")
 
   defp opaque_module(module) do

@@ -204,6 +204,13 @@ defmodule AshIntrospection.Rpc.ErrorDetailLeakTest do
       refute_internal(response, ["sk_live_123"])
     end
 
+    test "fallback: a module tag is not named" do
+      response = build({AshIntrospection.Test.Policy.Memo, "x"})
+
+      assert response.vars.error_type == "#Module<>"
+      refute_internal(response)
+    end
+
     test "fallback: the log carries the term and the id the client got" do
       {response, log} = with_log(fn -> build({:internal_state, %{api_key: "sk_live_123"}}) end)
 
