@@ -200,6 +200,13 @@ exists. `mix ash_introspection.upgrade` prints this as a notice
   atom-keyed pagination map `apply_pagination/2` used to hand
   `Ash.Query.page/2` as-is; it now turns `request.pagination` into a keyword
   list first.
+- `mix.exs` floors `mint` at `>= 1.11.0`, fixing EEF-CVE-2026-91043 (HIGH,
+  HPACK-indexed cookie fields bypassing `max_header_list_size`),
+  EEF-CVE-2026-92103 (oversized frames buffered before `max_frame_size` is
+  enforced) and EEF-CVE-2026-94194 (chunked framing applied when it is not
+  the final transfer coding, enabling response smuggling)
+  ([#121](https://github.com/udin-io/ash_introspection/issues/121)). Mint is
+  transitive here through `finch` and `req`; this pins the floor directly.
 
 ## [0.6.0] - 2026-09-23
 
