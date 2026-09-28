@@ -293,7 +293,7 @@ defmodule AshIntrospection.Rpc.FieldProcessing.FieldSelector do
     internal_name = resolve_resource_field_name(resource, field_name, config)
 
     {field_type, constraints, category} =
-      get_resource_field_info(resource, internal_name, path, config)
+      get_resource_field_info(resource, internal_name, field_name, path, config)
 
     if category == :calculation_with_args do
       throw({:calculation_requires_args, internal_name, path})
@@ -327,7 +327,7 @@ defmodule AshIntrospection.Rpc.FieldProcessing.FieldSelector do
     internal_name = resolve_resource_field_name(resource, field_name, config)
 
     {field_type, field_constraints, category} =
-      get_resource_field_info(resource, internal_name, path, config)
+      get_resource_field_info(resource, internal_name, field_name, path, config)
 
     if category == :calculation_with_args do
       throw({:invalid_calculation_args, internal_name, path})
@@ -401,7 +401,7 @@ defmodule AshIntrospection.Rpc.FieldProcessing.FieldSelector do
         dest_resource = rel && rel.destination
 
         unless dest_resource && is_interop_resource?(dest_resource, config) do
-          throw({:unknown_field, internal_name, resource, path})
+          throw({:unknown_field, field_name, resource, path})
         end
 
         check_load_allowed!(path, internal_name, config)
@@ -435,7 +435,7 @@ defmodule AshIntrospection.Rpc.FieldProcessing.FieldSelector do
     calc = ResourceInfo.calculation(resource, internal_name, config)
 
     if is_nil(calc) or Map.get(config, :attributes_only, false) do
-      throw({:unknown_field, internal_name, resource, path})
+      throw({:unknown_field, calc_name, resource, path})
     end
 
     {field_type, field_constraints} = {calc.type, calc.constraints || []}
@@ -529,7 +529,7 @@ defmodule AshIntrospection.Rpc.FieldProcessing.FieldSelector do
          config
        ) do
     internal_name = resolve_resource_field_name(resource, field_name, config)
-    rel = validate_query_opts!(resource, internal_name, opts, fields, path, config)
+    rel = validate_query_opts!(resource, internal_name, field_name, opts, fields, path, config)
     dest = rel.destination
     new_path = path ++ [internal_name]
 
@@ -576,7 +576,7 @@ defmodule AshIntrospection.Rpc.FieldProcessing.FieldSelector do
   # capability, filter, sort, page against bare limit/offset, then fields.
   # Bare limit/offset on a read that requires pagination is ours: Ash refuses
   # it with a `LimitRequired` that does not say to send `page`.
-  defp validate_query_opts!(resource, internal_name, opts, fields, path, config) do
+  defp validate_query_opts!(resource, internal_name, field_name, opts, fields, path, config) do
     rel =
       if is_atom(internal_name) and not Map.get(config, :attributes_only, false),
         do: ResourceInfo.public_relationship(resource, internal_name, config)
@@ -585,7 +585,7 @@ defmodule AshIntrospection.Rpc.FieldProcessing.FieldSelector do
       case rel do
         nil ->
           {_type, _constraints, category} =
-            get_resource_field_info(resource, internal_name, path, config)
+            get_resource_field_info(resource, internal_name, field_name, path, config)
 
           throw({:query_opts_on_non_relationship, internal_name, category, path})
 
@@ -597,7 +597,7 @@ defmodule AshIntrospection.Rpc.FieldProcessing.FieldSelector do
       end
 
     unless is_interop_resource?(rel.destination, config) do
-      throw({:unknown_field, internal_name, resource, path})
+      throw({:unknown_field, field_name, resource, path})
     end
 
     if not is_nil(Map.get(opts, :args)) do
@@ -738,7 +738,9 @@ defmodule AshIntrospection.Rpc.FieldProcessing.FieldSelector do
 
   defp page_key(_key, _allowed, _config), do: nil
 
-  defp get_resource_field_info(resource, field_name, path, config) do
+  # `field_name` is the resolved name; `client_name` is the name as the client
+  # sent it, which an unknown-field error names (#113).
+  defp get_resource_field_info(resource, field_name, client_name, path, config) do
     cond do
       attr = ResourceInfo.public_attribute(resource, field_name, config) ->
         constraints = attr.constraints || []
@@ -746,7 +748,7 @@ defmodule AshIntrospection.Rpc.FieldProcessing.FieldSelector do
         {attr.type, constraints, category}
 
       Map.get(config, :attributes_only, false) ->
-        throw({:unknown_field, field_name, resource, path})
+        throw({:unknown_field, client_name, resource, path})
 
       rel = ResourceInfo.public_relationship(resource, field_name, config) ->
         type = if rel.cardinality == :many, do: {:array, rel.destination}, else: rel.destination
@@ -769,7 +771,7 @@ defmodule AshIntrospection.Rpc.FieldProcessing.FieldSelector do
         {type, constraints, :aggregate}
 
       true ->
-        throw({:unknown_field, field_name, resource, path})
+        throw({:unknown_field, client_name, resource, path})
     end
   end
 
@@ -848,12 +850,27 @@ defmodule AshIntrospection.Rpc.FieldProcessing.FieldSelector do
       case parse_field_request(field) do
         {:simple, field_name} ->
           internal_name = resolve_typed_struct_field(field_name, reverse_map, config)
-          Validation.validate_field_exists!(internal_name, field_specs, path)
+
+          Validation.validate_field_exists!(
+            internal_name,
+            field_specs,
+            path,
+            "field_constrained_type",
+            field_name
+          )
+
           {select, load, template ++ [internal_name]}
 
         {:nested, field_name, nested_fields} ->
           internal_name = resolve_typed_struct_field(field_name, reverse_map, config)
-          Validation.validate_field_exists!(internal_name, field_specs, path)
+
+          Validation.validate_field_exists!(
+            internal_name,
+            field_specs,
+            path,
+            "field_constrained_type",
+            field_name
+          )
 
           field_spec = Keyword.get(field_specs, internal_name)
           field_type = Keyword.get(field_spec, :type)
@@ -877,7 +894,7 @@ defmodule AshIntrospection.Rpc.FieldProcessing.FieldSelector do
   defp resolve_typed_struct_field(field_name, reverse_map, config) when is_binary(field_name) do
     case Map.get(reverse_map, field_name) do
       # A name absent from the interop map names no field of this struct, so it
-      # stays a string and fails Validation.validate_field_exists!/4 as an
+      # stays a string and fails Validation.validate_field_exists!/5 as an
       # unknown field. Minting an atom here only let client input grow the atom
       # table.
       nil -> resolve_field_name(field_name, config)
@@ -947,7 +964,14 @@ defmodule AshIntrospection.Rpc.FieldProcessing.FieldSelector do
           {:multi_nested, entries} ->
             Enum.reduce(entries, {select, load, template}, fn {field_name, nested}, {s, l, t} ->
               internal_name = resolve_field_name(field_name, config)
-              Validation.validate_field_exists!(internal_name, field_specs, path, error_type)
+
+              Validation.validate_field_exists!(
+                internal_name,
+                field_specs,
+                path,
+                error_type,
+                field_name
+              )
 
               field_spec = Keyword.get(field_specs, internal_name)
               field_type = Keyword.get(field_spec, :type)
@@ -989,7 +1013,7 @@ defmodule AshIntrospection.Rpc.FieldProcessing.FieldSelector do
               index = Enum.find_index(field_names, &(&1 == field_atom))
               {select, load, template ++ [%{field_name: field_atom, index: index}]}
             else
-              throw({:unknown_field, field_atom, "tuple", path})
+              throw({:unknown_field, field_name, "tuple", path})
             end
 
           {:nested, field_name, nested_fields} ->
@@ -1019,7 +1043,7 @@ defmodule AshIntrospection.Rpc.FieldProcessing.FieldSelector do
               {select, load,
                template ++ [%{field_name: field_atom, index: index, nested: nested_template}]}
             else
-              throw({:unknown_field, field_atom, "tuple", path})
+              throw({:unknown_field, field_name, "tuple", path})
             end
 
           {:multi_nested, entries} ->
@@ -1028,7 +1052,7 @@ defmodule AshIntrospection.Rpc.FieldProcessing.FieldSelector do
               field_atom = resolve_field_name(field_name, config)
 
               unless Validation.field_exists?(field_specs, field_atom) do
-                throw({:unknown_field, field_atom, "tuple", path})
+                throw({:unknown_field, field_name, "tuple", path})
               end
 
               index = Enum.find_index(field_names, &(&1 == field_atom))
@@ -1132,7 +1156,7 @@ defmodule AshIntrospection.Rpc.FieldProcessing.FieldSelector do
     internal_name = convert_union_member_name(member_name, config)
 
     unless Keyword.has_key?(union_types, internal_name) do
-      throw({:unknown_field, internal_name, error_type, path})
+      throw({:unknown_field, member_name, error_type, path})
     end
 
     member_config = Keyword.get(union_types, internal_name)
@@ -1173,7 +1197,7 @@ defmodule AshIntrospection.Rpc.FieldProcessing.FieldSelector do
     internal_name = convert_union_member_name(member_name, config)
 
     unless Keyword.has_key?(union_types, internal_name) do
-      throw({:unknown_field, internal_name, error_type, path})
+      throw({:unknown_field, member_name, error_type, path})
     end
 
     member_config = Keyword.get(union_types, internal_name)
