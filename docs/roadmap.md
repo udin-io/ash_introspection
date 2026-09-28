@@ -65,6 +65,17 @@ which come first. Numbers in parentheses are GitHub issues on
   zero-row path. Breaking: a destroy of a missing record used to succeed.
   Also fixed: an Ash error class with no inner error returned no error at all.
   PR #114, `31bbbb2`.
+- **#99 — the upgrade task's notice never fires during the upgrade that
+  needs it.** `Mix.Tasks.AshIntrospection.Upgrade` prints every notice
+  through `Mix.shell().info/1`, not `Igniter.add_notice/2`: the
+  `igniter_new` archive's wrapper never called `Igniter.do_or_dry_run/2`
+  with the notice attached (ash-project/igniter#402), and printing directly
+  no longer depends on it. A fallback notice fires when the installed copy
+  is older than every release it can name. The README's "Upgrading" section
+  now names a second command, `mix ash_introspection.upgrade <old> <new>`,
+  for the one gap nothing here can close: a consumer without the archive
+  runs the OLD copy, which has never heard of the new break either way
+  (ash-project/igniter#403). PR #116.
 
 ### 0.6.0 — 2026-09-23
 
@@ -533,17 +544,10 @@ Nothing is in progress right now.
 ## Next
 
 All six slices of #100 (#89 and #85, #76, #25, #24, #18, #107) shipped,
-above.
+above. #99 also shipped, below.
 What is left, in order:
 
-1. **#99 — the upgrade task's notice never fires during the upgrade that
-   needs it.** Igniter runs the installed copy of
-   `Mix.Tasks.AshIntrospection.Upgrade`, whose `upgrades` map does not yet
-   carry the new version's key — that key ships inside the new tarball. Found
-   moving `ash_kotlin_multiplatform` from 0.5.3 to 0.6.0. Whether this is ours
-   to fix depends on whether Igniter intends the behavior; three options are
-   open, none decided.
-2. **#83 — stage 5b, manifest-shaped return values.** Replace the Ash structs
+1. **#83 — stage 5b, manifest-shaped return values.** Replace the Ash structs
    `ResourceInfo` and `Manifest.Custom` return with manifest-shaped values
    (`%Ash.Info.Manifest.Field{}` / `%Ash.Info.Manifest.Action{}`), as upstream
    `ash_typescript` does. 12 `ResourceInfo` readers and their 12 `Custom`
