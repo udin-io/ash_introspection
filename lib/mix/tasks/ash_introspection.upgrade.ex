@@ -324,7 +324,7 @@ if Code.ensure_loaded?(Igniter) do
       |> Igniter.update_all_elixir_files(fn zipper ->
         {:ok, Zipper.traverse(zipper, &rewrite_code_read/1)}
       end)
-      |> Igniter.add_notice(@manual_check_notice)
+      |> notify(@manual_check_notice)
     end
 
     # Deliberately touches no file. See the 0.4.0 section of this module's
@@ -332,21 +332,21 @@ if Code.ensure_loaded?(Igniter) do
     @doc false
     def notify_0_4_0_breaks(igniter, _opts) do
       igniter
-      |> Igniter.add_notice(@identity_notice)
-      |> Igniter.add_notice(@removed_functions_notice)
+      |> notify(@identity_notice)
+      |> notify(@removed_functions_notice)
     end
 
     # Touches no file. See the 0.5.0 section of this module's comment.
     @doc false
     def notify_0_5_0_breaks(igniter, _opts) do
-      Igniter.add_notice(igniter, @type_discovery_notice)
+      notify(igniter, @type_discovery_notice)
     end
 
     # Touches no file. See the 0.6.0 section of this module's comment: no
     # consumer call site changes, only the config map they build.
     @doc false
     def notify_0_6_0_breaks(igniter, _opts) do
-      Igniter.add_notice(igniter, @manifest_required_notice)
+      notify(igniter, @manifest_required_notice)
     end
 
     # Touches no file. See the 0.7.0 section of this module's comment.
@@ -374,6 +374,18 @@ if Code.ensure_loaded?(Igniter) do
       |> Enum.reduce(igniter, fn glob, igniter ->
         Igniter.include_glob(igniter, Path.expand(glob))
       end)
+    end
+
+    # Prints straight to the shell instead of `Igniter.add_notice/2`. Under
+    # the `igniter_new` archive, the copy of this task that ships INSIDE the
+    # new release runs, but the wrapper that composes it
+    # (`Igniter.CopiedTasks.upgrade/1`) returns the igniter without ever
+    # calling `Igniter.do_or_dry_run/2` — so a notice added the ordinary way
+    # is silently dropped (ash-project/igniter#402). Printing here reaches
+    # the screen on every path, archive included.
+    defp notify(igniter, text) do
+      Mix.shell().info(text)
+      igniter
     end
 
     # `error.code` and `error.code()`.
