@@ -22,7 +22,8 @@ defmodule AshIntrospection.Rpc.Errors do
           optional(:output_field_formatter) => atom(),
           optional(:rpc_dsl_section) => atom(),
           optional(:field_formatter_module) => module(),
-          optional(:format_field_for_client) => (atom(), module() | nil, atom() -> String.t())
+          optional(:format_field_for_client) => (atom() | String.t(), module() | nil, atom() ->
+                                                   String.t())
         }
 
   @doc """
@@ -360,13 +361,10 @@ defmodule AshIntrospection.Rpc.Errors do
     format_field_for_client = Map.get(config, :format_field_for_client)
 
     formatted_fields =
-      Enum.map(fields, fn field ->
-        if format_field_for_client do
-          format_field_for_client.(field, resource, formatter)
-        else
-          apply(field_formatter_module, :format_field_name, [to_string(field), formatter])
-        end
-      end)
+      Enum.map(
+        fields,
+        &client_field(&1, resource, formatter, field_formatter_module, format_field_for_client)
+      )
 
     %{error | fields: formatted_fields}
   end
@@ -410,18 +408,17 @@ defmodule AshIntrospection.Rpc.Errors do
     formatted_vars =
       Enum.into(vars, %{}, fn
         {:field, field} ->
-          formatted =
-            if format_field_for_client do
-              format_field_for_client.(field, resource, formatter)
-            else
-              apply(field_formatter_module, :format_field_name, [to_string(field), formatter])
-            end
-
-          {:field, formatted}
+          {:field,
+           client_field(
+             field,
+             resource,
+             formatter,
+             field_formatter_module,
+             format_field_for_client
+           )}
 
         {:operator, operator} when is_binary(operator) or is_atom(operator) ->
-          {:operator,
-           apply(field_formatter_module, :format_field_name, [to_string(operator), formatter])}
+          {:operator, client_field(operator, nil, formatter, field_formatter_module, nil)}
 
         other ->
           other
@@ -432,6 +429,28 @@ defmodule AshIntrospection.Rpc.Errors do
 
   defp format_vars_field(error, _resource, _formatter, _field_formatter_module, _config),
     do: error
+
+  # A field name as the client sees it. A module or a struct is server data:
+  # formatting it would send its name or, through `String.Chars`, its fields.
+  defp client_field(%_{} = field, _resource, _formatter, _module, _callback),
+    do: serialize_error(field)
+
+  defp client_field(field, resource, formatter, field_formatter_module, callback)
+       when is_atom(field) do
+    if module_atom?(field),
+      do: opaque_module(field),
+      else: format_client_name(field, resource, formatter, field_formatter_module, callback)
+  end
+
+  defp client_field(field, resource, formatter, field_formatter_module, callback),
+    do: format_client_name(field, resource, formatter, field_formatter_module, callback)
+
+  defp format_client_name(field, resource, formatter, _field_formatter_module, callback)
+       when is_function(callback, 3),
+       do: callback.(field, resource, formatter)
+
+  defp format_client_name(field, _resource, formatter, field_formatter_module, _callback),
+    do: apply(field_formatter_module, :format_field_name, [to_string(field), formatter])
 
   # An error's `vars` and `path` hold whatever the code that raised it put there,
   # so any Erlang term can reach here. The payload is handed to a JSON encoder,

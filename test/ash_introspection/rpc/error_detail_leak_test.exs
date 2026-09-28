@@ -489,6 +489,46 @@ defmodule AshIntrospection.Rpc.ErrorDetailLeakTest do
       assert {:ok, _} = Jason.encode(vars)
     end
 
+    test "fields: a module atom is replaced" do
+      [response] =
+        Errors.to_errors(
+          Ash.Error.Changes.InvalidAttribute.exception(
+            field: AshIntrospection.Test.Policy.Memo,
+            message: "bad"
+          )
+        )
+
+      assert response.fields == ["#Module<>"]
+      assert response.vars.field == "#Module<>"
+      refute_internal(response)
+    end
+
+    test "fields: a struct is replaced" do
+      {[response], _log} =
+        with_log(fn ->
+          Errors.to_errors(
+            Ash.Error.Changes.InvalidAttribute.exception(
+              field: URI.parse("https://user:pw@db.internal/x"),
+              message: "bad"
+            )
+          )
+        end)
+
+      assert response.fields == ["#Struct<>"]
+      assert response.vars.field == "#Struct<>"
+      refute_internal(response, ["db.internal", "pw"])
+    end
+
+    test "vars.operator: a module atom is replaced" do
+      [response] =
+        Errors.to_errors(
+          Ash.Error.Query.NoSuchFilterPredicate.exception(key: AshIntrospection.Test.Policy.Memo)
+        )
+
+      assert response.vars.operator == "#Module<>"
+      refute_internal(response)
+    end
+
     test "path: a module atom is replaced" do
       [response] =
         Errors.to_errors(
