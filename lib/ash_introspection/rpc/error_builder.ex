@@ -91,7 +91,7 @@ defmodule AshIntrospection.Rpc.ErrorBuilder do
 
       {:unknown_field, field_atom, "map", path} when is_list(path) ->
         full_field_path =
-          build_complete_field_path(path, field_atom, formatter, field_formatter_module)
+          build_unknown_field_path(path, field_atom, formatter, field_formatter_module)
 
         formatted_path = format_path(path, formatter, field_formatter_module)
 
@@ -110,7 +110,7 @@ defmodule AshIntrospection.Rpc.ErrorBuilder do
 
       {:unknown_field, field_atom, "union_attribute", path} when is_list(path) ->
         full_field_path =
-          build_complete_field_path(path, field_atom, formatter, field_formatter_module)
+          build_unknown_field_path(path, field_atom, formatter, field_formatter_module)
 
         formatted_path = format_path(path, formatter, field_formatter_module)
 
@@ -130,7 +130,7 @@ defmodule AshIntrospection.Rpc.ErrorBuilder do
 
       {:unknown_field, field_atom, _resource, path} when is_list(path) ->
         full_field_path =
-          build_complete_field_path(path, field_atom, formatter, field_formatter_module)
+          build_unknown_field_path(path, field_atom, formatter, field_formatter_module)
 
         formatted_path = format_path(path, formatter, field_formatter_module)
 
@@ -967,6 +967,22 @@ defmodule AshIntrospection.Rpc.ErrorBuilder do
        when is_binary(field_name) do
     apply(field_formatter_module, :format_field_name, [field_name, formatter])
   end
+
+  # `FieldSelector` throws an unknown field with the name the client sent, and
+  # that name goes back as is: formatting it named a field the client never
+  # sent (#113). An atom comes from an Elixir caller and is formatted, like
+  # every path segment. Every other error carries a parsed name, so it goes
+  # through build_complete_field_path/4.
+  defp build_unknown_field_path(path, field_name, formatter, field_formatter_module)
+       when is_binary(field_name) do
+    case format_path(path, formatter, field_formatter_module) do
+      [] -> field_name
+      formatted_path -> Enum.join(formatted_path ++ [field_name], ".")
+    end
+  end
+
+  defp build_unknown_field_path(path, field_name, formatter, field_formatter_module),
+    do: build_complete_field_path(path, field_name, formatter, field_formatter_module)
 
   defp build_complete_field_path(path, field_name, formatter, field_formatter_module)
        when is_list(path) do

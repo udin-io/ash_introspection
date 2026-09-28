@@ -106,24 +106,34 @@ defmodule AshIntrospection.Rpc.FieldProcessing.Validation do
   @doc """
   Validates that a field exists in the given field specs.
 
-  Throws `{:unknown_field, field_name, error_type, path}` if not found.
+  Throws `{:unknown_field, name, error_type, path}` if not found, where `name`
+  is `client_name` when given and `field_name` otherwise. The error names the
+  field as the client sent it (#113).
 
   ## Parameters
 
-  - `field_name` - The field name to check
+  - `field_name` - The resolved field name to check
   - `field_specs` - Keyword list of field specifications
   - `path` - Current path for error reporting
   - `error_type` - Error type string for error messages
+  - `client_name` - The name as the client sent it
   """
-  @spec validate_field_exists!(atom() | String.t(), keyword(), list(), String.t()) :: :ok
+  @spec validate_field_exists!(
+          atom() | String.t(),
+          keyword(),
+          list(),
+          String.t(),
+          atom() | String.t() | nil
+        ) :: :ok
   def validate_field_exists!(
         field_name,
         field_specs,
         path,
-        error_type \\ "field_constrained_type"
+        error_type \\ "field_constrained_type",
+        client_name \\ nil
       ) do
     unless field_exists?(field_specs, field_name) do
-      throw({:unknown_field, field_name, error_type, path})
+      throw({:unknown_field, client_name || field_name, error_type, path})
     end
 
     :ok
