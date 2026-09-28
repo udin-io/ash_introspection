@@ -195,18 +195,38 @@ defmodule AshIntrospection.Rpc.Errors do
   # fall back to the unredacted error it was supposed to sanitize. The generic
   # error carries a UUID so the real error stays correlatable in the server log.
   defp handler_failure(reason, stacktrace, handler, error) do
-    uuid = Ash.UUID.generate()
-
-    Logger.error("""
-    Error handler failed, returning a generic error instead of the unhandled one.
-    Error ID: #{uuid}
-    Handler: #{inspect(handler)}
-    Failure: #{reason}
-    Original error: #{inspect(error)}
-    #{Exception.format_stacktrace(stacktrace)}
-    """)
+    uuid =
+      log_internal(
+        :error,
+        "Error handler failed, returning a generic error instead of the unhandled one.",
+        """
+        Handler: #{inspect(handler)}
+        Failure: #{reason}
+        Original error: #{inspect(error)}
+        #{Exception.format_stacktrace(stacktrace)}
+        """
+      )
 
     generic_internal_error(uuid, [])
+  end
+
+  @doc """
+  Logs what the client must not see under a new error id, and returns the id.
+
+  The client gets the id and the log keeps the detail, so the two ends can be
+  joined. The id goes on the line after `headline`.
+  """
+  @spec log_internal(Logger.level(), String.t(), String.t()) :: String.t()
+  def log_internal(level, headline, detail) do
+    uuid = Ash.UUID.generate()
+
+    Logger.log(level, """
+    #{headline}
+    Error ID: #{uuid}
+    #{detail}\
+    """)
+
+    uuid
   end
 
   defp generic_internal_error(uuid, path) do
@@ -256,42 +276,35 @@ defmodule AshIntrospection.Rpc.Errors do
   end
 
   defp handle_unimplemented_error(error, _show_raised_errors?) when is_exception(error) do
-    uuid = Ash.UUID.generate()
+    uuid =
+      log_internal(:warning, "Unhandled error in RPC (no protocol implementation).", """
+      Error type: #{inspect(error.__struct__)}
+      Message: #{Exception.message(error)}
 
-    # Log the full error details for debugging (only visible server-side)
-    Logger.warning("""
-    Unhandled error in RPC (no protocol implementation).
-    Error ID: #{uuid}
-    Error type: #{inspect(error.__struct__)}
-    Message: #{Exception.message(error)}
+      To handle this error type, implement the AshIntrospection.Rpc.Error protocol:
 
-    To handle this error type, implement the AshIntrospection.Rpc.Error protocol:
-
-    defimpl AshIntrospection.Rpc.Error, for: #{inspect(error.__struct__)} do
-      def to_error(error) do
-        %{
-          message: error.message,
-          short_message: "Error description",
-          type: "error_type",
-          vars: %{},
-          fields: [],
-          path: error.path || []
-        }
+      defimpl AshIntrospection.Rpc.Error, for: #{inspect(error.__struct__)} do
+        def to_error(error) do
+          %{
+            message: error.message,
+            short_message: "Error description",
+            type: "error_type",
+            vars: %{},
+            fields: [],
+            path: error.path || []
+          }
+        end
       end
-    end
-    """)
+      """)
 
     generic_internal_error(uuid, Map.get(error, :path, []))
   end
 
   defp handle_unimplemented_error(error, _show_raised_errors?) do
-    uuid = Ash.UUID.generate()
-
-    Logger.warning("""
-    Unhandled non-exception error in RPC.
-    Error ID: #{uuid}
-    Error: #{inspect(error)}
-    """)
+    uuid =
+      log_internal(:warning, "Unhandled non-exception error in RPC.", """
+      Error: #{inspect(error)}
+      """)
 
     generic_internal_error(uuid, [])
   end
