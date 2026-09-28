@@ -103,6 +103,9 @@ defmodule AshIntrospection.MixProject do
 
   defp deps do
     [
+      # Security floor, not a preference: mint 1.10.1 (transitive, via
+      # finch/req) carries EEF-CVE-2026-91043/92103/94194, fixed in 1.11.0.
+      {:mint, ">= 1.11.0"},
       {:simple_sat, "~> 0.1", only: [:test]},
       # Floor below is a security floor, not a preference. ash 3.33.11 is the
       # first release fixing EEF-CVE-2026-93477.
