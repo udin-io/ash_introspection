@@ -13,6 +13,33 @@ recorded nowhere in the repo. This page replaces ADRs; there is no `adr/`
 directory here and none should be created. A decision that no longer shapes the
 code is deleted, not archived, because git keeps the history.
 
+## 2026-09-28 — Print upgrade notices to Mix.shell directly, not through Igniter
+
+**Decided.** `Mix.Tasks.AshIntrospection.Upgrade` prints every notice with
+`Mix.shell().info/1`, through a private `notify/2`, instead of
+`Igniter.add_notice/2`. When `to` names a release newer than any key in the
+task's `upgrades` map, it also prints a fallback naming the direct task to
+run. Issue #99; the owner confirmed printing directly, over Igniter's own
+notice mechanism, in chat on 2026-09-27.
+
+**Why.** Two paths run this task during `mix igniter.upgrade
+ash_introspection`, and neither reaches `Igniter.do_or_dry_run/2` with an
+ordinary notice attached. Under the `igniter_new` archive,
+`Igniter.CopiedTasks.upgrade/1` returns the igniter without calling it
+(ash-project/igniter#402); without the archive, the copy already loaded in
+the VM predates the release and never adds the notice at all
+(ash-project/igniter#403). Printing directly reaches the screen on the first
+path regardless of what Igniter does with the returned igniter. Filed
+upstream rather than worked around: `deps/igniter` on `main` still carries
+`CopiedTasks.upgrade/1` unchanged as of this writing.
+
+**Cost.** The fallback cannot help the one upgrade it would help most: a
+consumer moving from 0.6.0 to 0.7.0 without the archive runs the OLD 0.6.0
+copy, which ships before this fallback exists. It first helps 0.7.0 to 0.8.0
+onward. The README's "Upgrading" section now asks for a second command every
+breaking release, `mix ash_introspection.upgrade <old> <new>`, which a
+consumer who skips it will not run.
+
 ## 2026-09-27 — A zero-row write runs one existence check to say why
 
 **Decided.** When `Ash.bulk_update/4` or `Ash.bulk_destroy/4` changes zero
