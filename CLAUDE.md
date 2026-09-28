@@ -743,6 +743,28 @@ unauthorized `Ash.exists?/2` to answer `forbidden` or `not_found`; see the
 `Forbidden.Policy` from a write uses a readable row and an
 `Ash.Policy.SimpleCheck` (`AshIntrospection.Test.Policy.OwnerCheck`).
 
+
+### A new way out of the error path needs its own leak test — #113
+
+**Symptom.** An error payload carries `"Elixir.MyApp.Memo"`,
+`"#Ash.ForbiddenField<>"` or `inspect/1` of a server term, and every leak
+test is green.
+
+**Why.** A leak test covers the way out it names and nothing else. #113 found
+ways out in five places: two `ErrorBuilder` fallbacks that sent `details.error`,
+a throw with no clause, `vars.resource`, six `inspect/1` sites, Ash messages
+that name the resource, and module atoms and structs in `vars`. Probes that
+delete an existing guard cannot find a way out that never had one.
+
+**What we do.** `test/ash_introspection/rpc/error_detail_leak_test.exs` opens
+with a table of every way out: each `ErrorBuilder` clause family, each
+`Rpc.Error` impl, and each value shape `serialize_error/1` handles. A new
+clause, impl or value shape adds its row and one test. Its message is a fixed
+template; the offending name goes in `vars` and `fields`, never Ash's
+`Exception.message/1`, which names the resource module. An unknown field
+carries the name as the client sent it, so `ErrorBuilder` does not format it;
+every other error carries a parsed name and is formatted.
+
 ## CI and the definition of green
 
 `.github/workflows/ci.yml` runs on every push to `main` and every pull request,
@@ -762,6 +784,11 @@ that namespace, since the repo-wide number sits at 74% and other modules are
 not this ticket's job to raise. See "the coverage threshold lives inside
 `:summary`" above before touching the config.
 
+The branch for #113 is at **800 tests + 8 doctests, 0 failures** (measured
+2026-09-28, `mix test --cover`, 77.99% on `Rpc.*`), +121 over `main`'s 679 + 8
+at `ee743af`: +92 in `error_detail_leak_test.exs`, +23 in
+`error_unknown_field_name_test.exs`, +5 in `error_unknown_input_test.exs` and
++1 for the 0.7.0 upgrade notice.
 The branch for #76 is at **549 tests + 8 doctests, 0 failures** (measured
 2026-09-27), +6 over `main`'s 543 + 8 at `81de70d`, all in
 `decorator_test.exs`. The branch for #89 is at **543 tests + 8 doctests, 0

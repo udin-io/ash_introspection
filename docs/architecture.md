@@ -354,19 +354,24 @@ sequenceDiagram
         A-->>S: {:error, Ash error}
         S-->>K: {:error, error}
         K->>E: to_errors(error, request, config)
-        Note over E: classifies under `type`, strips policy<br/>breakdowns and exception text,<br/>keeps %{placeholders} matched to vars
+        Note over E: classifies under `type`, strips policy<br/>breakdowns, exception text, terms<br/>and module names, keeps %{placeholders}<br/>matched to vars
         E-->>K: %{success: false, errors: [...]}
     end
     K-->>P: response map
     P-->>C: JSON
 ```
 
-Two properties of the error branch are load-bearing and easy to undo: the class
-of the error is reported under `type` and never `code` (0.3.0), and a
+Three properties of the error branch are load-bearing and easy to undo: the
+class of the error is reported under `type` and never `code` (0.3.0), a
 message's `%{placeholder}` names must keep matching the keys in `vars` after
-Stage 4 has camelized everything around them. Both have regression tests —
-`test/ash_introspection/rpc/error_type_key_test.exs` and
-`test/ash_introspection/rpc/pipeline_error_placeholder_test.exs`.
+Stage 4 has camelized everything around them, and no Elixir term or module
+name reaches the client (#113). A term that has no client meaning goes to the
+log under an error id from `Rpc.Errors.log_internal/3`, and the client gets
+the id. Each has regression tests —
+`test/ash_introspection/rpc/error_type_key_test.exs`,
+`test/ash_introspection/rpc/pipeline_error_placeholder_test.exs` and
+`test/ash_introspection/rpc/error_detail_leak_test.exs`, whose table lists
+every way out of the error path.
 
 ## 6. What is not here
 

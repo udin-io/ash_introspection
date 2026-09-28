@@ -179,8 +179,11 @@ defmodule AshIntrospection.Rpc.ErrorDetailLeakTest do
   # | Errors.serialize_error, each value shape  | "vars: <shape>"              |
   # | Errors.format_path_array                  | "path: module atom"          |
   #
-  # Not rows: `show_raised_errors?: true` sends `Exception.message/1` by
-  # design, and a consumer's own error handler returns what it returns.
+  # `show_raised_errors?: true` has rows for the forbidden errors, which keep
+  # their implementation under it. Every other exception sends
+  # `Exception.message/1` under that flag by design. Not rows: an
+  # application's own error handler returns what it returns, and a message an
+  # application writes is its own.
 
   # What an Elixir term or module name looks like once it is text: a module
   # (`Ash.Type.String`, `Elixir.Foo`), a struct or map literal, a tuple, an
