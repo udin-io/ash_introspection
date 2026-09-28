@@ -67,15 +67,21 @@ end
 
 ### Upgrading
 
-Breaking releases ship a codemod. After bumping the version, run:
+Breaking releases ship a codemod and a notice. Bump the version, then run
+both commands:
 
 ```
 mix igniter.upgrade ash_introspection
+mix ash_introspection.upgrade <old> <new>
 ```
 
-It rewrites what it can decide safely and prints the shapes it cannot, so the
-search left to you is short. [CHANGELOG.md](CHANGELOG.md) says what each
-release breaks.
+The first step can print nothing and rewrite nothing, depending on how
+Igniter is installed on your machine: it either runs the new release's task
+but discards everything it prints, or runs the OLD release's task, which has
+never heard of the new break. The second step always runs the copy you just
+installed, directly, so it reprints every notice between `<old>` and `<new>`
+and reruns every codemod. [CHANGELOG.md](CHANGELOG.md) says what each release
+breaks.
 
 ## Architecture Overview
 
