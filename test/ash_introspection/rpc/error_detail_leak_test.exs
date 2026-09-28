@@ -232,6 +232,7 @@ defmodule AshIntrospection.Rpc.ErrorDetailLeakTest do
            [field: :slug, type: :attribute, resource: @memo]},
           {"Query.Required", Ash.Error.Query.Required,
            [field: :slug, type: :argument, resource: @memo]},
+          {"ForbiddenField", Ash.Error.Forbidden.ForbiddenField, [resource: @memo, field: :body]},
           {"InvalidKeyset", Ash.Error.Page.InvalidKeyset, [value: "abc"]},
           {"InvalidPrimaryKey", Ash.Error.Invalid.InvalidPrimaryKey,
            [resource: @memo, value: "zz"]},
@@ -239,6 +240,7 @@ defmodule AshIntrospection.Rpc.ErrorDetailLeakTest do
           {"InvalidChanges", Ash.Error.Changes.InvalidChanges, [fields: [:slug]]},
           {"InvalidQuery with a message", Ash.Error.Query.InvalidQuery,
            [field: :slug, message: "is invalid"]},
+          {"InvalidQuery with no message", Ash.Error.Query.InvalidQuery, [field: :slug]},
           {"InvalidAttribute", Ash.Error.Changes.InvalidAttribute, [field: :slug]},
           {"Changes.InvalidArgument", Ash.Error.Changes.InvalidArgument, [field: :slug]},
           {"Query.InvalidArgument", Ash.Error.Query.InvalidArgument, [field: :slug]},
@@ -258,6 +260,22 @@ defmodule AshIntrospection.Rpc.ErrorDetailLeakTest do
         refute response.type == "internal_error"
         refute_internal(response, ["10.0.0.5"])
       end
+    end
+
+    test "impl: ForbiddenField names the field in its message template" do
+      [response] =
+        Errors.to_errors(
+          Ash.Error.Forbidden.ForbiddenField.exception(resource: @memo, field: :body)
+        )
+
+      assert response.message == "Forbidden: cannot access %{field}"
+      assert response.vars == %{field: "body"}
+    end
+
+    test "impl: InvalidQuery with no message sends a fixed one" do
+      [response] = Errors.to_errors(Ash.Error.Query.InvalidQuery.exception(field: :slug))
+
+      assert response.message == "Invalid query"
     end
 
     test "impl: Forbidden with no inner error names no module" do

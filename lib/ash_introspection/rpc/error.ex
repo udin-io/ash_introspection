@@ -59,9 +59,12 @@ defimpl AshIntrospection.Rpc.Error, for: Ash.Error.Changes.InvalidChanges do
 end
 
 defimpl AshIntrospection.Rpc.Error, for: Ash.Error.Query.InvalidQuery do
+  # Ash builds this error with no message from `Ash.Query.add_error/3`, and
+  # `Exception.message/1` then answers Elixir's own complaint, which inspects
+  # the whole struct.
   def to_error(error) do
     %{
-      message: Map.get(error, :message) || Exception.message(error),
+      message: Map.get(error, :message) || "Invalid query",
       short_message: "Invalid query",
       vars: Map.new(error.vars || []),
       type: "invalid_query",
@@ -169,10 +172,11 @@ defimpl AshIntrospection.Rpc.Error, for: Ash.Error.Forbidden do
   end
 end
 
+# Ash's message names the resource module.
 defimpl AshIntrospection.Rpc.Error, for: Ash.Error.Forbidden.ForbiddenField do
   def to_error(error) do
     %{
-      message: Exception.message(error),
+      message: "Forbidden: cannot access %{field}",
       short_message: "Forbidden field",
       vars: Map.new(error.vars || []) |> Map.put(:field, error.field),
       type: "forbidden_field",
