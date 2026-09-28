@@ -126,6 +126,8 @@ defmodule AshIntrospection.Rpc.Errors do
         end
       end
 
+    transformed_error = drop_unused_value(transformed_error)
+
     # Apply resource-level error handler if configured
     transformed_error =
       if resource && Code.ensure_loaded?(resource) &&
@@ -151,6 +153,17 @@ defmodule AshIntrospection.Rpc.Errors do
     # Apply default error handler for variable interpolation
     DefaultErrorHandler.handle_error(transformed_error, context)
   end
+
+  # `Ash.Changeset.add_error/2` copies every option it is given into `vars`,
+  # `:value` included, and the value can be anything the server holds. It
+  # reaches the client only when the message template names it (#113).
+  defp drop_unused_value(%{vars: %{value: _} = vars} = error) do
+    if is_binary(error[:message]) and String.contains?(error.message, "%{value}"),
+      do: error,
+      else: %{error | vars: Map.delete(vars, :value)}
+  end
+
+  defp drop_unused_value(error), do: error
 
   defp apply_error_handler({module, function, args}, error, context) do
     case apply(module, function, [error, context | args]) do

@@ -428,6 +428,29 @@ defmodule AshIntrospection.Rpc.ErrorDetailLeakTest do
     end
   end
 
+  describe "vars.value from Ash.Changeset.add_error/2" do
+    test "is dropped when the message does not name it" do
+      [response] = add_error_response(field: :slug, message: "already taken", value: "s3cret")
+
+      assert response.vars == %{field: "slug"}
+      refute_internal(response, ["s3cret"])
+    end
+
+    test "is dropped from a multi-field error" do
+      [response] = add_error_response(fields: [:slug, :body], message: "clash", value: "s3cret")
+
+      refute Map.has_key?(response.vars, :value)
+      refute_internal(response, ["s3cret"])
+    end
+
+    test "stays when the message names %{value}" do
+      [response] =
+        add_error_response(field: :slug, message: "%{value} is taken", value: "my-slug")
+
+      assert response.vars.value == "my-slug"
+    end
+  end
+
   describe "values in an error's vars and path" do
     test "vars: a module atom is replaced" do
       assert vars_of(resource: AshIntrospection.Test.Policy.Memo).resource == "#Module<>"
@@ -559,6 +582,14 @@ defmodule AshIntrospection.Rpc.ErrorDetailLeakTest do
   end
 
   defp build(term), do: ErrorBuilder.build_error_response(term)
+
+  defp add_error_response(opts) do
+    AshIntrospection.Test.Policy.Memo
+    |> Ash.Changeset.new()
+    |> Ash.Changeset.add_error(opts)
+    |> Map.fetch!(:errors)
+    |> Errors.to_errors()
+  end
 
   defp vars_of(vars) do
     [response] =
