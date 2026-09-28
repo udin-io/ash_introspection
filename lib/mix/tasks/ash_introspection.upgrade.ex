@@ -353,8 +353,8 @@ if Code.ensure_loaded?(Igniter) do
     @doc false
     def notify_0_7_0_breaks(igniter, _opts) do
       igniter
-      |> Igniter.add_notice(@query_params_notice)
-      |> Igniter.add_notice(@zero_row_write_notice)
+      |> notify(@query_params_notice)
+      |> notify(@zero_row_write_notice)
       |> Igniter.add_notice(@error_leak_notice)
     end
 

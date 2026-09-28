@@ -193,21 +193,29 @@ defmodule Mix.Tasks.AshIntrospection.UpgradeTest do
   end
 
   describe "0.7.0" do
-    test "names the refused query parameters and the aggregate field list, rewrites nothing" do
-      "Pipeline.execute_ash_action(request, config)"
-      |> upgrade(from: "0.6.0", to: "0.7.0")
-      |> assert_unchanged("lib/my_app/rpc.ex")
-      |> assert_has_notice(&(&1 =~ "filter_not_supported"))
-      |> assert_has_notice(&(&1 =~ "sort_not_supported"))
-      |> assert_has_notice(&(&1 =~ "pagination_not_supported"))
-      |> assert_has_notice(&(&1 =~ "requires_field_selection"))
+    test "names the refused query parameters and the aggregate field list, prints to the shell, rewrites nothing" do
+      {igniter, notices} =
+        upgrade_notices("Pipeline.execute_ash_action(request, config)",
+          from: "0.6.0",
+          to: "0.7.0"
+        )
+
+      assert_unchanged(igniter, "lib/my_app/rpc.ex")
+      assert Enum.any?(notices, &(&1 =~ "filter_not_supported"))
+      assert Enum.any?(notices, &(&1 =~ "sort_not_supported"))
+      assert Enum.any?(notices, &(&1 =~ "pagination_not_supported"))
+      assert Enum.any?(notices, &(&1 =~ "requires_field_selection"))
     end
 
-    test "names the forbidden and not_found answers to a zero-row update or destroy" do
-      "Pipeline.execute_ash_action(request, config)"
-      |> upgrade(from: "0.6.0", to: "0.7.0")
-      |> assert_unchanged("lib/my_app/rpc.ex")
-      |> assert_has_notice(&(&1 =~ "forbidden" and &1 =~ "not_found" and &1 =~ "destroy"))
+    test "names the forbidden and not_found answers to a zero-row update or destroy, prints to the shell" do
+      {igniter, notices} =
+        upgrade_notices("Pipeline.execute_ash_action(request, config)",
+          from: "0.6.0",
+          to: "0.7.0"
+        )
+
+      assert_unchanged(igniter, "lib/my_app/rpc.ex")
+      assert Enum.any?(notices, &(&1 =~ "forbidden" and &1 =~ "not_found" and &1 =~ "destroy"))
     end
 
     test "names the error fields that no longer carry terms or module names" do
@@ -220,10 +228,15 @@ defmodule Mix.Tasks.AshIntrospection.UpgradeTest do
       |> assert_has_notice(&(&1 =~ "show_raised_errors?"))
     end
 
-    test "does not fire when 0.7.0 falls outside the range" do
+    test "prints nothing when 0.7.0 falls outside the range" do
+      {_igniter, notices} = upgrade_notices("error.code", from: "0.5.0", to: "0.6.0")
+
+      refute Enum.any?(notices, &(&1 =~ "filter_not_supported"))
+    end
+
+    test "does not fire the error-payload notice when 0.7.0 falls outside the range" do
       igniter = upgrade("error.code", from: "0.5.0", to: "0.6.0")
 
-      refute Enum.any?(igniter.notices, &(&1 =~ "filter_not_supported"))
       refute Enum.any?(igniter.notices, &(&1 =~ "details.error"))
     end
   end
