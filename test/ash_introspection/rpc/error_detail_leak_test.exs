@@ -302,6 +302,62 @@ defmodule AshIntrospection.Rpc.ErrorDetailLeakTest do
     end
   end
 
+  describe "values in an error's vars and path" do
+    test "vars: a module atom is replaced" do
+      assert vars_of(resource: AshIntrospection.Test.Policy.Memo).resource == "#Module<>"
+    end
+
+    test "vars: a module atom nested in a list, map and tuple is replaced" do
+      vars =
+        vars_of(
+          list: [AshIntrospection.Test.Policy.Memo],
+          map: %{r: AshIntrospection.Test.Policy.Memo},
+          pair: {:resource, AshIntrospection.Test.Policy.Memo}
+        )
+
+      refute_internal(vars)
+    end
+
+    test "vars: a module atom as a map key is replaced" do
+      refute_internal(vars_of(map: %{AshIntrospection.Test.Policy.Memo => 1}))
+    end
+
+    test "vars: a struct is replaced with a fixed placeholder" do
+      {vars, log} =
+        with_log(fn -> vars_of(owner: %Ash.ForbiddenField{original_value: "s3cret-original"}) end)
+
+      assert vars.owner == "#Struct<>"
+      refute_internal(vars, ["ForbiddenField", "s3cret"])
+      assert log =~ "Ash.ForbiddenField"
+    end
+
+    test "vars: a port is replaced and the payload encodes" do
+      port = Port.open({:spawn, "true"}, [])
+      vars = vars_of(port: port)
+
+      assert vars.port == "#Port<>"
+      assert {:ok, _} = Jason.encode(vars)
+    end
+
+    test "vars: plain atoms, nil and booleans keep their value" do
+      vars = vars_of(status: :archived, none: nil, yes: true, no: false)
+
+      assert vars == %{status: "archived", none: nil, yes: true, no: false}
+    end
+
+    test "path: a module atom is replaced" do
+      [response] =
+        Errors.to_errors(
+          Ash.Error.Changes.InvalidAttribute.exception(
+            field: :slug,
+            path: [:memo, AshIntrospection.Test.Policy.Memo]
+          )
+        )
+
+      refute_internal(response.path)
+    end
+  end
+
   describe "ErrorBuilder clauses that hand the error to Errors" do
     test "RunStepError: the step's term sends nothing internal" do
       error = Reactor.Error.Invalid.RunStepError.exception(error: "db host=10.0.0.5", step: :s)
@@ -319,6 +375,13 @@ defmodule AshIntrospection.Rpc.ErrorDetailLeakTest do
   end
 
   defp build(term), do: ErrorBuilder.build_error_response(term)
+
+  defp vars_of(vars) do
+    [response] =
+      Errors.to_errors(Ash.Error.Changes.InvalidAttribute.exception(field: :slug, vars: vars))
+
+    Map.drop(response.vars, [:field])
+  end
 
   defp refute_internal(payload, extra \\ []) do
     json = Jason.encode!(payload)

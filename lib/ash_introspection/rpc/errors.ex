@@ -380,7 +380,10 @@ defmodule AshIntrospection.Rpc.Errors do
     formatted_path =
       Enum.map(path, fn
         segment when is_atom(segment) ->
-          apply(field_formatter_module, :format_field_name, [to_string(segment), formatter])
+          if module_atom?(segment),
+            do: opaque_module(segment),
+            else:
+              apply(field_formatter_module, :format_field_name, [to_string(segment), formatter])
 
         segment when is_binary(segment) ->
           apply(field_formatter_module, :format_field_name, [segment, formatter])
@@ -443,7 +446,9 @@ defmodule AshIntrospection.Rpc.Errors do
 
   defp serialize_error(value) when is_boolean(value), do: value
 
-  defp serialize_error(value) when is_atom(value), do: Atom.to_string(value)
+  defp serialize_error(value) when is_atom(value) do
+    if module_atom?(value), do: opaque_module(value), else: Atom.to_string(value)
+  end
 
   defp serialize_error(value) when is_tuple(value) do
     value
@@ -476,33 +481,51 @@ defmodule AshIntrospection.Rpc.Errors do
   defp serialize_error(%Decimal{} = value), do: Decimal.to_string(value, :normal)
   defp serialize_error(%Ash.CiString{} = value), do: Ash.CiString.value(value)
 
-  # Structs we have no serialization for are reduced to their module name.
+  # Structs we have no serialization for are reduced to a fixed placeholder.
   # Unwrapping them with Map.from_struct/1 would emit every field to the client,
   # defeating redaction the struct itself declares - `Ash.ForbiddenField`, for
-  # instance, hides the `original_value` the actor is not allowed to see.
+  # instance, hides the `original_value` the actor is not allowed to see. The
+  # module name stays in the log: it names server code (#113).
   defp serialize_error(%module{}) do
     Logger.warning("""
     Dropped a #{inspect(module)} value while serializing an RPC error.
 
-    Structs without a known serialization are replaced with their module name so
+    Structs without a known serialization are replaced with "#Struct<>" so
     their fields are not disclosed to the client. Convert the value to a string,
     number, or plain map before putting it in an error's `vars` or `path`.
     """)
 
-    opaque_term(module)
+    "#Struct<>"
   end
 
   defp serialize_error(value) when is_map(value) do
     Enum.into(value, %{}, fn {key, val} ->
-      {key, serialize_error(val)}
+      {serialize_key(key), serialize_error(val)}
     end)
   end
 
   defp serialize_error(value) when is_pid(value), do: opaque_term(PID)
   defp serialize_error(value) when is_reference(value), do: opaque_term(Reference)
   defp serialize_error(value) when is_function(value), do: opaque_term(Function)
+  defp serialize_error(value) when is_port(value), do: opaque_term(Port)
 
   defp serialize_error(value), do: value
 
+  # Atom keys stay atoms, so a consumer reading `vars` by atom still finds them.
+  defp serialize_key(key) when is_atom(key) do
+    if module_atom?(key), do: opaque_module(key), else: key
+  end
+
+  defp serialize_key(key), do: key
+
   defp opaque_term(module), do: "##{inspect(module)}<>"
+
+  # An Elixir module name is server code, so the client gets a placeholder and
+  # the log gets the name. Erlang modules (`:crypto`) look like any atom.
+  defp module_atom?(atom), do: String.starts_with?(Atom.to_string(atom), "Elixir.")
+
+  defp opaque_module(module) do
+    Logger.warning("Dropped the module name #{inspect(module)} while serializing an RPC error.")
+    "#Module<>"
+  end
 end

@@ -58,11 +58,11 @@ defmodule AshIntrospection.Rpc.ErrorsJsonSafetyTest do
   end
 
   describe "an unknown struct" do
-    test "is reduced to its module name" do
+    test "is reduced to a fixed placeholder" do
       {vars, _log} =
         with_log(fn -> vars_of(envelope: %Envelope{label: "api key", token: @secret}) end)
 
-      assert vars[:envelope] == "##{inspect(Envelope)}<>"
+      assert vars[:envelope] == "#Struct<>"
     end
 
     test "does not disclose the fields it carries" do
