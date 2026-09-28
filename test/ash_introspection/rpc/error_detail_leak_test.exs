@@ -17,7 +17,10 @@ defmodule AshIntrospection.Rpc.ErrorDetailLeakTest do
   """
   use ExUnit.Case, async: false
 
+  import ExUnit.CaptureLog
+
   alias AshIntrospection.Rpc.Error, as: ErrorProtocol
+  alias AshIntrospection.Rpc.ErrorBuilder
   alias AshIntrospection.Rpc.Errors
 
   @actor_secret "sk-live-4f9c1a-ACTOR-SENTINEL"
@@ -117,6 +120,96 @@ defmodule AshIntrospection.Rpc.ErrorDetailLeakTest do
 
       assert result.message == "Something went wrong"
       refute leaks?(result)
+    end
+  end
+
+  # What an Elixir term or module name looks like once it is text: a module
+  # (`Ash.Type.String`, `Elixir.Foo`), a struct or map literal, a tuple, an
+  # opaque term other than the fixed placeholders.
+  @internal_markers [
+    "Elixir.",
+    "AshIntrospection",
+    "Memo",
+    # A map literal, never a `%{field}` message placeholder.
+    ~r/%\{(?![a-z_]+\})/,
+    "=>",
+    "{:",
+    ~r/%[A-Z][\w.]*\{/,
+    ~r/\b[A-Z]\w*\.[A-Z]\w*/,
+    ~r/#(?!(Struct|Module|PID|Reference|Function|Port)<>)[A-Z][\w.]*</
+  ]
+
+  describe "ErrorBuilder fallbacks" do
+    test "fallback: tagged pair sends no term, carries an error id" do
+      response = build({:internal_state, %{api_key: "sk_live_123"}})
+
+      assert response.type == "field_validation_error"
+      refute Map.has_key?(response, :details)
+      assert is_binary(response.error_id)
+      refute_internal(response, ["sk_live_123", "api_key"])
+    end
+
+    test "fallback: string sends no term" do
+      response = build("Postgrex connection refused host=10.0.0.5")
+
+      assert response.type == "unknown_error"
+      assert is_binary(response.error_id)
+      refute_internal(response, ["10.0.0.5", "Postgrex"])
+    end
+
+    test "fallback: tuple sends no term" do
+      response = build({:a, :b, %{secret: "s"}})
+
+      assert response.type == "unknown_error"
+      refute_internal(response, ["secret"])
+    end
+
+    test "fallback: bare atom sends no term" do
+      response = build(:db_pool_exhausted)
+
+      assert response.type == "unknown_error"
+      refute_internal(response, ["db_pool_exhausted"])
+    end
+
+    test "fallback: inside a list sends no term" do
+      [response] = build([{:internal_state, %{api_key: "sk_live_123"}}])
+
+      assert is_binary(response.error_id)
+      refute_internal(response, ["sk_live_123"])
+    end
+
+    test "fallback: the log carries the term and the id the client got" do
+      {response, log} = with_log(fn -> build({:internal_state, %{api_key: "sk_live_123"}}) end)
+
+      assert log =~ response.error_id
+      assert log =~ ~s({:internal_state, %{api_key: "sk_live_123"}})
+      assert response.message =~ response.error_id
+    end
+  end
+
+  describe "ErrorBuilder clauses that hand the error to Errors" do
+    test "RunStepError: the step's term sends nothing internal" do
+      error = Reactor.Error.Invalid.RunStepError.exception(error: "db host=10.0.0.5", step: :s)
+
+      [response] = List.wrap(build(error))
+
+      refute_internal(response, ["10.0.0.5"])
+    end
+
+    test "a plain map sends nothing internal" do
+      [response] = List.wrap(build(%{api_key: "sk_live_123"}))
+
+      refute_internal(response, ["sk_live_123"])
+    end
+  end
+
+  defp build(term), do: ErrorBuilder.build_error_response(term)
+
+  defp refute_internal(payload, extra \\ []) do
+    json = Jason.encode!(payload)
+
+    for marker <- @internal_markers ++ extra do
+      refute json =~ marker, "client payload matches #{inspect(marker)}: #{json}"
     end
   end
 

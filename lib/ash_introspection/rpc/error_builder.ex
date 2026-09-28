@@ -844,32 +844,33 @@ defmodule AshIntrospection.Rpc.ErrorBuilder do
           }
         }
 
+      # The term is server-side: it goes to the log under an error id, and the
+      # client gets the id (#113).
+
       {field_error_type, _} when is_atom(field_error_type) ->
+        error_id = log_fallback(error)
+
         %{
           type: "field_validation_error",
-          message: "Field validation error: %{error_type}",
+          message: "Field validation error: %{error_type}. Unique error id: #{error_id}",
           short_message: "Field validation error",
           vars: %{error_type: to_string(field_error_type)},
           path: [],
           fields: [],
-          details: %{
-            error: inspect(error),
-            hint: @stale_generated_file_hint
-          }
+          error_id: error_id
         }
 
       other ->
+        error_id = log_fallback(other)
+
         %{
           type: "unknown_error",
-          message: "An unexpected error occurred",
+          message: "An unexpected error occurred. Unique error id: #{error_id}",
           short_message: "Unknown error",
           vars: %{},
           path: [],
           fields: [],
-          details: %{
-            error: inspect(other),
-            hint: @stale_generated_file_hint
-          }
+          error_id: error_id
         }
     end
   end
@@ -922,6 +923,10 @@ defmodule AshIntrospection.Rpc.ErrorBuilder do
       fields: [full_field_path],
       details: %{reason: reason, suggestion: suggestion, hint: @stale_generated_file_hint}
     }
+  end
+
+  defp log_fallback(term) do
+    Errors.log_internal(:error, "Unhandled error term in RPC.", "Error: #{inspect(term)}\n")
   end
 
   defp format_field_type(:primitive_type), do: "primitive type"
