@@ -14,6 +14,8 @@ and this project adheres to
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-09-28
+
 Breaking releases ship a codemod and a notice. Bump the version, then run
 `mix igniter.upgrade ash_introspection` and `mix ash_introspection.upgrade
 <old> <new>` — see "Upgrading" in the README for why both commands matter.
