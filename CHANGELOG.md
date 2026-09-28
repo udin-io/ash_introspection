@@ -43,6 +43,46 @@ hidden record still reads as absent. A `forbidden` answer confirms the record
 exists. `mix ash_introspection.upgrade` prints this as a notice
 ([#107](https://github.com/udin-io/ash_introspection/issues/107)).
 
+**Breaking: error responses carry no Elixir terms or module names.**
+
+- The `field_validation_error` and `unknown_error` fallbacks drop
+  `details.error`, which held `inspect/1` of the server's term, and carry
+  `error_id`. The server log holds the term under that id.
+- `unknown_field` and `tenant_required` drop `vars.resource`, and their
+  messages name no resource.
+- `unknown_field` names the field as the client sent it: `books.nope_field`
+  used to answer `books.nopeField`.
+- A struct in an error's `vars` is sent as `"#Struct<>"`, a module as
+  `"#Module<>"` and a port as `"#Port<>"`. They were
+  `"#Ash.ForbiddenField<>"`, `"Elixir.MyApp.Memo"` and an encoder crash.
+  A module in `path` is sent as `"#Module<>"` too.
+- `forbidden_field`'s message names no resource. `invalid_query` with no
+  message sends "Invalid query"; it sent Elixir's inspect of the struct.
+- `invalid_field_selection` names an Ash type by its short name (`string`,
+  `array of string`) and any other type as `custom type`. A field path is
+  sent as is; it was quoted.
+- `unsupported_field_combination` drops `details.field_spec`.
+  `invalid_pagination`'s `details.reason` is a code (`"unknown_keys"`,
+  `"not_a_map"`), with the keys in `details.unknown_keys`.
+- `vars.received` on `invalid_fields_type`, `invalid_input_format` and
+  `invalid_pagination` is the JSON type name (`"string"`, `"number"`,
+  `"boolean"`, `"array"`, `"object"`, `"null"`), not the value.
+- `vars.operator` is formatted with the output formatter, like `vars.field`.
+- `vars.value` is sent only when the message template names `%{value}`.
+  `Ash.Changeset.add_error/2` copies its `value:` option into `vars`.
+- `not_found`, `invalid_primary_key`, `invalid_keyset`, `invalid_page`, and
+  `invalid_attribute` or `invalid_argument` built with no message send fixed
+  messages: "record not found", "Invalid primary key", "Invalid keyset",
+  "Invalid page option", "is invalid". Ash's messages rendered values in
+  Elixir syntax (`#Ash.CiString<"x">`). A message your application writes is
+  unchanged.
+- With `show_raised_errors?: true`, a `forbidden` error still goes through its
+  implementation, so the policy breakdown needs
+  `config :ash_introspection, :policies, show_policy_breakdowns?: true`. Ash's
+  own `show_policy_breakdowns?` used to open it.
+
+`mix ash_introspection.upgrade` prints this as a notice ([#113](https://github.com/udin-io/ash_introspection/issues/113)).
+
 ### Changed
 
 - `TypeSystem.ResourceFields.get_aggregate_type_info/3` returns
@@ -51,6 +91,15 @@ exists. `mix ash_introspection.upgrade` prints this as a notice
 
 ### Added
 
+- `Ash.Error.Invalid.NoSuchInput`, `Ash.Error.Query.NoSuchField` and
+  `Ash.Error.Query.NoSuchFilterPredicate` answer `no_such_input`,
+  `no_such_field` and `no_such_filter_predicate`, and name the key.
+  `Ash.Error.Invalid.TenantRequired` answers `tenant_required`. All four
+  answered `internal_error` ([#113](https://github.com/udin-io/ash_introspection/issues/113)).
+- `FieldSelector`'s `invalid_field_format` answers its own type; it answered
+  `unknown_error` with the term ([#113](https://github.com/udin-io/ash_introspection/issues/113)).
+- `Rpc.Errors.log_internal/3` logs detail under a new error id and returns
+  the id ([#113](https://github.com/udin-io/ash_introspection/issues/113)).
 - A relationship in a field selection accepts `filter`, `sort`, `page`, or
   bare `limit` and `offset`, at any depth:
   `books: {fields: ["title"], filter: {title: {eq: "b"}}, sort: "-title"}`.

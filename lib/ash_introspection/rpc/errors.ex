@@ -22,7 +22,8 @@ defmodule AshIntrospection.Rpc.Errors do
           optional(:output_field_formatter) => atom(),
           optional(:rpc_dsl_section) => atom(),
           optional(:field_formatter_module) => module(),
-          optional(:format_field_for_client) => (atom(), module() | nil, atom() -> String.t())
+          optional(:format_field_for_client) => (atom() | String.t(), module() | nil, atom() ->
+                                                   String.t())
         }
 
   @doc """
@@ -44,6 +45,18 @@ defmodule AshIntrospection.Rpc.Errors do
   - `action` - The action name (optional)
   - `context` - Additional context map
   - `config` - Language-specific configuration (see type definition)
+
+  ## `show_raised_errors?`
+
+  A domain whose RPC section sets `show_raised_errors?: true` sends every
+  exception's raw `Exception.message/1` to the client, in place of its
+  `AshIntrospection.Rpc.Error` implementation. That text can carry database
+  hosts, file paths and values the server holds. It is for development
+  only; never set it in production.
+
+  A forbidden error keeps its implementation even then, so a policy breakdown
+  still needs `config :ash_introspection, :policies,
+  show_policy_breakdowns?: true` (#113).
   """
   @spec to_errors(term(), module() | nil, module() | nil, atom() | nil, map(), config()) ::
           list(map())
@@ -98,8 +111,8 @@ defmodule AshIntrospection.Rpc.Errors do
     show_raised_errors? = get_show_raised_errors?(domain, config)
 
     transformed_error =
-      if show_raised_errors? and is_exception(error) do
-        # When show_raised_errors? is true, always expose the actual exception message
+      if show_raised_errors? and is_exception(error) and not always_via_protocol?(error) do
+        # Raw exception text, by design: see "show_raised_errors?" in to_errors/6.
         %{
           message: Exception.message(error),
           short_message: error.__struct__ |> Module.split() |> List.last(),
@@ -124,6 +137,8 @@ defmodule AshIntrospection.Rpc.Errors do
           handle_unimplemented_error(error, false)
         end
       end
+
+    transformed_error = drop_unused_value(transformed_error)
 
     # Apply resource-level error handler if configured
     transformed_error =
@@ -150,6 +165,25 @@ defmodule AshIntrospection.Rpc.Errors do
     # Apply default error handler for variable interpolation
     DefaultErrorHandler.handle_error(transformed_error, context)
   end
+
+  # A forbidden error keeps its implementation under `show_raised_errors?`:
+  # `Exception.message/1` renders the policy breakdown, actor included,
+  # whenever Ash's own `show_policy_breakdowns?` is set, and only this
+  # library's switch may open it (#11, #113).
+  defp always_via_protocol?(%Ash.Error.Forbidden.Policy{}), do: true
+  defp always_via_protocol?(%Ash.Error.Forbidden{}), do: true
+  defp always_via_protocol?(_error), do: false
+
+  # `Ash.Changeset.add_error/2` copies every option it is given into `vars`,
+  # `:value` included, and the value can be anything the server holds. It
+  # reaches the client only when the message template names it (#113).
+  defp drop_unused_value(%{vars: %{value: _} = vars} = error) do
+    if is_binary(error[:message]) and String.contains?(error.message, "%{value}"),
+      do: error,
+      else: %{error | vars: Map.delete(vars, :value)}
+  end
+
+  defp drop_unused_value(error), do: error
 
   defp apply_error_handler({module, function, args}, error, context) do
     case apply(module, function, [error, context | args]) do
@@ -195,18 +229,38 @@ defmodule AshIntrospection.Rpc.Errors do
   # fall back to the unredacted error it was supposed to sanitize. The generic
   # error carries a UUID so the real error stays correlatable in the server log.
   defp handler_failure(reason, stacktrace, handler, error) do
-    uuid = Ash.UUID.generate()
-
-    Logger.error("""
-    Error handler failed, returning a generic error instead of the unhandled one.
-    Error ID: #{uuid}
-    Handler: #{inspect(handler)}
-    Failure: #{reason}
-    Original error: #{inspect(error)}
-    #{Exception.format_stacktrace(stacktrace)}
-    """)
+    uuid =
+      log_internal(
+        :error,
+        "Error handler failed, returning a generic error instead of the unhandled one.",
+        """
+        Handler: #{inspect(handler)}
+        Failure: #{reason}
+        Original error: #{inspect(error)}
+        #{Exception.format_stacktrace(stacktrace)}
+        """
+      )
 
     generic_internal_error(uuid, [])
+  end
+
+  @doc """
+  Logs what the client must not see under a new error id, and returns the id.
+
+  The client gets the id and the log keeps the detail, so the two ends can be
+  joined. The id goes on the line after `headline`.
+  """
+  @spec log_internal(Logger.level(), String.t(), String.t()) :: String.t()
+  def log_internal(level, headline, detail) do
+    uuid = Ash.UUID.generate()
+
+    Logger.log(level, """
+    #{headline}
+    Error ID: #{uuid}
+    #{detail}\
+    """)
+
+    uuid
   end
 
   defp generic_internal_error(uuid, path) do
@@ -256,42 +310,35 @@ defmodule AshIntrospection.Rpc.Errors do
   end
 
   defp handle_unimplemented_error(error, _show_raised_errors?) when is_exception(error) do
-    uuid = Ash.UUID.generate()
+    uuid =
+      log_internal(:warning, "Unhandled error in RPC (no protocol implementation).", """
+      Error type: #{inspect(error.__struct__)}
+      Message: #{Exception.message(error)}
 
-    # Log the full error details for debugging (only visible server-side)
-    Logger.warning("""
-    Unhandled error in RPC (no protocol implementation).
-    Error ID: #{uuid}
-    Error type: #{inspect(error.__struct__)}
-    Message: #{Exception.message(error)}
+      To handle this error type, implement the AshIntrospection.Rpc.Error protocol:
 
-    To handle this error type, implement the AshIntrospection.Rpc.Error protocol:
-
-    defimpl AshIntrospection.Rpc.Error, for: #{inspect(error.__struct__)} do
-      def to_error(error) do
-        %{
-          message: error.message,
-          short_message: "Error description",
-          type: "error_type",
-          vars: %{},
-          fields: [],
-          path: error.path || []
-        }
+      defimpl AshIntrospection.Rpc.Error, for: #{inspect(error.__struct__)} do
+        def to_error(error) do
+          %{
+            message: error.message,
+            short_message: "Error description",
+            type: "error_type",
+            vars: %{},
+            fields: [],
+            path: error.path || []
+          }
+        end
       end
-    end
-    """)
+      """)
 
     generic_internal_error(uuid, Map.get(error, :path, []))
   end
 
   defp handle_unimplemented_error(error, _show_raised_errors?) do
-    uuid = Ash.UUID.generate()
-
-    Logger.warning("""
-    Unhandled non-exception error in RPC.
-    Error ID: #{uuid}
-    Error: #{inspect(error)}
-    """)
+    uuid =
+      log_internal(:warning, "Unhandled non-exception error in RPC.", """
+      Error: #{inspect(error)}
+      """)
 
     generic_internal_error(uuid, [])
   end
@@ -347,13 +394,10 @@ defmodule AshIntrospection.Rpc.Errors do
     format_field_for_client = Map.get(config, :format_field_for_client)
 
     formatted_fields =
-      Enum.map(fields, fn field ->
-        if format_field_for_client do
-          format_field_for_client.(field, resource, formatter)
-        else
-          apply(field_formatter_module, :format_field_name, [to_string(field), formatter])
-        end
-      end)
+      Enum.map(
+        fields,
+        &client_field(&1, resource, formatter, field_formatter_module, format_field_for_client)
+      )
 
     %{error | fields: formatted_fields}
   end
@@ -367,7 +411,10 @@ defmodule AshIntrospection.Rpc.Errors do
     formatted_path =
       Enum.map(path, fn
         segment when is_atom(segment) ->
-          apply(field_formatter_module, :format_field_name, [to_string(segment), formatter])
+          if module_atom?(segment),
+            do: opaque_module(segment),
+            else:
+              apply(field_formatter_module, :format_field_name, [to_string(segment), formatter])
 
         segment when is_binary(segment) ->
           apply(field_formatter_module, :format_field_name, [segment, formatter])
@@ -394,14 +441,17 @@ defmodule AshIntrospection.Rpc.Errors do
     formatted_vars =
       Enum.into(vars, %{}, fn
         {:field, field} ->
-          formatted =
-            if format_field_for_client do
-              format_field_for_client.(field, resource, formatter)
-            else
-              apply(field_formatter_module, :format_field_name, [to_string(field), formatter])
-            end
+          {:field,
+           client_field(
+             field,
+             resource,
+             formatter,
+             field_formatter_module,
+             format_field_for_client
+           )}
 
-          {:field, formatted}
+        {:operator, operator} when is_binary(operator) or is_atom(operator) ->
+          {:operator, client_field(operator, nil, formatter, field_formatter_module, nil)}
 
         other ->
           other
@@ -413,11 +463,35 @@ defmodule AshIntrospection.Rpc.Errors do
   defp format_vars_field(error, _resource, _formatter, _field_formatter_module, _config),
     do: error
 
+  # A field name as the client sees it. A module or a struct is server data:
+  # formatting it would send its name or, through `String.Chars`, its fields.
+  defp client_field(%_{} = field, _resource, _formatter, _module, _callback),
+    do: serialize_error(field)
+
+  defp client_field(field, resource, formatter, field_formatter_module, callback)
+       when is_atom(field) do
+    if module_atom?(field),
+      do: opaque_module(field),
+      else: format_client_name(field, resource, formatter, field_formatter_module, callback)
+  end
+
+  defp client_field(field, resource, formatter, field_formatter_module, callback),
+    do: format_client_name(field, resource, formatter, field_formatter_module, callback)
+
+  defp format_client_name(field, resource, formatter, _field_formatter_module, callback)
+       when is_function(callback, 3),
+       do: callback.(field, resource, formatter)
+
+  defp format_client_name(field, _resource, formatter, field_formatter_module, _callback),
+    do: apply(field_formatter_module, :format_field_name, [to_string(field), formatter])
+
   # An error's `vars` and `path` hold whatever the code that raised it put there,
   # so any Erlang term can reach here. The payload is handed to a JSON encoder,
   # which raises on anything it has no representation for - the request would then
   # die at the encoder instead of returning the error. This walks the payload and
   # reduces every value to something an encoder accepts.
+  @opaque_term "#Term<>"
+
   defp serialize_error(nil), do: nil
 
   defp serialize_error(value) when is_binary(value), do: value
@@ -426,7 +500,7 @@ defmodule AshIntrospection.Rpc.Errors do
 
   defp serialize_error(value) when is_boolean(value), do: value
 
-  defp serialize_error(value) when is_atom(value), do: Atom.to_string(value)
+  defp serialize_error(value) when is_atom(value), do: client_atom(value)
 
   defp serialize_error(value) when is_tuple(value) do
     value
@@ -439,9 +513,13 @@ defmodule AshIntrospection.Rpc.Errors do
       value == [] ->
         []
 
+      # `[1 | 2]` has no JSON form, and every walk below raises on it.
+      not proper_list?(value) ->
+        @opaque_term
+
       Keyword.keyword?(value) ->
         Enum.into(value, %{}, fn {key, val} ->
-          {to_string(key), serialize_error(val)}
+          {client_atom(key), serialize_error(val)}
         end)
 
       List.ascii_printable?(value) ->
@@ -459,33 +537,65 @@ defmodule AshIntrospection.Rpc.Errors do
   defp serialize_error(%Decimal{} = value), do: Decimal.to_string(value, :normal)
   defp serialize_error(%Ash.CiString{} = value), do: Ash.CiString.value(value)
 
-  # Structs we have no serialization for are reduced to their module name.
+  # Structs we have no serialization for are reduced to a fixed placeholder.
   # Unwrapping them with Map.from_struct/1 would emit every field to the client,
   # defeating redaction the struct itself declares - `Ash.ForbiddenField`, for
-  # instance, hides the `original_value` the actor is not allowed to see.
+  # instance, hides the `original_value` the actor is not allowed to see. The
+  # module name stays in the log: it names server code (#113).
   defp serialize_error(%module{}) do
     Logger.warning("""
     Dropped a #{inspect(module)} value while serializing an RPC error.
 
-    Structs without a known serialization are replaced with their module name so
+    Structs without a known serialization are replaced with "#Struct<>" so
     their fields are not disclosed to the client. Convert the value to a string,
     number, or plain map before putting it in an error's `vars` or `path`.
     """)
 
-    opaque_term(module)
+    "#Struct<>"
   end
 
   defp serialize_error(value) when is_map(value) do
     Enum.into(value, %{}, fn {key, val} ->
-      {key, serialize_error(val)}
+      {serialize_key(key), serialize_error(val)}
     end)
   end
 
   defp serialize_error(value) when is_pid(value), do: opaque_term(PID)
   defp serialize_error(value) when is_reference(value), do: opaque_term(Reference)
   defp serialize_error(value) when is_function(value), do: opaque_term(Function)
+  defp serialize_error(value) when is_port(value), do: opaque_term(Port)
 
   defp serialize_error(value), do: value
 
+  # Atom keys stay atoms, so a consumer reading `vars` by atom still finds them.
+  # A key a JSON encoder cannot name, such as a tuple, becomes a placeholder.
+  defp serialize_key(key) when is_atom(key) do
+    if module_atom?(key), do: opaque_module(key), else: key
+  end
+
+  defp serialize_key(key) when is_binary(key) or is_number(key), do: key
+  defp serialize_key(_key), do: @opaque_term
+
+  defp proper_list?([]), do: true
+  defp proper_list?([_ | tail]), do: proper_list?(tail)
+  defp proper_list?(_tail), do: false
+
   defp opaque_term(module), do: "##{inspect(module)}<>"
+
+  @doc """
+  An atom as the client may see it: its name, or `"#Module<>"` for an Elixir
+  module, whose name is server code and goes to the log instead.
+  """
+  @spec client_atom(atom()) :: String.t()
+  def client_atom(atom) when is_atom(atom) do
+    if module_atom?(atom), do: opaque_module(atom), else: Atom.to_string(atom)
+  end
+
+  # Erlang modules (`:crypto`) look like any atom.
+  defp module_atom?(atom), do: String.starts_with?(Atom.to_string(atom), "Elixir.")
+
+  defp opaque_module(module) do
+    Logger.warning("Dropped the module name #{inspect(module)} while serializing an RPC error.")
+    "#Module<>"
+  end
 end

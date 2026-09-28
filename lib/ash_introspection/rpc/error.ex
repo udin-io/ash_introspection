@@ -59,9 +59,12 @@ defimpl AshIntrospection.Rpc.Error, for: Ash.Error.Changes.InvalidChanges do
 end
 
 defimpl AshIntrospection.Rpc.Error, for: Ash.Error.Query.InvalidQuery do
+  # Ash builds this error with no message from `Ash.Query.add_error/3`, and
+  # `Exception.message/1` then answers Elixir's own complaint, which inspects
+  # the whole struct.
   def to_error(error) do
     %{
-      message: Map.get(error, :message) || Exception.message(error),
+      message: Map.get(error, :message) || "Invalid query",
       short_message: "Invalid query",
       vars: Map.new(error.vars || []),
       type: "invalid_query",
@@ -71,10 +74,13 @@ defimpl AshIntrospection.Rpc.Error, for: Ash.Error.Query.InvalidQuery do
   end
 end
 
+# Ash's messages for the next ones render values with `inspect/1`: a key of
+# `Ash.CiString` or `Decimal`, a struct, a keyword list. The client gets a
+# fixed message, and `type` and `fields` say what went wrong (#113).
 defimpl AshIntrospection.Rpc.Error, for: Ash.Error.Query.NotFound do
   def to_error(error) do
     %{
-      message: Exception.message(error),
+      message: "record not found",
       short_message: "Not found",
       vars: Map.new(error.vars || []),
       type: "not_found",
@@ -169,10 +175,11 @@ defimpl AshIntrospection.Rpc.Error, for: Ash.Error.Forbidden do
   end
 end
 
+# Ash's message names the resource module.
 defimpl AshIntrospection.Rpc.Error, for: Ash.Error.Forbidden.ForbiddenField do
   def to_error(error) do
     %{
-      message: Exception.message(error),
+      message: "Forbidden: cannot access %{field}",
       short_message: "Forbidden field",
       vars: Map.new(error.vars || []) |> Map.put(:field, error.field),
       type: "forbidden_field",
@@ -185,7 +192,7 @@ end
 defimpl AshIntrospection.Rpc.Error, for: Ash.Error.Changes.InvalidAttribute do
   def to_error(error) do
     %{
-      message: Map.get(error, :message) || Exception.message(error),
+      message: Map.get(error, :message) || "is invalid",
       short_message: "Invalid attribute",
       vars: Map.new(error.vars || []) |> Map.put(:field, error.field),
       type: "invalid_attribute",
@@ -198,7 +205,7 @@ end
 defimpl AshIntrospection.Rpc.Error, for: Ash.Error.Changes.InvalidArgument do
   def to_error(error) do
     %{
-      message: Map.get(error, :message) || Exception.message(error),
+      message: Map.get(error, :message) || "is invalid",
       short_message: "Invalid argument",
       vars: Map.new(error.vars || []) |> Map.put(:field, Map.get(error, :field)),
       type: "invalid_argument",
@@ -211,7 +218,7 @@ end
 defimpl AshIntrospection.Rpc.Error, for: Ash.Error.Query.InvalidArgument do
   def to_error(error) do
     %{
-      message: Map.get(error, :message) || Exception.message(error),
+      message: Map.get(error, :message) || "is invalid",
       short_message: "Invalid argument",
       vars: Map.new(error.vars || []) |> Map.put(:field, Map.get(error, :field)),
       type: "invalid_argument",
@@ -224,7 +231,7 @@ end
 defimpl AshIntrospection.Rpc.Error, for: Ash.Error.Page.InvalidKeyset do
   def to_error(error) do
     %{
-      message: Exception.message(error),
+      message: "Invalid keyset",
       short_message: "Invalid keyset",
       vars: Map.new(error.vars || []),
       type: "invalid_keyset",
@@ -237,7 +244,7 @@ end
 defimpl AshIntrospection.Rpc.Error, for: Ash.Error.Query.InvalidPage do
   def to_error(error) do
     %{
-      message: Exception.message(error),
+      message: "Invalid page option",
       short_message: "Invalid pagination",
       vars: Map.new(error.vars || []),
       type: "invalid_page",
@@ -250,7 +257,7 @@ end
 defimpl AshIntrospection.Rpc.Error, for: Ash.Error.Invalid.InvalidPrimaryKey do
   def to_error(error) do
     %{
-      message: Exception.message(error),
+      message: "Invalid primary key",
       short_message: "Invalid primary key",
       vars: Map.new(error.vars || []),
       type: "invalid_primary_key",
@@ -267,6 +274,63 @@ defimpl AshIntrospection.Rpc.Error, for: Ash.Error.Query.ReadActionRequiresActor
       short_message: "Authentication required",
       vars: Map.new(error.vars || []),
       type: "forbidden",
+      fields: [],
+      path: error.path || []
+    }
+  end
+end
+
+# The four below replace Ash's messages, which name the resource module, with
+# fixed templates. `Errors` formats `fields`, `vars.field` and `vars.operator`
+# with the output formatter.
+defimpl AshIntrospection.Rpc.Error, for: Ash.Error.Invalid.NoSuchInput do
+  def to_error(error) do
+    %{
+      message: "Unknown input %{field}",
+      short_message: "Unknown input",
+      vars: %{field: error.input},
+      type: "no_such_input",
+      fields: [error.input],
+      path: error.path || []
+    }
+  end
+end
+
+defimpl AshIntrospection.Rpc.Error, for: Ash.Error.Query.NoSuchField do
+  def to_error(error) do
+    %{
+      message: "Unknown field %{field}",
+      short_message: "Unknown field",
+      vars: %{field: error.field},
+      type: "no_such_field",
+      fields: [error.field],
+      path: error.path || []
+    }
+  end
+end
+
+defimpl AshIntrospection.Rpc.Error, for: Ash.Error.Query.NoSuchFilterPredicate do
+  def to_error(error) do
+    %{
+      message: "Unknown filter operator %{operator}",
+      short_message: "Unknown filter operator",
+      vars: %{operator: error.key},
+      type: "no_such_filter_predicate",
+      fields: [],
+      path: error.path || []
+    }
+  end
+end
+
+# Upstream ash_typescript `8ed1fbb` sends `Exception.message/1`, which names
+# the resource module.
+defimpl AshIntrospection.Rpc.Error, for: Ash.Error.Invalid.TenantRequired do
+  def to_error(error) do
+    %{
+      message: "Tenant parameter is required",
+      short_message: "Tenant required",
+      vars: %{},
+      type: "tenant_required",
       fields: [],
       path: error.path || []
     }

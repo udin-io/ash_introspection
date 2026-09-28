@@ -20,7 +20,9 @@ defmodule AshIntrospection.Test.RpcDsl do
       show_raised_errors?: [
         type: :boolean,
         default: false,
-        doc: "Expose the raised exception's own message to the client."
+        doc:
+          "Send each raised exception's raw message to the client. Development only: " <>
+            "the text can carry server values. Forbidden errors keep their implementation."
       ],
       error_handler: [
         type: :any,

@@ -69,12 +69,12 @@ defmodule AshIntrospection.Rpc.ErrorBuilder do
         }
 
       # Tenant resolution errors
-      {:tenant_required, resource} ->
+      {:tenant_required, _resource} ->
         %{
           type: "tenant_required",
-          message: "Tenant parameter is required for multitenant resource %{resource}",
+          message: "Tenant parameter is required",
           short_message: "Tenant required",
-          vars: %{resource: inspect(resource)},
+          vars: %{},
           path: [],
           fields: [],
           details: %{
@@ -91,7 +91,7 @@ defmodule AshIntrospection.Rpc.ErrorBuilder do
 
       {:unknown_field, field_atom, "map", path} when is_list(path) ->
         full_field_path =
-          build_complete_field_path(path, field_atom, formatter, field_formatter_module)
+          build_unknown_field_path(path, field_atom, formatter, field_formatter_module)
 
         formatted_path = format_path(path, formatter, field_formatter_module)
 
@@ -110,7 +110,7 @@ defmodule AshIntrospection.Rpc.ErrorBuilder do
 
       {:unknown_field, field_atom, "union_attribute", path} when is_list(path) ->
         full_field_path =
-          build_complete_field_path(path, field_atom, formatter, field_formatter_module)
+          build_unknown_field_path(path, field_atom, formatter, field_formatter_module)
 
         formatted_path = format_path(path, formatter, field_formatter_module)
 
@@ -128,17 +128,17 @@ defmodule AshIntrospection.Rpc.ErrorBuilder do
           }
         }
 
-      {:unknown_field, field_atom, resource, path} when is_list(path) ->
+      {:unknown_field, field_atom, _resource, path} when is_list(path) ->
         full_field_path =
-          build_complete_field_path(path, field_atom, formatter, field_formatter_module)
+          build_unknown_field_path(path, field_atom, formatter, field_formatter_module)
 
         formatted_path = format_path(path, formatter, field_formatter_module)
 
         %{
           type: "unknown_field",
-          message: "Unknown field %{field} for resource %{resource}",
+          message: "Unknown field %{field}",
           short_message: "Unknown field",
-          vars: %{field: full_field_path, resource: inspect(resource)},
+          vars: %{field: full_field_path},
           path: formatted_path,
           fields: [full_field_path],
           details: %{
@@ -333,7 +333,7 @@ defmodule AshIntrospection.Rpc.ErrorBuilder do
           }
         }
 
-      {:unsupported_field_combination, field_type, field_atom, field_spec, path}
+      {:unsupported_field_combination, field_type, field_atom, _field_spec, path}
       when is_list(path) ->
         full_field_path =
           build_complete_field_path(path, field_atom, formatter, field_formatter_module)
@@ -348,7 +348,6 @@ defmodule AshIntrospection.Rpc.ErrorBuilder do
           path: formatted_path,
           fields: [full_field_path],
           details: %{
-            field_spec: inspect(field_spec),
             suggestion: "Check the documentation for valid field specification formats",
             hint: @stale_generated_file_hint
           }
@@ -361,7 +360,7 @@ defmodule AshIntrospection.Rpc.ErrorBuilder do
           type: "invalid_fields_type",
           message: "Fields parameter must be an array",
           short_message: "Invalid fields type",
-          vars: %{received: inspect(fields)},
+          vars: %{received: json_type(fields)},
           path: [],
           fields: [],
           details: %{
@@ -539,7 +538,7 @@ defmodule AshIntrospection.Rpc.ErrorBuilder do
           type: "invalid_input_format",
           message: "Input parameter must be a map",
           short_message: "Invalid input format",
-          vars: %{received: inspect(invalid_input)},
+          vars: %{received: json_type(invalid_input)},
           path: [],
           fields: [],
           details: %{
@@ -553,7 +552,7 @@ defmodule AshIntrospection.Rpc.ErrorBuilder do
           type: "invalid_pagination",
           message: "Invalid pagination parameter format",
           short_message: "Invalid pagination",
-          vars: %{received: inspect(invalid_value)},
+          vars: %{received: json_type(invalid_value)},
           path: [],
           fields: [],
           details: %{
@@ -702,12 +701,14 @@ defmodule AshIntrospection.Rpc.ErrorBuilder do
           vars: %{field: full_field_path},
           path: format_path(path, formatter, field_formatter_module),
           fields: [full_field_path],
-          details: %{
-            reason: inspect(reason),
-            suggestion:
-              "Provide page keys valid for the relationship's pagination type (offset: limit/offset/count, keyset: limit/after/before/count)",
-            hint: @stale_generated_file_hint
-          }
+          details:
+            reason
+            |> page_reason_details()
+            |> Map.merge(%{
+              suggestion:
+                "Provide page keys valid for the relationship's pagination type (offset: limit/offset/count, keyset: limit/after/before/count)",
+              hint: @stale_generated_file_hint
+            })
         }
 
       # === IDENTITY VALIDATION ERRORS ===
@@ -844,32 +845,52 @@ defmodule AshIntrospection.Rpc.ErrorBuilder do
           }
         }
 
-      {field_error_type, _} when is_atom(field_error_type) ->
+      # === FIELD SELECTION FORMAT ERRORS ===
+      # Thrown by `FieldSelector` for a map that names several nested fields
+      # where one is allowed, or a calculation envelope where none is.
+
+      {:invalid_field_format, _field, path} when is_list(path) ->
         %{
-          type: "field_validation_error",
-          message: "Field validation error: %{error_type}",
-          short_message: "Field validation error",
-          vars: %{error_type: to_string(field_error_type)},
-          path: [],
+          type: "invalid_field_format",
+          message: "Name one nested field per map in fields",
+          short_message: "Invalid field format",
+          vars: %{},
+          path: format_path(path, formatter, field_formatter_module),
           fields: [],
           details: %{
-            error: inspect(error),
+            suggestion: "Split the map into one map per nested field",
             hint: @stale_generated_file_hint
           }
         }
 
+      # === FALLBACKS ===
+      # The term is server-side: it goes to the log under an error id, and the
+      # client gets the id (#113).
+
+      {field_error_type, _} when is_atom(field_error_type) ->
+        error_id = log_fallback(error)
+
+        %{
+          type: "field_validation_error",
+          message: "Field validation error: %{error_type}. Unique error id: #{error_id}",
+          short_message: "Field validation error",
+          vars: %{error_type: Errors.client_atom(field_error_type)},
+          path: [],
+          fields: [],
+          error_id: error_id
+        }
+
       other ->
+        error_id = log_fallback(other)
+
         %{
           type: "unknown_error",
-          message: "An unexpected error occurred",
+          message: "An unexpected error occurred. Unique error id: #{error_id}",
           short_message: "Unknown error",
           vars: %{},
           path: [],
           fields: [],
-          details: %{
-            error: inspect(other),
-            hint: @stale_generated_file_hint
-          }
+          error_id: error_id
         }
     end
   end
@@ -924,9 +945,42 @@ defmodule AshIntrospection.Rpc.ErrorBuilder do
     }
   end
 
+  defp log_fallback(term) do
+    Errors.log_internal(:error, "Unhandled error term in RPC.", "Error: #{inspect(term)}\n")
+  end
+
+  defp page_reason_details({:unknown_keys, keys}),
+    do: %{reason: "unknown_keys", unknown_keys: keys}
+
+  defp page_reason_details(reason) when is_atom(reason), do: %{reason: Atom.to_string(reason)}
+  defp page_reason_details(_reason), do: %{reason: "invalid"}
+
+  # The JSON type of what the client sent, never the value: it can be large,
+  # and it is the client's own data.
+  defp json_type(nil), do: "null"
+  defp json_type(value) when is_boolean(value), do: "boolean"
+  defp json_type(value) when is_number(value), do: "number"
+  defp json_type(value) when is_binary(value), do: "string"
+  defp json_type(value) when is_list(value), do: "array"
+  defp json_type(value) when is_map(value), do: "object"
+  defp json_type(_value), do: "unknown"
+
+  # A type as the client knows it: an Ash type by its short name, any other
+  # module as "custom type", never a module name (#113).
   defp format_field_type(:primitive_type), do: "primitive type"
-  defp format_field_type({:ash_type, type, _}), do: "#{inspect(type)}"
-  defp format_field_type(other), do: "#{inspect(other)}"
+  defp format_field_type({:ash_type, type, _}), do: format_field_type(type)
+  defp format_field_type({:array, type}), do: "array of " <> format_field_type(type)
+  defp format_field_type(field_path) when is_binary(field_path), do: field_path
+
+  defp format_field_type(type) when is_atom(type) do
+    case Atom.to_string(type) do
+      "Elixir.Ash.Type." <> name -> Macro.underscore(name)
+      "Elixir." <> _ -> "custom type"
+      name -> name
+    end
+  end
+
+  defp format_field_type(_type), do: "custom type"
 
   defp format_path(path, formatter, field_formatter_module) when is_list(path) do
     Enum.map(path, fn field ->
@@ -943,6 +997,22 @@ defmodule AshIntrospection.Rpc.ErrorBuilder do
        when is_binary(field_name) do
     apply(field_formatter_module, :format_field_name, [field_name, formatter])
   end
+
+  # `FieldSelector` throws an unknown field with the name the client sent, and
+  # that name goes back as is: formatting it named a field the client never
+  # sent (#113). An atom comes from an Elixir caller and is formatted, like
+  # every path segment. Every other error carries a parsed name, so it goes
+  # through build_complete_field_path/4.
+  defp build_unknown_field_path(path, field_name, formatter, field_formatter_module)
+       when is_binary(field_name) do
+    case format_path(path, formatter, field_formatter_module) do
+      [] -> field_name
+      formatted_path -> Enum.join(formatted_path ++ [field_name], ".")
+    end
+  end
+
+  defp build_unknown_field_path(path, field_name, formatter, field_formatter_module),
+    do: build_complete_field_path(path, field_name, formatter, field_formatter_module)
 
   defp build_complete_field_path(path, field_name, formatter, field_formatter_module)
        when is_list(path) do
