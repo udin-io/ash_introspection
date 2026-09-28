@@ -88,7 +88,9 @@ if Code.ensure_loaded?(Igniter) do
     # A notice again. Each break is decided by what a client sends at
     # runtime: a top-level `filter`, `sort` or `page` on an action that cannot
     # use it (#24), a flat request for a composite `first` or `list`
-    # aggregate (#25), and an update or destroy that changes no row (#107). No consumer call site changes, and the requests that
+    # aggregate (#25), an update or destroy that changes no row (#107), and
+    # error payloads that no longer carry terms or module names (#113). No
+    # consumer call site changes, and the requests that
     # break live in generated client code, which is regenerated, not rewritten.
     @moduledoc false
 
@@ -252,6 +254,33 @@ if Code.ensure_loaded?(Igniter) do
         `forbidden` answer confirms the record exists.
     """
 
+    @error_leak_notice """
+    ash_introspection 0.7.0 sends no Elixir term or module name in an error.
+
+      * `field_validation_error` and `unknown_error` drop `details`, which
+        held `details.error`, the server's term. They carry `error_id`; the
+        server log holds the term under that id.
+      * `unknown_field` and `tenant_required` drop `vars.resource`. Their
+        messages are "Unknown field %{field}" and "Tenant parameter is
+        required".
+      * `unknown_field` names the field as the client sent it:
+        `books.nope_field` used to answer `books.nopeField`.
+      * A struct in `vars` is sent as "#Struct<>" and a module as
+        "#Module<>". `forbidden_field`'s message names no resource.
+      * `invalid_field_selection` names an Ash type by its short name
+        (`string`) and any other type as `custom type`.
+      * `vars.received` is the JSON type name (`string`, `object`, ...), not
+        the value. `unsupported_field_combination` drops
+        `details.field_spec`. `invalid_pagination`'s `details.reason` is a
+        code, with the keys in `details.unknown_keys`.
+      * An unknown input key, filter field, sort field or filter operator
+        returns `no_such_input`, `no_such_field` or
+        `no_such_filter_predicate`, and a missing tenant returns
+        `tenant_required`. Each used to return `internal_error`. A map that
+        names several nested fields where one is allowed returns
+        `invalid_field_format`; it returned `unknown_error`.
+    """
+
     @impl Igniter.Mix.Task
     def info(_argv, _composing_task) do
       %Igniter.Mix.Task.Info{
@@ -317,6 +346,7 @@ if Code.ensure_loaded?(Igniter) do
       igniter
       |> Igniter.add_notice(@query_params_notice)
       |> Igniter.add_notice(@zero_row_write_notice)
+      |> Igniter.add_notice(@error_leak_notice)
     end
 
     # `Igniter.update_all_elixir_files/2` leans on `Igniter.include_glob/2` to
