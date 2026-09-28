@@ -240,6 +240,36 @@ defmodule Mix.Tasks.AshIntrospection.UpgradeTest do
     end
   end
 
+  describe "a version newer than any this copy knows" do
+    test "prints the fallback naming the newest known version and the target" do
+      {_igniter, notices} = upgrade_notices("error.code", from: "0.7.0", to: "0.8.0")
+
+      assert Enum.any?(notices, &(&1 =~ "mix ash_introspection.upgrade 0.7.0 0.8.0"))
+    end
+
+    test "prints nothing extra when to equals the newest known version" do
+      {_igniter, notices} = upgrade_notices("error.code", from: "0.6.0", to: "0.7.0")
+
+      refute Enum.any?(notices, &(&1 =~ "knows releases up to"))
+    end
+
+    test "counts a pre-release to as newer than the newest known version" do
+      {_igniter, notices} = upgrade_notices("error.code", from: "0.7.0", to: "0.8.0-rc.1")
+
+      assert Enum.any?(notices, &(&1 =~ "mix ash_introspection.upgrade 0.7.0 0.8.0-rc.1"))
+    end
+
+    test "does not count a pre-release of the newest known version as newer" do
+      # A plain string comparison gets this backwards: "0.7.0-rc.1" sorts
+      # AFTER "0.7.0" lexically (it is the longer string with a shared
+      # prefix), but a pre-release is semantically OLDER than its release.
+      # This pins `Version.compare/2`, not `>`, as the comparison.
+      {_igniter, notices} = upgrade_notices("error.code", from: "0.6.0", to: "0.7.0-rc.1")
+
+      refute Enum.any?(notices, &(&1 =~ "knows releases up to"))
+    end
+  end
+
   describe "version selection" do
     test "does not rewrite code when 0.3.0 falls outside the range" do
       "error.code"

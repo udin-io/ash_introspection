@@ -299,6 +299,12 @@ if Code.ensure_loaded?(Igniter) do
       }
     end
 
+    @unknown_version_notice """
+    This copy of the ash_introspection upgrade task knows releases up to \
+    %{newest}. Run `mix ash_introspection.upgrade %{newest} %{to}` now to \
+    see what %{to} breaks.
+    """
+
     @impl Igniter.Mix.Task
     def igniter(igniter) do
       positional = igniter.args.positional
@@ -312,9 +318,9 @@ if Code.ensure_loaded?(Igniter) do
         "0.7.0" => [&notify_0_7_0_breaks/2]
       }
 
-      Igniter.Upgrades.run(igniter, positional.from, positional.to, upgrades,
-        custom_opts: options
-      )
+      igniter
+      |> Igniter.Upgrades.run(positional.from, positional.to, upgrades, custom_opts: options)
+      |> notify_unknown_version(positional.to, upgrades)
     end
 
     @doc false
@@ -386,6 +392,29 @@ if Code.ensure_loaded?(Igniter) do
     defp notify(igniter, text) do
       Mix.shell().info(text)
       igniter
+    end
+
+    # The archive's OLD copy of this task is the one that actually runs
+    # during `mix igniter.upgrade ash_introspection`: it was loaded into the
+    # VM before the dep recompile, and its own `upgrades` map has no entry
+    # for a version that ships in the tarball being fetched
+    # (ash-project/igniter#403). Nothing in that release can print a notice
+    # it does not know about. From the release that ships this fallback
+    # onward, the OLD copy can at least say so and point at the direct task,
+    # which always runs the NEW copy.
+    defp notify_unknown_version(igniter, to, upgrades) do
+      newest = upgrades |> Map.keys() |> Enum.max_by(&Version.parse!/1, Version)
+
+      if Version.compare(to, newest) == :gt do
+        notify(
+          igniter,
+          @unknown_version_notice
+          |> String.replace("%{newest}", newest)
+          |> String.replace("%{to}", to)
+        )
+      else
+        igniter
+      end
     end
 
     # `error.code` and `error.code()`.
