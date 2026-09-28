@@ -411,10 +411,48 @@ defmodule AshIntrospection.Rpc.ErrorDetailLeakTest do
       refute_internal(response)
     end
 
-    test "impl: InvalidPage names no module" do
-      [response] = Errors.to_errors(Ash.Error.Query.InvalidPage.exception(page: [limit: -1]))
+    for {label, module, opts, message} <- [
+          {"NotFound with a key of structs", Ash.Error.Query.NotFound,
+           [
+             resource: AshIntrospection.Test.Policy.Memo,
+             primary_key: %{id: Decimal.new("1"), code: Ash.CiString.new("x")}
+           ], "record not found"},
+          {"NotFound with a struct key", Ash.Error.Query.NotFound,
+           [
+             resource: AshIntrospection.Test.Policy.Memo,
+             primary_key: URI.parse("https://user:pw@db.internal/x")
+           ], "record not found"},
+          {"InvalidPrimaryKey", Ash.Error.Invalid.InvalidPrimaryKey,
+           [
+             resource: AshIntrospection.Test.Policy.Memo,
+             value: {:tuple, AshIntrospection.Test.Policy.Memo}
+           ], "Invalid primary key"},
+          {"InvalidKeyset", Ash.Error.Page.InvalidKeyset, [value: %{cursor: "s3cret"}],
+           "Invalid keyset"},
+          {"InvalidPage", Ash.Error.Query.InvalidPage, [page: [limit: "s3cret"]],
+           "Invalid page option"},
+          {"InvalidAttribute with no message", Ash.Error.Changes.InvalidAttribute,
+           [field: :slug, value: %{token: "s3cret"}], "is invalid"},
+          {"Changes.InvalidArgument with no message", Ash.Error.Changes.InvalidArgument,
+           [field: :slug, value: %{api_key: "s3cret"}], "is invalid"},
+          {"Query.InvalidArgument with no message", Ash.Error.Query.InvalidArgument,
+           [field: :slug, value: %{api_key: "s3cret"}], "is invalid"}
+        ] do
+      test "impl: #{label} sends a fixed message" do
+        [response] = Errors.to_errors(unquote(module).exception(unquote(Macro.escape(opts))))
 
-      refute_internal(response, ["Elixir.", "AshIntrospection", "Memo"])
+        assert response.message == unquote(message)
+        refute_internal(response, ["s3cret", "db.internal", "Decimal", "CiString", "tuple"])
+      end
+    end
+
+    test "impl: InvalidAttribute keeps a message the application wrote" do
+      [response] =
+        Errors.to_errors(
+          Ash.Error.Changes.InvalidAttribute.exception(field: :slug, message: "must be lowercase")
+        )
+
+      assert response.message == "must be lowercase"
     end
 
     test "no impl: an exception answers internal_error and names no module" do

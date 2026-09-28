@@ -74,10 +74,13 @@ defimpl AshIntrospection.Rpc.Error, for: Ash.Error.Query.InvalidQuery do
   end
 end
 
+# Ash's messages for the next ones render values with `inspect/1`: a key of
+# `Ash.CiString` or `Decimal`, a struct, a keyword list. The client gets a
+# fixed message, and `type` and `fields` say what went wrong (#113).
 defimpl AshIntrospection.Rpc.Error, for: Ash.Error.Query.NotFound do
   def to_error(error) do
     %{
-      message: Exception.message(error),
+      message: "record not found",
       short_message: "Not found",
       vars: Map.new(error.vars || []),
       type: "not_found",
@@ -189,7 +192,7 @@ end
 defimpl AshIntrospection.Rpc.Error, for: Ash.Error.Changes.InvalidAttribute do
   def to_error(error) do
     %{
-      message: Map.get(error, :message) || Exception.message(error),
+      message: Map.get(error, :message) || "is invalid",
       short_message: "Invalid attribute",
       vars: Map.new(error.vars || []) |> Map.put(:field, error.field),
       type: "invalid_attribute",
@@ -202,7 +205,7 @@ end
 defimpl AshIntrospection.Rpc.Error, for: Ash.Error.Changes.InvalidArgument do
   def to_error(error) do
     %{
-      message: Map.get(error, :message) || Exception.message(error),
+      message: Map.get(error, :message) || "is invalid",
       short_message: "Invalid argument",
       vars: Map.new(error.vars || []) |> Map.put(:field, Map.get(error, :field)),
       type: "invalid_argument",
@@ -215,7 +218,7 @@ end
 defimpl AshIntrospection.Rpc.Error, for: Ash.Error.Query.InvalidArgument do
   def to_error(error) do
     %{
-      message: Map.get(error, :message) || Exception.message(error),
+      message: Map.get(error, :message) || "is invalid",
       short_message: "Invalid argument",
       vars: Map.new(error.vars || []) |> Map.put(:field, Map.get(error, :field)),
       type: "invalid_argument",
@@ -228,7 +231,7 @@ end
 defimpl AshIntrospection.Rpc.Error, for: Ash.Error.Page.InvalidKeyset do
   def to_error(error) do
     %{
-      message: Exception.message(error),
+      message: "Invalid keyset",
       short_message: "Invalid keyset",
       vars: Map.new(error.vars || []),
       type: "invalid_keyset",
@@ -241,7 +244,7 @@ end
 defimpl AshIntrospection.Rpc.Error, for: Ash.Error.Query.InvalidPage do
   def to_error(error) do
     %{
-      message: Exception.message(error),
+      message: "Invalid page option",
       short_message: "Invalid pagination",
       vars: Map.new(error.vars || []),
       type: "invalid_page",
@@ -254,7 +257,7 @@ end
 defimpl AshIntrospection.Rpc.Error, for: Ash.Error.Invalid.InvalidPrimaryKey do
   def to_error(error) do
     %{
-      message: Exception.message(error),
+      message: "Invalid primary key",
       short_message: "Invalid primary key",
       vars: Map.new(error.vars || []),
       type: "invalid_primary_key",
